@@ -29,7 +29,7 @@
 
 #include <stdio.h>
 #include <ix/syscall.h>
-#include "syscall_raw.h"
+//#include "syscall_raw.h"
 
 static inline int libix_sys_bpoll(struct bsys_desc *d, unsigned int nr)
 {

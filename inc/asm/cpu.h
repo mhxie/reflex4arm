@@ -81,11 +81,28 @@
 
 #define MSR_PKG_ENERGY_STATUS 0x00000611
 
-#define cpu_relax() asm volatile("pause")
+#define cpu_relax()
+// asm volatile("pause")
 
-#define cpu_serialize() \
-	asm volatile("cpuid" : : : "%rax", "%rbx", "%rcx", "%rdx")
+#define cpu_serialize()
+//									\
+//asm volatile("cpuid" : : : "%rax", "%rbx", "%rcx", "%rdx")
 
+static inline unsigned long rdtsc(void)
+{
+  return 0;
+}
+
+static inline unsigned long rdtscp(unsigned int *aux)
+{
+  return 0;
+}
+
+static inline unsigned long rdmsr(unsigned int msr)
+{
+  return 0;
+}
+/*
 static inline unsigned long rdtsc(void)
 {
 	unsigned int a, d;
@@ -109,3 +126,4 @@ static inline unsigned long rdmsr(unsigned int msr)
 	asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(msr));
 	return low | ((unsigned long)high << 32);
 }
+*/

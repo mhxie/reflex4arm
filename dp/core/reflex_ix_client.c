@@ -58,7 +58,8 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>
-
+// including math header for the substitution of the asm.
+#include <math.h>
 #include <fcntl.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -152,15 +153,11 @@ static __thread struct mempool nvme_req_buf_pool;
 
 static inline uint32_t intlog2(const uint32_t x) {
 	uint32_t y;
-	asm ( "\tbsr %1, %0\n"
-	      : "=r"(y)
-	      : "r" (x)
-		);
+	y = log(x)/log(2);
 	return y;
 }
 
-int
-compare_ul (const void *a, const void *b)
+int ncompare_ul (const void *a, const void *b)
 {
 	const unsigned long *da = (const unsigned long *) a;
 	const unsigned long *db = (const unsigned long *) b;

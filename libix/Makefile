@@ -22,14 +22,15 @@
 # A Makefile for libIX.
 
 DPDK	= ../deps/dpdk
-DPDK_INC = -I$(DPDK)/build/include -I$(DPDK)/lib/librte_eal/common -I$(DPDK)/drivers/net/ixgbe
+BUILD	= arm64-stingray-linuxapp-gcc
+DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common -I$(DPDK)/drivers/net/ixgbe
 DPDK_LIBS=
 #DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/build/lib/librte_pmd_ixgbe.a -Wl,-no-whole-archive
-DPDK_LIBS+=$(DPDK)/build/lib/librte_mbuf.a
-DPDK_LIBS+=$(DPDK)/build/lib/librte_ethdev.a
-DPDK_LIBS+=$(DPDK)/build/lib/librte_mempool.a
-DPDK_LIBS+=$(DPDK)/build/lib/librte_ring.a
-DPDK_LIBS+=$(DPDK)/build/lib/librte_eal.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_mbuf.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ethdev.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_mempool.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ring.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_eal.a
 
 DPDK_MACHINE_FLAGS = -march=native -DRTE_MACHINE_CPUFLAG_SSE -DRTE_MACHINE_CPUFLAG_SSE2 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -DRTE_MACHINE_CPUFLAG_SSE4_1 -DRTE_MACHINE_CPUFLAG_SSE4_2 -DRTE_MACHINE_CPUFLAG_AES -DRTE_MACHINE_CPUFLAG_PCLMULQDQ -DRTE_MACHINE_CPUFLAG_AVX -DRTE_MACHINE_CPUFLAG_RDRAND -DRTE_MACHINE_CPUFLAG_FSGSBASE -DRTE_MACHINE_CPUFLAG_F16C -DRTE_MACHINE_CPUFLAG_AVX2
 

@@ -65,8 +65,10 @@
 
 static inline uint64_t __mm_crc32_u64(uint64_t crc, uint64_t val)
 {
-	asm("crc32q %1, %0" : "+r"(crc) : "rm"(val));
+/*	asm("crc32q %1, %0" : "+r"(crc) : "rm"(val));
 	return crc;
+*/
+return 0;
 }
 
 /**

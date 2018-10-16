@@ -355,7 +355,7 @@ inet_cksum_pseudo_base(struct pbuf *p, u8_t proto, u16_t proto_len, u32_t acc)
 static __inline unsigned short 
 in_pseudo(unsigned int sum, unsigned int b, unsigned int c) 
 { 
-        __asm( 
+ /*       __asm( 
                 "addl %1, %0\n" 
                 "adcl %2, %0\n" 
                 "adcl $0, %0" 
@@ -368,6 +368,8 @@ in_pseudo(unsigned int sum, unsigned int b, unsigned int c)
         if (sum > 0xffff) 
                 sum -= 0xffff; 
         return (sum); 
+ */
+ return 0;
 } 
 /* inet_chksum_pseudo:
  *

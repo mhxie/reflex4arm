@@ -25,13 +25,17 @@
 
 DPDK	= ../deps/dpdk
 SPDK    = ../deps/spdk
-DPDK_INC = -I$(DPDK)/build/include -I$(DPDK)/lib/librte_eal/common 
+
+BUILD	= arm64-stingray-linuxapp-gcc
+DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common 
 SPDK_INC = -idirafter$(SPDK)/include
 INC	= -I../inc -I../inc/lwip -I../inc/lwip/ipv4 -I../inc/lwip/ipv6 $(DPDK_INC) $(SPDK_INC) -I../libix
 CC	= gcc
 
-DPDK_MACHINE_FLAGS = -march=native -DRTE_MACHINE_CPUFLAG_SSE -DRTE_MACHINE_CPUFLAG_SSE2 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -DRTE_MACHINE_CPUFLAG_SSE4_1 -DRTE_MACHINE_CPUFLAG_SSE4_2 -DRTE_MACHINE_CPUFLAG_AES -DRTE_MACHINE_CPUFLAG_PCLMULQDQ -DRTE_MACHINE_CPUFLAG_AVX -DRTE_MACHINE_CPUFLAG_RDRAND -DRTE_MACHINE_CPUFLAG_FSGSBASE -DRTE_MACHINE_CPUFLAG_F16C -DRTE_MACHINE_CPUFLAG_AVX2
-CFLAGS	= -g -w -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O3 -mno-red-zone $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS)
+DPDK_MACHINE_FLAGS = -march=native
+#-DRTE_MACHINE_CPUFLAG_SSE -DRTE_MACHINE_CPUFLAG_SSE2 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -DRTE_MACHINE_CPUFLAG_SSE4_1 -DRTE_MACHINE_CPUFLAG_SSE4_2
+#-DRTE_MACHINE_CPUFLAG_AES -DRTE_MACHINE_CPUFLAG_PCLMULQDQ -DRTE_MACHINE_CPUFLAG_AVX -DRTE_MACHINE_CPUFLAG_RDRAND -DRTE_MACHINE_CPUFLAG_FSGSBASE -DRTE_MACHINE_CPUFLAG_F16C -DRTE_MACHINE_CPUFLAG_AVX2
+CFLAGS	= -g -w -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O3 $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS)
 PCIDMA	= ../deps/pcidma
 INC	+= -I$(PCIDMA)
 LD	= gcc
@@ -72,12 +76,12 @@ ifneq ($(MAKECMDGOALS),clean)
 endif
 
 DPDK_LIBS=
-DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/build/lib/librte_pmd_ixgbe.a $(DPDK)/build/lib/librte_pmd_ena.a $(DPDK)/build/lib/librte_mempool_ring.a $(DPDK)/build/lib/librte_mempool.a -Wl,-no-whole-archive
-DPDK_LIBS+=$(DPDK)/build/lib/librte_mbuf.a
-DPDK_LIBS+=$(DPDK)/build/lib/librte_ethdev.a
-DPDK_LIBS+=$(DPDK)/build/lib/librte_hash.a
-DPDK_LIBS+=$(DPDK)/build/lib/librte_ring.a
-DPDK_LIBS+=$(DPDK)/build/lib/librte_eal.a
+DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_pmd_ixgbe.a $(DPDK)/$(BUILD)/lib/librte_pmd_ena.a $(DPDK)/$(BUILD)/lib/librte_mempool_ring.a $(DPDK)/$(BUILD)/lib/librte_mempool.a -Wl,-no-whole-archive
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_mbuf.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ethdev.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_hash.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ring.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_eal.a
 
 SPDK_LIBS=$(SPDK)/build/lib/libspdk_nvme.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_util.a
