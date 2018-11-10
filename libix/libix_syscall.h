@@ -29,17 +29,17 @@
 
 #include <stdio.h>
 #include <ix/syscall.h>
-//#include "syscall_raw.h"
+#include "syscall_raw.h"
 
 static inline int libix_sys_bpoll(struct bsys_desc *d, unsigned int nr)
 {
 	printf("\n*******************IN LIBIX/SYS_BPOLL****************\n");
-	return (int) SYSCALL(SYS_BPOLL, d, nr);
+	//return (int) SYSCALL(SYS_BPOLL, d, nr);
 }
 
 static inline int sys_bcall(struct bsys_desc *d, unsigned int nr)
 {
-	return (int) SYSCALL(SYS_BCALL, d, nr);
+	//return (int) SYSCALL(SYS_BCALL, d, nr);
 }
 /*
 static inline void *sys_baddr(void)
@@ -49,30 +49,31 @@ static inline void *sys_baddr(void)
 */
 static inline int sys_mmap(void *addr, int nr, int size, int perm)
 {
-	return (int) SYSCALL(SYS_MMAP, addr, nr, size, perm);
+	return sys_mmap(addr, nr, size, perm);
+	//return (int) SYSCALL(SYS_MMAP, addr, nr, size, perm);
 }
 
 static inline int sys_unmap(void *addr, int nr, int size)
 {
-	return (int) SYSCALL(SYS_MUNMAP, addr, nr, size);
+	//return (int) SYSCALL(SYS_MUNMAP, addr, nr, size);
 }
 
 static inline int sys_spawnmode(bool spawn_cores)
 {
-	return (int) SYSCALL(SYS_SPAWNMODE, spawn_cores);
+	//return (int) SYSCALL(SYS_SPAWNMODE, spawn_cores);
 }
 
 static inline int sys_nrcpus(void)
 {
-	return (int) SYSCALL(SYS_NRCPUS);
+	//return (int) SYSCALL(SYS_NRCPUS);
 }
 
 static inline int sys_timer_init(void * addr)
 {
-	return (int) SYSCALL(SYS_TIMER_INIT, addr);
+	//return (int) SYSCALL(SYS_TIMER_INIT, addr);
 }
 
 static inline int sys_timer_ctl(int timer_id, uint64_t delay)
 {
-	return (int) SYSCALL(SYS_TIMER_CTL, timer_id, delay);
+	//return (int) SYSCALL(SYS_TIMER_CTL, timer_id, delay);
 }

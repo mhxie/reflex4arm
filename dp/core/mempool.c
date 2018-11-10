@@ -309,7 +309,7 @@ rte_mempool_populate_align(struct rte_mempool *mp)
 
 	total_elt_sz = mp->header_size + mp->elt_size + mp->trailer_size;
 	for (mz_id = 0, n = mp->size; n > 0; mz_id++, n -= ret) {
-		size = rte_mempool_xmem_size(n, total_elt_sz, pg_shift);
+		size = rte_mempool_xmem_size(n, total_elt_sz, pg_shift, 0); //added a naive flag
 
 		ret = snprintf(mz_name, sizeof(mz_name),
 			RTE_MEMPOOL_MZ_FORMAT "_%d", mp->name, mz_id);

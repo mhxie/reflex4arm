@@ -26,7 +26,7 @@
 DPDK	= ../deps/dpdk
 SPDK    = ../deps/spdk
 
-BUILD	= arm64-stingray-linuxapp-gcc
+BUILD	= build
 DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common 
 SPDK_INC = -idirafter$(SPDK)/include
 INC	= -I../inc -I../inc/lwip -I../inc/lwip/ipv4 -I../inc/lwip/ipv6 $(DPDK_INC) $(SPDK_INC) -I../libix
@@ -40,7 +40,7 @@ PCIDMA	= ../deps/pcidma
 INC	+= -I$(PCIDMA)
 LD	= gcc
 LDFLAGS	= -T ix.ld
-LDLIBS	= -lrt -lpthread -lm -lnuma -ldl -lconfig -lpciaccess
+LDLIBS	= -lrt -lpthread -lm -lnuma -ldl -lconfig -lpciaccess -luuid
 
 ifneq ($(DEBUG),)
 CFLAGS += -DDEBUG
@@ -82,6 +82,8 @@ DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ethdev.a
 DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_hash.a
 DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ring.a
 DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_eal.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_bus_pci.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_pci.a
 
 SPDK_LIBS=$(SPDK)/build/lib/libspdk_nvme.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_util.a

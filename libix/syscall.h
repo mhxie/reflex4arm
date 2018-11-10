@@ -61,7 +61,7 @@
 #include <ix/syscall.h>
 #include <ix/mem.h>
 #include <ix/vm.h>
-//#include "syscall_raw.h"
+#include "syscall_raw.h"
 
 static inline int sys_bpoll(struct bsys_desc *d, unsigned int nr)
 {

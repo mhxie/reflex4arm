@@ -96,7 +96,7 @@ static inline void *__percpu_get(void *key)
 {
 	void *offset;
 
-	asm("mov %%gs:0, %0" : "=r"(offset));
+	//asm("mov %%gs:0, %0" : "=r"(offset));
 	return (void *)((uintptr_t) key + (uintptr_t) offset);
 }
 

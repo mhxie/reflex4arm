@@ -22,7 +22,7 @@
 # A Makefile for libIX.
 
 DPDK	= ../deps/dpdk
-BUILD	= arm64-stingray-linuxapp-gcc
+BUILD	= build
 DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common -I$(DPDK)/drivers/net/ixgbe
 DPDK_LIBS=
 #DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/build/lib/librte_pmd_ixgbe.a -Wl,-no-whole-archive
