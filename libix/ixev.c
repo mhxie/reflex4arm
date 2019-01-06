@@ -872,10 +872,6 @@ void ixev_wait(void)
 {
 	int i;
 
-	/*
-	 * FIXME: don't use the low-level library,
-	 * just make system calls directly.
-	 */
 	ix_poll();
 	ixev_generation++;
 
@@ -884,7 +880,7 @@ void ixev_wait(void)
 		ixev_handle_one_ret((struct bsys_ret *) &karr->descs[i]);
 	karr->len = 0;
 
-	//printf("now handle events\n");
+	// printf("now handle events\n");
 	ix_handle_events();
 }
 
@@ -954,7 +950,7 @@ int ixev_init(struct ixev_conn_ops *ops)
 	/* FIXME: check if running inside IX */
 	int ret;
 
-	ret = mempool_create_datastore(&ixev_buf_datastore, 131072, sizeof(struct ixev_buf), "ixev_buf");
+	ret = mempool_create_datastore(&ixev_buf_datastore, 131072, sizeof(struct ixev_buf), "ixev_buf"); // why 2^17???
 	if (ret)
 		return ret;
 

@@ -59,7 +59,7 @@
 #include <netinet/in.h>
 
 #include <ixev.h>
-#include <ixev_timer.h>
+// #include <ixev_timer.h>
 #include <ix/mempool.h>
 #include <ix/list.h>
 
@@ -93,7 +93,7 @@ static __thread long reqs_allocated = 0;
 
 struct nvme_req {
 	struct ixev_nvme_req_ctx ctx;
-	unsigned int lba_count;
+	unsigned int lba_count;				//HELPME
 	unsigned long lba;
 	uint16_t opcode;
 	struct pp_conn *conn;

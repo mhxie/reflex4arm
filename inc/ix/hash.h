@@ -60,15 +60,19 @@
  * (e.g. IP source, IP destionation, source port, destination port,
  * etc.)
  */
-
+#ifdef __GNU__
+#define __asm__
+#endif
 #pragma once
 
 static inline uint64_t __mm_crc32_u64(uint64_t crc, uint64_t val)
 {
-/*	asm("crc32q %1, %0" : "+r"(crc) : "rm"(val));
+	#if defined(__i386__)
+		asm("crc32q %1, %0" : "+r"(crc) : "rm"(val));
+	#elif defined(__aarch64__)
+		asm("crc32cx %w[crc], %w[crc], %x[value]" : [crc] "+r"(crc) : [value] "r" (val));
+	#endif
 	return crc;
-*/
-return 0;
 }
 
 /**

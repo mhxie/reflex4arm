@@ -89,6 +89,7 @@ struct rte_mempool *dpdk_pool;
 int dpdk_init(void)
 {
 	struct spdk_env_opts opts;
+	int nb_ports, ret;
         
 	spdk_env_opts_init(&opts);
         opts.name = "reflex";
@@ -96,11 +97,10 @@ int dpdk_init(void)
 
 	int core_num = pow(2, cores_active)-1;
 	char mask[3];
-	sprintf(mask, "%x", core_num);
+	sprintf(mask, "%x", core_num); 
 	opts.core_mask = mask;
-       
-        spdk_env_init(&opts);	
-
+        spdk_env_init(&opts);
+	
 	/* pool_size sets an implicit limit on cores * NICs that DPDK allows */
 	const int pool_size = 32768;
 

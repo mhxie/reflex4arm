@@ -2,9 +2,9 @@
 
 # Script to run ReFlex setup after machine reboot and start the ReFlex server
 
-sudo sh -c 'for i in /sys/devices/system/node/node*/hugepages/hugepages-2048kB/nr_hugepages; do echo 4096 > $i; done'
-sudo modprobe -r ixgbe
-sudo modprobe -r nvme
-sudo insmod deps/dune/kern/dune.ko
-sudo insmod deps/pcidma/pcidma.ko
-sudo ./dp/ix -- ./apps/reflex_server
+
+sudo insmod deps/dpdk/build/kmod/igb_uio.ko
+sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0008:01:00.0
+sudo sh -c 'echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'
+sudo deps/spdk/scripts/setup.sh
+# sudo ./dp/ix -- ./apps/reflex_server

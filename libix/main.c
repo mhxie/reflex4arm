@@ -62,9 +62,9 @@
 #include "ix.h"
 
 static __thread bsysfn_t usys_tbl[USYS_NR];
-static __thread struct bsys_arr *uarr;
+static __thread struct bsys_arr *uarr; // user-space batched system call array
 
-__thread struct bsys_arr *karr;
+__thread struct bsys_arr *karr; // kenel-space batched system call array
 
 /**
  * ix_poll - flush pending commands and check for new commands
@@ -156,11 +156,11 @@ int ix_init(struct ix_ops *ops, int batch_depth)
 
 	uarr = sys_baddr();
 	printf("on CPU %d, uarr in ix_init is %p\n", percpu_get(cpu_nr), uarr);
-	if (!uarr){
+	printf("what happened?");
+    if (!uarr){
 		printf("bad uarr\n");
 		return -EFAULT;
 	}
-
 	karr = malloc(sizeof(struct bsys_arr) +
 		      sizeof(struct bsys_desc) * batch_depth);
 	if (!karr){
@@ -168,6 +168,7 @@ int ix_init(struct ix_ops *ops, int batch_depth)
 		return -ENOMEM;
 	}
 
+	printf("Successfully malloc...");
 	karr->len = 0;
 	karr->max_len = batch_depth;
 

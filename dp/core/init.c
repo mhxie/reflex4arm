@@ -139,11 +139,11 @@ static struct init_vector_t init_tbl[] = {
 	{ "memp",    memp_init,    memp_init_cpu, NULL},
 	{ "tcpapi",  tcp_api_init, tcp_api_init_cpu, NULL},
 	{ "ethdev",  init_ethdev,  ethdev_init_cpu, NULL},
-	{ "nvmemem", init_nvme_request, init_nvme_request_cpu, NULL},
+	// { "nvmemem", init_nvme_request, init_nvme_request_cpu, NULL},
 	{ "migration", NULL, init_migration_cpu, NULL},
-	{ "nvmedev", init_nvmedev, NULL, NULL},               // before per-cpu init
+	// { "nvmedev", init_nvmedev, NULL, NULL},               // before per-cpu init
 	{ "hw",      init_hw,      NULL, NULL},               // spaws per-cpu init sequence
-	{ "nvmeqp",  NULL, init_nvmeqp_cpu, NULL},            // after per-cpu init
+	// { "nvmeqp",  NULL, init_nvmeqp_cpu, NULL},            // after per-cpu init
 	{ "syscall", NULL,         syscall_init_cpu, NULL},
 #ifdef ENABLE_KSTATS
 	{ "kstats",  NULL,         kstats_init_cpu, NULL},    // after timer
@@ -676,15 +676,15 @@ int main(int argc, char *argv[])
 				panic("could not initialize IX\n");
 		}
 
-	//ret = echoserver_main(argc - args_parsed, &argv[args_parsed]);
-	if (argc > 1)
-		ret = reflex_client_main(argc - args_parsed, &argv[args_parsed]);
-	else
-		ret = reflex_server_main(argc - args_parsed, &argv[args_parsed]);
+	ret = echoserver_main(argc - args_parsed, &argv[args_parsed]);
+	// if (argc > 1)
+	// 	ret = reflex_client_main(argc - args_parsed, &argv[args_parsed]);
+	// else
+	// 	ret = reflex_server_main(argc - args_parsed, &argv[args_parsed]);
 	
 	if (ret) {
-		//log_err("init: failed to start echoserver\n");
-		log_err("init: failed to start reflex server\n");
+		log_err("init: failed to start echoserver\n");
+		// log_err("init: failed to start reflex server\n");
 		return ret;
 	}
 

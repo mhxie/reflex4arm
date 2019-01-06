@@ -469,7 +469,9 @@ timer_calibrate_tsc(void)
 	struct timespec sleeptime = {.tv_nsec = 5E8 }; /* 1/2 second */
 	struct timespec t_start, t_end;
 
-	cpu_serialize();
+	#if defined(__i386__)
+		cpu_serialize();
+	#endif
 	if (clock_gettime(CLOCK_MONOTONIC_RAW, &t_start) == 0) {
 		uint64_t ns, end, start;
 		double secs;
@@ -477,7 +479,7 @@ timer_calibrate_tsc(void)
 		start = rdtsc();
 		nanosleep(&sleeptime, NULL);
 		clock_gettime(CLOCK_MONOTONIC_RAW, &t_end);
-		end = rdtscp(NULL);
+		end = rdtscp();
 		ns = ((t_end.tv_sec - t_start.tv_sec) * 1E9);
 		ns += (t_end.tv_nsec - t_start.tv_nsec);
 

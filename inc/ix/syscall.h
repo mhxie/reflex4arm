@@ -727,8 +727,10 @@ static inline void sys_test_ix()
 	log_info("\n************************PRINTITNG FROM SYS TEST**********************\n");
 }
 
+// Exposed to upper layer
 int sys_bpoll(struct bsys_desc *d, unsigned int nr);
 void *sys_baddr(void);
+int sys_bcall(struct bsys_desc *d, unsigned int nr);
 
 /*
  * Kernel system call definitions
@@ -772,8 +774,10 @@ extern long bsys_nvme_writev(hqu_t fg_handle, void **sgls, int num_sgls,
 extern long bsys_nvme_readv(hqu_t fg_handle, void **sgls, int num_sgls,
 			    unsigned long lba, unsigned int lba_count, unsigned long cookie);
   
-struct dune_tf;
-extern void do_syscall(struct dune_tf *tf, uint64_t sysnr);
+/* Functions for dune commented
+ struct dune_tf;
+ extern void do_syscall(struct dune_tf *tf, uint64_t sysnr);
+*/
 
 extern int syscall_init_cpu(void);
 extern void syscall_exit_cpu(void);

@@ -118,6 +118,9 @@ struct ixev_ref {
 	struct ixev_ref	*next;    /* the next ref in the sequence */
 };
 
+/**
+ * context per connection
+ */
 struct ixev_ctx {
 	hid_t		handle;			/* the IX flow handle */
 	unsigned long	user_data;		/* application data */
@@ -143,6 +146,9 @@ struct ixev_ctx {
 	struct sg_entry send[IXEV_SEND_DEPTH];	/* send SG array */
 };
 
+/**
+ * IO types: Never used
+ */
 enum io_type {
 	READ,			//0
 	WRITE,			//1

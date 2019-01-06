@@ -10,6 +10,7 @@
 /deps/dune
 /deps/pcidma
 /ix.conf
+/nvme_devname.devmodel
 /dp/ix
 /apps/echoclient
 /apps/echoserver

@@ -24,19 +24,10 @@
 DPDK	= ../deps/dpdk
 BUILD	= build
 DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common -I$(DPDK)/drivers/net/ixgbe
-DPDK_LIBS=
-#DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/build/lib/librte_pmd_ixgbe.a -Wl,-no-whole-archive
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_mbuf.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ethdev.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_mempool.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ring.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_eal.a
-
-DPDK_MACHINE_FLAGS = -march=native -DRTE_MACHINE_CPUFLAG_SSE -DRTE_MACHINE_CPUFLAG_SSE2 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -DRTE_MACHINE_CPUFLAG_SSE4_1 -DRTE_MACHINE_CPUFLAG_SSE4_2 -DRTE_MACHINE_CPUFLAG_AES -DRTE_MACHINE_CPUFLAG_PCLMULQDQ -DRTE_MACHINE_CPUFLAG_AVX -DRTE_MACHINE_CPUFLAG_RDRAND -DRTE_MACHINE_CPUFLAG_FSGSBASE -DRTE_MACHINE_CPUFLAG_F16C -DRTE_MACHINE_CPUFLAG_AVX2
 
 INC	= -I. -I../inc $(DPDK_INC)
 CC 	= gcc
-CFLAGS	= -g -Wall -O3 $(INC) $(DPDK_MACHINE_FLAGS)
+CFLAGS	= -g -Wall -fno-omit-frame-pointer -O3 $(INC)
 AR	= ar
 
 SRCS	= main.c ixev.c ixev_timer.c
@@ -53,7 +44,7 @@ depend: .depend
 -include .depend
 
 libix.a: $(OBJS)
-	$(AR) cru $(@) $(OBJS) #$(DPDK_LIBS)
+	$(AR) cru $(@) $(OBJS)
 
 clean:
 	rm -f $(OBJS) libix.a .depend

@@ -269,7 +269,8 @@ again:
  *
  * Returns 0 if successful, otherwise failure.
  */
-static int sys_bcall(struct bsys_desc __user *d, unsigned int nr)
+// static int sys_bcall(struct bsys_desc __user *d, unsigned int nr)
+int sys_bcall(struct bsys_desc *d, unsigned int nr)  //added Sparse support in the future
 {
 	int ret;
 

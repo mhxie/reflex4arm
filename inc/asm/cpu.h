@@ -81,49 +81,53 @@
 
 #define MSR_PKG_ENERGY_STATUS 0x00000611
 
-#define cpu_relax()
-// asm volatile("pause")
+#if defined(__i386__)
 
-#define cpu_serialize()
-//									\
-//asm volatile("cpuid" : : : "%rax", "%rbx", "%rcx", "%rdx")
+	#define cpu_relax() asm volatile("pause")
 
-static inline unsigned long rdtsc(void)
-{
-  return 0;
-}
+	#define cpu_serialize() \
+		asm volatile("cpuid" : : : "%rax", "%rbx", "%rcx", "%rdx")
 
-static inline unsigned long rdtscp(unsigned int *aux)
-{
-  return 0;
-}
+	static inline unsigned long rdtsc(void)
+	{
+		unsigned int a, d;
+		asm volatile("rdtsc" : "=a"(a), "=d"(d));
+		return ((unsigned long) a) | (((unsigned long) d) << 32);
+	}
 
-static inline unsigned long rdmsr(unsigned int msr)
-{
-  return 0;
-}
-/*
-static inline unsigned long rdtsc(void)
-{
-	unsigned int a, d;
-	asm volatile("rdtsc" : "=a"(a), "=d"(d));
-	return ((unsigned long) a) | (((unsigned long) d) << 32);
-}
+	static inline unsigned long rdtscp(unsigned int *aux)
+	{
+		unsigned int a, d, c;
+		asm volatile("rdtscp" : "=a"(a), "=d"(d), "=c"(c));
+		if (aux)
+			*aux = c;
+		return ((unsigned long) a) | (((unsigned long) d) << 32);
+	}
 
-static inline unsigned long rdtscp(unsigned int *aux)
-{
-	unsigned int a, d, c;
-	asm volatile("rdtscp" : "=a"(a), "=d"(d), "=c"(c));
-	if (aux)
-		*aux = c;
-	return ((unsigned long) a) | (((unsigned long) d) << 32);
-}
+	static inline unsigned long rdmsr(unsigned int msr)
+	{
+		unsigned low, high;
 
-static inline unsigned long rdmsr(unsigned int msr)
-{
-	unsigned low, high;
+		asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(msr));
+		return low | ((unsigned long)high << 32);
+	}
 
-	asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(msr));
-	return low | ((unsigned long)high << 32);
-}
-*/
+#elif defined(__aarch64__)
+
+	#define cpu_relax() asm volatile("yield")
+
+	static inline unsigned long rdtsc(void)
+	{
+		unsigned long vt; 
+		asm volatile("mrs %0, cntvct_el0" : "=r"(vt));
+		return vt;
+	}
+
+	static inline unsigned long rdtscp(void)
+	{
+		unsigned long vt; 
+		asm volatile("isb;mrs %0, cntvct_el0" : "=r"(vt));
+		return vt;
+	}
+
+#endif

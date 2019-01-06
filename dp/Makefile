@@ -33,9 +33,13 @@ INC	= -I../inc -I../inc/lwip -I../inc/lwip/ipv4 -I../inc/lwip/ipv6 $(DPDK_INC) $
 CC	= gcc
 
 DPDK_MACHINE_FLAGS = -march=native
-#-DRTE_MACHINE_CPUFLAG_SSE -DRTE_MACHINE_CPUFLAG_SSE2 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -DRTE_MACHINE_CPUFLAG_SSE4_1 -DRTE_MACHINE_CPUFLAG_SSE4_2
-#-DRTE_MACHINE_CPUFLAG_AES -DRTE_MACHINE_CPUFLAG_PCLMULQDQ -DRTE_MACHINE_CPUFLAG_AVX -DRTE_MACHINE_CPUFLAG_RDRAND -DRTE_MACHINE_CPUFLAG_FSGSBASE -DRTE_MACHINE_CPUFLAG_F16C -DRTE_MACHINE_CPUFLAG_AVX2
-CFLAGS	= -g -w -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O3 $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS)
+ifeq ($(uname_p), i386)
+DPDK_MACHINE_FLAGS += -DRTE_MACHINE_CPUFLAG_SSE -DRTE_MACHINE_CPUFLAG_SSE2 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -DRTE_MACHINE_CPUFLAG_SSE4_1 -DRTE_MACHINE_CPUFLAG_SSE4_2 -DRTE_MACHINE_CPUFLAG_AES -DRTE_MACHINE_CPUFLAG_PCLMULQDQ -DRTE_MACHINE_CPUFLAG_AVX -DRTE_MACHINE_CPUFLAG_RDRAND -DRTE_MACHINE_CPUFLAG_FSGSBASE -DRTE_MACHINE_CPUFLAG_F16C -DRTE_MACHINE_CPUFLAG_AVX2
+else ifeq ($(uname_p), aarch64)
+DPDK_MACHINE_FLAGS += -DRTE_MACHINE_CPUFLAG_CRC32
+endif
+
+CFLAGS	= -g -w -fno-omit-frame-pointer -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O3 $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS)
 PCIDMA	= ../deps/pcidma
 INC	+= -I$(PCIDMA)
 LD	= gcc
@@ -76,14 +80,11 @@ ifneq ($(MAKECMDGOALS),clean)
 endif
 
 DPDK_LIBS=
-DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_pmd_ixgbe.a $(DPDK)/$(BUILD)/lib/librte_pmd_ena.a $(DPDK)/$(BUILD)/lib/librte_mempool_ring.a $(DPDK)/$(BUILD)/lib/librte_mempool.a -Wl,-no-whole-archive
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_mbuf.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ethdev.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_hash.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_ring.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_eal.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_bus_pci.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_pci.a
+# DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/build/lib/librte_pmd_ixgbe.a $(DPDK)/build/lib/librte_pmd_ena.a
+DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_pmd_bnxt.a # library for Broadcom NIC
+DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_mempool_ring.a $(DPDK)/$(BUILD)/lib/librte_mempool.a
+DPDK_LIBS+=-Wl,-no-whole-archive $(DPDK)/$(BUILD)/lib/librte_mbuf.a $(DPDK)/$(BUILD)/lib/librte_ethdev.a $(DPDK)/$(BUILD)/lib/librte_hash.a $(DPDK)/$(BUILD)/lib/librte_ring.a $(DPDK)/$(BUILD)/lib/librte_eal.a
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_bus_pci.a $(DPDK)/$(BUILD)/lib/librte_pci.a # Additional support to Stingray
 
 SPDK_LIBS=$(SPDK)/build/lib/libspdk_nvme.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_util.a

@@ -133,6 +133,7 @@ static void *pp_main(void *arg)
 	int ret;
 
 	ret = ixev_init_thread();
+
 	if (ret) {
 		fprintf(stderr, "unable to init IXEV\n");
 		return NULL;
@@ -192,7 +193,7 @@ int echoserver_main(int argc, char *argv[])
 	}
 	nr_cpu--; /* don't count the main thread */
 
-	sys_spawnmode(true);
+	// sys_spawnmode(true); /* Does this line really work? */
 
 	for (i = 0; i < nr_cpu; i++) {
 		if (pthread_create(&tid, NULL, pp_main, NULL)) {
