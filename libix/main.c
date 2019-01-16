@@ -156,7 +156,7 @@ int ix_init(struct ix_ops *ops, int batch_depth)
 
 	uarr = sys_baddr();
 	printf("on CPU %d, uarr in ix_init is %p\n", percpu_get(cpu_nr), uarr);
-	printf("what happened?");
+
     if (!uarr){
 		printf("bad uarr\n");
 		return -EFAULT;
@@ -168,7 +168,6 @@ int ix_init(struct ix_ops *ops, int batch_depth)
 		return -ENOMEM;
 	}
 
-	printf("Successfully malloc...");
 	karr->len = 0;
 	karr->max_len = batch_depth;
 

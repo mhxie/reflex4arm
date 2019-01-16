@@ -354,32 +354,49 @@ inet_cksum_pseudo_base(struct pbuf *p, u8_t proto, u16_t proto_len, u32_t acc)
 /* Pseudo-header checksum to initialize checksum field in TCP header for TCP csum offload */
 static __inline unsigned short 
 in_pseudo(unsigned int sum, unsigned int b, unsigned int c) 
-{ 
- /*       
-        __asm( 
-                "addl %1, %0\n" 
-                "adcl %2, %0\n" 
-                "adcl $0, %0" 
-                : "+r" (sum) 
-                : "g" (b), 
-                  "g" (c) 
-                : "cc" 
-        ); 
- */
-        // __asm( 
-        //         "adds %0, %0, %1\n" 
-        //         "adc %0, %0, %2\n" 
-        //         "adds %0, %0, $0" 
-        //         : "+r" (sum) 
-        //         : "g" (b), 
-        //           "g" (c) 
-        //         : "cc" 
-        // ); 
-        sum = (sum & 0xffff) + (sum >> 16); 
-        if (sum > 0xffff) 
-                sum -= 0xffff; 
-        return (sum); 
- 
+{
+  #if defined(__i386__)    
+    __asm(
+      "addl %1, %0\n" 
+      "adcl %2, %0\n" 
+      "adcl $0, %0" 
+      : "+r" (sum) 
+      : "g" (b), 
+        "g" (c) 
+      : "cc" 
+    ); 
+  #elif defined(__aarch64__)
+    __asm(
+      "eor w4, w4, w4\n"
+      "adds %w[sum], %w[sum], %w[b]\n"
+      "adcs %w[sum], %w[sum], %w[c]\n"
+      "adc %w[sum], %w[sum], w4"
+      : [sum] "+r"(sum)
+      : [b] "r"(b),
+        [c] "r"(c)
+      : "cc", "w4"
+    );
+  #else
+    uint64_t chksum = sum;
+    chksum += b;
+    chksum += c;
+    while (chksum >> 32)
+      chksum += (chksum & 0xffffffff) + (chksum >> 32);
+    return (chksum);
+    // if (~b < sum) // overflow
+    //   sum += b+1;
+    // else:
+    //   sum += b;
+    // if (~c < sum) // overflow
+    //   sum += c+1;
+    // else:
+    //   sum += c;
+  #endif
+  
+  sum = (sum & 0xffff) + (sum >> 16); 
+  if (sum > 0xffff) 
+      sum -= 0xffff; // get overflow
+  return (sum); 
 } 
 /* inet_chksum_pseudo:
  *

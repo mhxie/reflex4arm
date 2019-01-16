@@ -70,73 +70,82 @@
  */
 static inline uint16_t chksum_internet(const char *buf, int len)
 {
-	uint64_t sum;
-
+	uint64_t sum = 0;
+	// printf("Calculating chksum, buf is %s, len is %d\n", buf, len);
 	#if defined(__i386__)
-		asm volatile("xorq %0, %0\n"
-		
-				/* process 8 byte chunks */
-				"movl %2, %%edx\n"
-				"shrl $3, %%edx\n"
-				"cmp $0, %%edx\n"
-				"jz 2f\n"
-				"1: adcq (%1), %0\n"
-				"leaq 8(%1), %1\n"
-				"decl %%edx\n"
-				"jne 1b\n"
-				"adcq $0, %0\n"
-		
-				/* process 4 byte (if left) */
-				"2: test $4, %2\n"
-				"je 3f\n"
-				"movl (%1), %%edx\n"
-				"addq %%rdx, %0\n"
-				"adcq $0, %0\n"
-				"leaq 4(%1), %1\n"
-		
-				/* process 2 byte (if left) */
-				"3: test $2, %2\n"
-				"je 4f\n"
-				"movzxw (%1), %%rdx\n"
-				"addq %%rdx, %0\n"
-				"adcq $0, %0\n"
-				"leaq 2(%1), %1\n"
-		
-				/* process 1 byte (if left) */
-				"4: test $1, %2\n"
-				"je 5f\n"
-				"movzxb (%1), %%rdx\n"
-				"addq %%rdx, %0\n"
-				"adcq $0, %0\n"
-		
-				/* fold into 16-bit answer */
-				"5: movq %0, %1\n"
-				"shrq $32, %0\n"
-				"addl %k1, %k0\n"
-				"adcl $0, %k0\n"
-				"movq %0, %1\n"
-				"shrl $16, %k0\n"
-				"addw %w1, %w0\n"
-				"adcw $0, %w0\n"
-				"not %0\n"
-		
-				: "=&r"(sum), "=r"(buf)
-				: "r"(len), "1"(buf)
-				: "X4", "cc", "memory"
-			);
+	asm volatile("xorq %0, %0\n"
+
+		     /* process 8 byte chunks */
+		     "movl %2, %%edx\n"
+		     "shrl $3, %%edx\n"
+		     "cmp $0, %%edx\n"
+		     "jz 2f\n"
+		     "1: adcq (%1), %0\n"
+		     "leaq 8(%1), %1\n"
+		     "decl %%edx\n"
+		     "jne 1b\n"
+		     "adcq $0, %0\n"
+
+		     /* process 4 byte (if left) */
+		     "2: test $4, %2\n"
+		     "je 3f\n"
+		     "movl (%1), %%edx\n"
+		     "addq %%rdx, %0\n"
+		     "adcq $0, %0\n"
+		     "leaq 4(%1), %1\n"
+
+		     /* process 2 byte (if left) */
+		     "3: test $2, %2\n"
+		     "je 4f\n"
+		     "movzxw (%1), %%rdx\n"
+		     "addq %%rdx, %0\n"
+		     "adcq $0, %0\n"
+		     "leaq 2(%1), %1\n"
+
+		     /* process 1 byte (if left) */
+		     "4: test $1, %2\n"
+		     "je 5f\n"
+		     "movzxb (%1), %%rdx\n"
+		     "addq %%rdx, %0\n"
+		     "adcq $0, %0\n"
+
+		     /* fold into 16-bit answer */
+		     "5: movq %0, %1\n"
+		     "shrq $32, %0\n"
+		     "addl %k1, %k0\n"
+		     "adcl $0, %k0\n"
+		     "movq %0, %1\n"
+		     "shrl $16, %k0\n"
+		     "addw %w1, %w0\n"
+		     "adcw $0, %w0\n"
+		     "not %0\n"
+
+		     : "=&r"(sum), "=r"(buf)
+		     : "r"(len), "1"(buf) : "%rdx", "cc", "memory");
 	#else
-		while(len > 1) {
-		sum += *((uint16_t *) buf);
-		buf += 2;
-		len = len - 2;
+		while (len >= 8) {
+			sum += *((__uint64_t *) buf);
+			buf += 8;
+			len -= 8;
+		}
+		if (len >= 4) {
+			sum += *((__uint32_t *) buf);
+			buf += 4;
+			len -= 4;
+		}
+		if (len >= 2) {
+			sum += *((__uint16_t *) buf);
+			buf += 2;
+			len -= 2;
 		}
 
-		if (len == 1)
-		sum = sum + *((char *) buf);
+		if (len == 1) {
+			sum = sum + *((char *) buf);
+		}
 
 		while (sum >> 16)
-		sum = (sum & 0xFFFF) + (sum >> 16);
-
-		return (uint16_t) sum;
+			sum = (sum & 0xFFFF) + (sum >> 16);
+		sum = ~sum;
 	#endif
+	return (uint16_t) sum;
 }
