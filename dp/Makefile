@@ -39,11 +39,11 @@ else ifeq ($(uname_p), aarch64)
 DPDK_MACHINE_FLAGS += -DRTE_MACHINE_CPUFLAG_CRC32
 endif
 
-CFLAGS	= -g -w -fno-omit-frame-pointer -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O3 $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS)
+CFLAGS	= -g -w -fno-omit-frame-pointer -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O3 $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS) # -fno-stack-protector
 PCIDMA	= ../deps/pcidma
 INC	+= -I$(PCIDMA)
 LD	= gcc
-LDFLAGS	= -T ix.ld
+LDFLAGS	= # -T ix.ld
 LDLIBS	= -lrt -lpthread -lm -lnuma -ldl -lconfig -lpciaccess -luuid
 
 ifneq ($(DEBUG),)
@@ -93,7 +93,7 @@ SPDK_LIBS+=$(SPDK)/build/lib/libspdk_log.a
 
 IX_LIBS+=../libix/libix.a
 
-ix: $(DEPENDENCY) $(OBJS) ix.ld
+ix: $(DEPENDENCY) $(OBJS) # ix.ld
 	$(LD) $(LDFLAGS) -o ix $(OBJS) $(SPDK_LIBS) $(DPDK_LIBS) $(LDLIBS) $(IX_LIBS)
 clean:
 	rm -f $(OBJS) ix .depend
