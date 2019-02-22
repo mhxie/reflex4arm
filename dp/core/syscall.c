@@ -150,7 +150,7 @@ static int bsys_dispatch_one(struct bsys_desc __user *d)
 		ret = (uint64_t) - ENOSYS;
 		goto out;
 	}
-
+	printf("calling bsys nr %i\n", sysnr);
 	ret = bsys_tbl[sysnr](arga, argb, argc, argd, arge, argf);
 
 out:
@@ -254,7 +254,9 @@ again:
 	//empty = eth_process_recv();
 	//KSTATS_POP(NULL);
 
+	// log_info("Enter NVME process completions:\n");
 	nvme_process_completions();
+	// log_info("Leave NVME process completions.");
 
 	KSTATS_PUSH(tx_send, NULL);
 	eth_process_send();

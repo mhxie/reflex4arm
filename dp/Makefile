@@ -39,7 +39,7 @@ else ifeq ($(uname_p), aarch64)
 DPDK_MACHINE_FLAGS += -DRTE_MACHINE_CPUFLAG_CRC32
 endif
 
-CFLAGS	= -g -w -fno-omit-frame-pointer -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O3 $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS) # -fno-stack-protector
+CFLAGS	= -g -w -fno-omit-frame-pointer -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O0 $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS) # -fno-stack-protector
 PCIDMA	= ../deps/pcidma
 INC	+= -I$(PCIDMA)
 LD	= gcc

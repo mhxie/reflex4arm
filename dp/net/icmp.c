@@ -126,28 +126,29 @@ void icmp_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct icmp_hdr *hd
 		  hdr->type, hdr->code);
 
 	switch (hdr->type) {
-	case ICMP_ECHO:
-		hdr->type = ICMP_ECHOREPLY;
-		icmp_reflect(cur_fg, pkt, hdr, len);
-		break;
-	case ICMP_ECHOREPLY: {
-		uint16_t *seq;
-		uint64_t *icmptimestamp;
-		uint64_t time;
+		case ICMP_ECHO:
+			hdr->type = ICMP_ECHOREPLY;
+			icmp_reflect(cur_fg, pkt, hdr, len);
+			break;
+		case ICMP_ECHOREPLY: {
+			uint16_t *seq;
+			uint64_t *icmptimestamp;
+			uint64_t time;
 
-		seq = mbuf_nextd_off(hdr, uint16_t *, sizeof(struct icmp_hdr) + 2);
-		icmptimestamp = mbuf_nextd_off(hdr, uint64_t *, sizeof(struct icmp_hdr) + 4);
+			seq = mbuf_nextd_off(hdr, uint16_t *, sizeof(struct icmp_hdr) + 2);
+			icmptimestamp = mbuf_nextd_off(hdr, uint64_t *, sizeof(struct icmp_hdr) + 4);
 
-		time = (rdtsc() - *icmptimestamp) / cycles_per_us;
+			time = (rdtsc() - *icmptimestamp) / cycles_per_us;
 
-		log_info("icmp: echo reply: %d bytes: icmp_req=%d time=%lld us\n",
-			 len, ntoh16(*seq), time);
-		goto out;
+			log_info("icmp: echo reply: %d bytes: icmp_req=%d time=%lld us\n",
+				len, ntoh16(*seq), time);
+			goto out;
+		}
+		default:
+			log_info("Goto out\n");
+			goto out;
 	}
-	default:
-		goto out;
-	}
-
+	// log_info("Return from icmp\n");
 	return;
 
 out:

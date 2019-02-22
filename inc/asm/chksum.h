@@ -70,7 +70,7 @@
  */
 static inline uint16_t chksum_internet(const char *buf, int len)
 {
-	uint64_t sum = 0;
+	__uint64_t sum = 0; // 64bit
 	// printf("Calculating chksum, buf is %s, len is %d\n", buf, len);
 	#if defined(__i386__)
 	asm volatile("xorq %0, %0\n"
@@ -122,18 +122,25 @@ static inline uint16_t chksum_internet(const char *buf, int len)
 
 		     : "=&r"(sum), "=r"(buf)
 		     : "r"(len), "1"(buf) : "%rdx", "cc", "memory");
+	// #elif defined(__aarch64__)
+	// 	asm volatile(
+
+	// 		: [sum] "=&r"(sum), [buf]"=r"(buf)
+	// 		: [len] "r"(len), [buf]"1"(buf)
+	// 		: "cc", "memory"
+	// 	);
 	#else
-		while (len >= 8) {
-			sum += *((__uint64_t *) buf);
-			buf += 8;
-			len -= 8;
-		}
-		if (len >= 4) {
-			sum += *((__uint32_t *) buf);
-			buf += 4;
-			len -= 4;
-		}
-		if (len >= 2) {
+		// while (len >= 8) {
+		// 	sum += *((__uint64_t *) buf);
+		// 	buf += 8;
+		// 	len -= 8;
+		// }
+		// while (len >= 4) {
+		// 	sum += *((__uint32_t *) buf);
+		// 	buf += 4;
+		// 	len -= 4;
+		// }
+		while (len >= 2) {
 			sum += *((__uint16_t *) buf);
 			buf += 2;
 			len -= 2;
@@ -145,6 +152,7 @@ static inline uint16_t chksum_internet(const char *buf, int len)
 
 		while (sum >> 16)
 			sum = (sum & 0xFFFF) + (sum >> 16);
+
 		sum = ~sum;
 	#endif
 	return (uint16_t) sum;

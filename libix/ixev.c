@@ -872,16 +872,27 @@ void ixev_wait(void)
 {
 	int i;
 
+	
 	ix_poll();
 	ixev_generation++;
+	// if (ixev_generation % 10 == 0) {
+	// 	printf("Start waiting...\n");
+	// }
+	
+	// printf("Now the generation is %d\n", ixev_generation);
 
 	/* WARNING: return handlers should not enqueue new comamnds */
-	for (i = 0; i < karr->len; i++)
+	for (i = 0; i < karr->len; i++) {
+		printf("I am handling %dth kernel syscalls: %d event.\n", i, karr->descs[i].sysnr);
 		ixev_handle_one_ret((struct bsys_ret *) &karr->descs[i]);
+	}	
 	karr->len = 0;
 
+	// if (ixev_generation % 10 == 0) {
+	// 	printf("Stop waiting...\n");
+	// }
 	// printf("now handle events\n");
-	ix_handle_events();
+	ix_handle_events();	
 }
 
 

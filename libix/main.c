@@ -64,7 +64,7 @@
 static __thread bsysfn_t usys_tbl[USYS_NR];
 static __thread struct bsys_arr *uarr; // user-space batched system call array
 
-__thread struct bsys_arr *karr; // kenel-space batched system call array
+__thread struct bsys_arr *karr; // kernel-space batched system call array
 
 /**
  * ix_poll - flush pending commands and check for new commands
@@ -75,8 +75,12 @@ int ix_poll(void)
 {
 	
 	int ret;
-
+	if (karr->len) {
+		printf("I will make syscall soon: ");
+		printf("%d\n", karr->descs);
+	}
 	ret = sys_bpoll(karr->descs, karr->len);
+	
 	if (ret) {
 		printf("libix: encountered a fatal memory fault\n");
 		exit(-1);
@@ -87,8 +91,10 @@ int ix_poll(void)
 void ix_handle_events(void)
 {
 	int i;
+	
 	for (i = 0; i < uarr->len; i++) {
 		struct bsys_desc d = uarr->descs[i];
+		printf("I am handling %dth user syscalls: %d event.\n", i, d.sysnr);
 		usys_tbl[d.sysnr](d.arga, d.argb, d.argc, d.argd, d.arge, d.argf);
 	}
 }
@@ -100,6 +106,7 @@ void ix_flush(void)
 {
 	int ret;
 
+	printf("ix_flush is functioning.\n");
 	ret = sys_bcall(karr->descs, karr->len);
 	if (ret) {
 		printf("libix: encountered a fatal memory fault\n");
@@ -157,10 +164,11 @@ int ix_init(struct ix_ops *ops, int batch_depth)
 	uarr = sys_baddr();
 	printf("on CPU %d, uarr in ix_init is %p\n", percpu_get(cpu_nr), uarr);
 
-    if (!uarr){
+	if (!uarr){
 		printf("bad uarr\n");
 		return -EFAULT;
 	}
+	//karr = uarr;
 	karr = malloc(sizeof(struct bsys_arr) +
 		      sizeof(struct bsys_desc) * batch_depth);
 	if (!karr){

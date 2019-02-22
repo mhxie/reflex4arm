@@ -380,8 +380,10 @@ in_pseudo(unsigned int sum, unsigned int b, unsigned int c)
     uint64_t chksum = sum;
     chksum += b;
     chksum += c;
-    while (chksum >> 32)
-      chksum += (chksum & 0xffffffff) + (chksum >> 32);
+    chksum = (chksum & 0xffffffff) + (chksum >> 32);
+    chksum = (chksum & 0xffff) + (sum >> 16);
+    if (chksum > 0xffff) 
+        chksum -= 0xffff; // get overflow
     return (chksum);
     // if (~b < sum) // overflow
     //   sum += b+1;

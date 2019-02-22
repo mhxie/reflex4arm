@@ -77,7 +77,8 @@
 #define EMA_SMOOTH_FACTOR_1 0.25
 #define EMA_SMOOTH_FACTOR_2 0.125
 #define EMA_SMOOTH_FACTOR EMA_SMOOTH_FACTOR_0
-#define MAX_NUM_IO_QUEUES 31
+// #define MAX_NUM_IO_QUEUES 31
+#define MAX_NUM_IO_QUEUES 130
 
 RTE_DEFINE_PER_LCORE(int, eth_num_queues);
 RTE_DEFINE_PER_LCORE(struct eth_rx_queue *, eth_rxqs[NETHDEV]);
@@ -122,7 +123,7 @@ int eth_process_poll(void)
 	struct rte_mbuf *m;
 
 	struct rte_mbuf *rx_pkts[MAX_NUM_IO_QUEUES]; //TODO: test with multi queue, multicore; assumes 1 pkt recv at a time
-	
+
 	/*
 	 * We round robin through each queue one packet at
 	 * a time for fairness, and stop when all queues are
@@ -130,15 +131,21 @@ int eth_process_poll(void)
 	 * going a little over the batch limit if it means
 	 * we're not favoring one queue over another.
 	 */
+	// log_info("Start looping:\n");
 	do {
 		empty = true;
 
 		// This loops over each queue of a single core (current behaviour is 1 queue to 1 core)
 		// Note that i is the index within a core's list of queues, not the global list of queues.
+		// log_info("Processing %d queues...\n", percpu_get(eth_num_queues));
 		for (i = 0; i < percpu_get(eth_num_queues); i++) {
 			//burst 1 because check queues round-robin
 			//  Note: Using percpu_get(cpu_id) requires one queue to one core and identical cpu and queue numbering.
+			// log_info("Now the active_eth_port is %d\n", active_eth_port);
 			ret = rte_eth_rx_burst(active_eth_port, percpu_get(cpu_id), &rx_pkts[i], 1);
+			if (ret && i > MAX_NUM_IO_QUEUES) {
+				printf("Out of boundary.\n");
+			}
 			if (ret) {
 				empty = false;
 				m = rx_pkts[i];
@@ -161,6 +168,7 @@ int eth_process_poll(void)
 		}
 	} while (!empty && count < eth_rx_max_batch);
 
+	// log_info("End looping.\n");s
 	return count;
 }
 
@@ -186,7 +194,7 @@ static int eth_process_recv_queue(struct eth_rx_queue *rxq)
 }
 
 /**
- * eth_process_recv - processes pending received packets
+ * eth_process_recv - processes pending received packets, not in use
  *
  * Returns true if there are no remaining packets.
  */
@@ -323,6 +331,7 @@ int ethdev_init_cpu(void)
 
 	// Assign each CPU the correct number of queues.
 	percpu_get(eth_num_queues) = rte_eth_dev_count();
+	log_info("Now we have %d queues for this core.\n", percpu_get(eth_num_queues));
 
 	return 0;
 }

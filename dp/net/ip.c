@@ -139,6 +139,7 @@ static void ip_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct ip_hdr 
 		icmp_input(cur_fg, pkt,										
 			   mbuf_nextd_off(hdr, struct icmp_hdr *, hdrlen),
 			   pktlen);
+
 		break;
 	default: 
 		goto out;
@@ -158,6 +159,7 @@ void eth_input_process(struct rte_mbuf *pkt, int nb_pkts){
 	//set_current_queue(rx_queue);
 	//fg = fgs[pkt->fg_id];
 	fg = fgs[percpu_get(cpu_id)]; //FIXME: figure out flow group stuff
+
 	eth_fg_set_current(fg);
 
 	assert(nb_pkts == 1); 
@@ -174,7 +176,6 @@ void eth_input_process(struct rte_mbuf *pkt, int nb_pkts){
 
 //	unset_current_queue();
 	unset_current_fg();
-	
 
 }
 

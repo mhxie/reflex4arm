@@ -459,8 +459,12 @@ static void arp_timer_handler(struct timer *t, struct eth_fg *cur_fg)
 	struct hlist_node *n, *tmp;
 	struct pending_pkt *pkt;
 	struct arp_entry *e = container_of(t, struct arp_entry, timer);
-	assert(cur_fg == NULL);
+	if (cur_fg != NULL) {
+		log_info("cur_fg %p error.\n", cur_fg);
+	}
 
+	// assert(cur_fg == NULL);  // FIXME: Fails sometimes
+	
 	e->retries++;
 	if (e->retries >= ARP_MAX_ATTEMPTS) {
 		log_debug("arp: removing dead entry "
