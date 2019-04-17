@@ -279,6 +279,7 @@ int ip_send_one(struct eth_fg *cur_fg, struct ip_addr *dst_addr, struct rte_mbuf
 		dst_addr_.addr = CFG.gateway_addr.addr;
 
 	ret = arp_lookup_mac(&dst_addr_, &ethhdr->dhost);
+	// printf("eth_dhost: %d, eth_shost: %d\n", ethhdr->dhost, ethhdr->shost);
 	if (unlikely(ret)) {
 		arp_add_pending_pkt(&dst_addr_, cur_fg, pkt, len);
 		return 0;
@@ -288,7 +289,8 @@ int ip_send_one(struct eth_fg *cur_fg, struct ip_addr *dst_addr, struct rte_mbuf
 
 	pkt->data_len = len; 
 	pkt->pkt_len = len; 
-	//printf("ip_send_one: len %u, pkt %p, dst_addr is %x --> queue %d\n", len, pkt, dst_addr->addr, percpu_get(cpu_id));
+	// printf("ip_send_one: len %u, pkt %p, dst_addr is %x --> queue %d\n", len, pkt, dst_addr->addr, percpu_get(cpu_id));
+	// printf("@active_eth_port: %d, tx_buf: %d\n", active_eth_port, percpu_get(tx_buf));
 	ret = rte_eth_tx_buffer(active_eth_port, percpu_get(cpu_id), percpu_get(tx_buf), pkt);
 
 	if (unlikely(ret < 0)) {

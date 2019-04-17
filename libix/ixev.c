@@ -883,7 +883,7 @@ void ixev_wait(void)
 
 	/* WARNING: return handlers should not enqueue new comamnds */
 	for (i = 0; i < karr->len; i++) {
-		printf("I am handling %dth kernel syscalls: %d event.\n", i, karr->descs[i].sysnr);
+		// printf("I am handling %dth kernel syscalls: %d event.\n", i, karr->descs[i].sysnr);
 		ixev_handle_one_ret((struct bsys_ret *) &karr->descs[i]);
 	}	
 	karr->len = 0;

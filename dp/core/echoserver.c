@@ -193,7 +193,7 @@ int echoserver_main(int argc, char *argv[])
 	}
 	nr_cpu--; /* don't count the main thread */
 
-	// sys_spawnmode(true); // Safely deleted for now
+	sys_spawnmode(true);
 
 	for (i = 0; i < nr_cpu; i++) {
 		if (pthread_create(&tid, NULL, pp_main, NULL)) {

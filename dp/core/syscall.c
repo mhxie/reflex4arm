@@ -150,7 +150,7 @@ static int bsys_dispatch_one(struct bsys_desc __user *d)
 		ret = (uint64_t) - ENOSYS;
 		goto out;
 	}
-	printf("calling bsys nr %i\n", sysnr);
+	// printf("calling bsys nr %i\n", sysnr);
 	ret = bsys_tbl[sysnr](arga, argb, argc, argd, arge, argf);
 
 out:
@@ -337,7 +337,8 @@ bool sys_spawn_cores;
  *
  * Returns 0.
  */
-static int sys_spawnmode(bool spawn_cores)
+// static int sys_spawnmode(bool spawn_cores)
+int sys_spawnmode(bool spawn_cores)
 {
 	sys_spawn_cores = spawn_cores;
 	return 0;

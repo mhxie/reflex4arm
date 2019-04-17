@@ -143,9 +143,8 @@ int eth_process_poll(void)
 			//  Note: Using percpu_get(cpu_id) requires one queue to one core and identical cpu and queue numbering.
 			// log_info("Now the active_eth_port is %d\n", active_eth_port);
 			ret = rte_eth_rx_burst(active_eth_port, percpu_get(cpu_id), &rx_pkts[i], 1);
-			if (ret && i > MAX_NUM_IO_QUEUES) {
+			if (ret && i > MAX_NUM_IO_QUEUES)
 				printf("Out of boundary.\n");
-			}
 			if (ret) {
 				empty = false;
 				m = rx_pkts[i];
@@ -331,7 +330,7 @@ int ethdev_init_cpu(void)
 
 	// Assign each CPU the correct number of queues.
 	percpu_get(eth_num_queues) = rte_eth_dev_count();
-	log_info("Now we have %d queues for this core.\n", percpu_get(eth_num_queues));
+	// log_info("Now we have %d queues for this core.\n", percpu_get(eth_num_queues));
 
 	return 0;
 }

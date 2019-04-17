@@ -58,8 +58,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>
-// including math header for the substitution of the asm.
-#include <math.h>
+
 #include <fcntl.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -85,17 +84,17 @@
 
 #define MAX_SECTORS_PER_ACCESS 64
 #define MAX_LATENCY 5000 //2000
-#define MAX_IOPS 900000
+#define MAX_IOPS 2000000
 #define NUM_TESTS 5 //16
 #define DURATION 1
 #define MAX_NUM_MEASURE MAX_IOPS * DURATION
-static const unsigned long sweep[NUM_TESTS] = {1000, 1100, 1200, 1300, 1400};
-/*
+// static const unsigned long sweep[NUM_TESTS] = {1000, 1100, 1200, 1300, 1400};
+
 static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 100000,
 					       150000, 200000, 250000, 300000,
 					       400000, 500000, 600000, 650000, 700000, 750000,
 					       800000, 850000,  MAX_IOPS};
-
+/*
 static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 25000, 30000, //100000,
 					       35000, 40000, 50000, 60000,
 					       70000, 80000, 90000, 100000,
@@ -105,12 +104,13 @@ static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 25000, 30000, //1000
 //fixme: hard-coding sector size for now
 static int ns_sector_size = 512;
 //fixme: hard-coding namespace size for device tested
-static long ns_size = 0x1749a956000;    // Samsung 1725 
+static long ns_size = 0x37E3EE56000;	// Samsung 1721
+// static long ns_size = 0x1749a956000;    // Samsung 1725 
 // static long ns_size = 0x5d27216000;  // Intel P3600 400GB capacity 
 
 
 static struct mempool_datastore nvme_usr_datastore;
-static const int outstanding_reqs = 512; // 4096 * 8;
+static const int outstanding_reqs = 512; // 4096 * 8; // HELPME
 static volatile int started_conns = 0;
 static pthread_barrier_t barrier;
 static int req_size = 1024;
@@ -154,10 +154,15 @@ static __thread struct mempool nvme_req_buf_pool;
 static inline uint32_t intlog2(const uint32_t x) {
 	uint32_t y;
 	y = log(x)/log(2);
+	// asm ( "\tbsr %1, %0\n"
+	//       : "=r"(y)
+	//       : "r" (x)
+	// 	);
 	return y;
 }
 
-int ncompare_ul (const void *a, const void *b)
+int
+compare_ul (const void *a, const void *b)
 {
 	const unsigned long *da = (const unsigned long *) a;
 	const unsigned long *db = (const unsigned long *) b;
@@ -242,12 +247,12 @@ static void receive_req(struct pp_conn *conn)
 						ixev_close(&conn->ctx);
 					}
 				}
-				break;
+				break; // exception
 			}
 			else
 				conn->rx_received += ret;
 			if(conn->rx_received < sizeof(BINARY_HEADER))
-				return;
+				return;  //  exception
 		}
 
 
@@ -255,7 +260,7 @@ static void receive_req(struct pp_conn *conn)
 		conn->rx_pending = true;
 		header = (BINARY_HEADER *)&conn->data[0];
 		
-		assert(header->magic == sizeof(BINARY_HEADER)); 
+		assert(header->magic == sizeof(BINARY_HEADER)); // comment for now
 				
 		if (header->opcode == CMD_GET) {
 			ret = ixev_recv(&conn->ctx,
@@ -271,28 +276,28 @@ static void receive_req(struct pp_conn *conn)
 						ixev_close(&conn->ctx);
 					}
 				}
-				break;
+				break; // exception
 			}
 			conn->rx_received += ret;
 			
 			if(conn->rx_received < (sizeof(BINARY_HEADER) +
 						header->lba_count *
 						ns_sector_size))
-				return;
+				return; // terminate
 		}
 		else if (header->opcode == CMD_SET) {}
 		else {
 			printf("Received unsupported command, closing connection\n");
 			ixev_close(&conn->ctx);
-			return;
+			return;  // exception
 		}
 
 		req = header->req_handle;
 
 		if (!SWEEP && qdepth) {
-			measure_cond = 1;
+			measure_cond = 1;  // no sweeping and close-loop
 		} else {
-			measure_cond = measure >= NUM_MEASURE && measure < NUM_MEASURE * 2;
+			measure_cond = measure >= NUM_MEASURE && measure < NUM_MEASURE * 2;  // sweep or open loop, reach a mesure more than limit
 		}
 		//if (req->cmd == CMD_GET) { //only report read latency (not write)
 			if (measure_cond) {
@@ -368,7 +373,7 @@ static void receive_req(struct pp_conn *conn)
 
 		if (terminate_cond) {
 			printf("debug: terminating\n");
-			if (!qdepth) assert(sent == NUM_MEASURE * 3);
+			if (!qdepth) assert(sent == NUM_MEASURE * 3); // HELPME
 			terminate = true;
 			measure = 0;
 			num_measured_reads = 0;
@@ -552,12 +557,12 @@ void send_handler(void * arg, int num_req)
 
 		if (sent == NUM_MEASURE) {
 			phase_start = rdtsc();
-			__sync_synchronize();
+			__sync_synchronize();  // more accurate timing
 		}
 		
 		if (measure_cond) {
 			//missed send?
-			if ((rdtsc() - last_send)  > (cycles_between_req * 105)/100) {
+			if ((rdtsc() - last_send)  > (cycles_between_req * 105)/100) {  // why hardcoded here
 				missed_sends++;
 			}
 		}
@@ -630,7 +635,7 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 static struct ixev_conn_ops pp_conn_ops = {
 	.accept		= &pp_accept,
 	.release	= &pp_release,
-	.dialed         = &pp_dialed,
+	.dialed     = &pp_dialed,
 };
 
 static void* receive_loop(void *arg)
@@ -887,6 +892,7 @@ int reflex_client_main(int argc, char *argv[])
 		return ret;
 	}
 
+	// for header?
 	ret = mempool_create_datastore(&nvme_usr_datastore, 
 				       outstanding_reqs * 2,
 				       sizeof(struct nvme_req),  "nvme_req_1");
@@ -895,6 +901,7 @@ int reflex_client_main(int argc, char *argv[])
 		return ret;
 	}
 
+	// for payload?
 	ret = mempool_create_datastore(&nvme_req_buf_datastore,
 				       // *2 avoids out-of-mem error
 				       outstanding_reqs * 2,

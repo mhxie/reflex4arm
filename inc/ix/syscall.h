@@ -729,8 +729,10 @@ static inline void sys_test_ix()
 
 // Exposed to upper layer
 int sys_bpoll(struct bsys_desc *d, unsigned int nr);
+// Additional
 void *sys_baddr(void);
 int sys_bcall(struct bsys_desc *d, unsigned int nr);
+int sys_spawnmode(bool spawn_cores);
 
 /*
  * Kernel system call definitions

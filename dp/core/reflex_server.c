@@ -81,7 +81,7 @@
 static int outstanding_reqs = 4096 * 64; 
 static int outstanding_req_bufs = 4096 * 64; //4096 * 64;
 static unsigned long ns_size;
-static unsigned long ns_sector_size;
+static unsigned long ns_sector_size = 512; // use for now
 
 static struct mempool_datastore nvme_req_buf_datastore;
 static __thread struct mempool nvme_req_buf_pool;
@@ -93,7 +93,7 @@ static __thread long reqs_allocated = 0;
 
 struct nvme_req {
 	struct ixev_nvme_req_ctx ctx;
-	unsigned int lba_count;				//HELPME
+	unsigned int lba_count;
 	unsigned long lba;
 	uint16_t opcode;
 	struct pp_conn *conn;
@@ -194,8 +194,8 @@ int send_req(struct nvme_req *req)
 	ret = 0;
 	if (req->opcode == CMD_GET) {
 		while (conn->tx_sent < req->lba_count * ns_sector_size) {		
-			int to_send = min(PAGE_SIZE - (conn->tx_sent % PAGE_SIZE),
-					  (req->lba_count * ns_sector_size) - conn->tx_sent);
+			int to_send = min(PAGE_SIZE - (conn->tx_sent % PAGE_SIZE), // for more than one page left 
+					  (req->lba_count * ns_sector_size) - conn->tx_sent); // for less than one page left
 		
 			ret = ixev_send_zc(&conn->ctx,
 					   &req->buf[req->current_sgl_buf][conn->tx_sent % PAGE_SIZE],
@@ -467,7 +467,7 @@ static void receive_req(struct pp_conn *conn)
 		req->conn = conn;
 
 		nvme_addr = (void*)(header->lba << 9); 
-		assert((unsigned long)nvme_addr < ns_size); 
+		assert((unsigned long)nvme_addr < ns_size);
 		
 		conn->in_flight_pkts++;
 		num4k = (header->lba_count * ns_sector_size) / PAGE_SIZE;
@@ -484,7 +484,9 @@ static void receive_req(struct pp_conn *conn)
 			break;
 		case CMD_GET:
 			ixev_set_nvme_handler(&req->ctx, IXEV_NVME_RD, &nvme_response_cb);
-			//ixev_nvme_read(conn->nvme_fg_handle, req->buf[0], header->lba, header->lba_count, (unsigned long)&req->ctx);
+			// ixev_nvme_read(conn->nvme_fg_handle, req->buf[0], header->lba, header->lba_count, (unsigned long)&req->ctx);
+			// printf("Received GET msg - early reply\n");
+			// nvme_response_cb(&req->ctx, IXEV_NVME_RD); // By passing the real call for now
 			ixev_nvme_readv(conn->nvme_fg_handle, (void**)&req->buf[0], num4k,
 					header->lba, header->lba_count, (unsigned long)&req->ctx);
 			conn->nvme_pending++;	

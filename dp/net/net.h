@@ -112,6 +112,7 @@ static inline void ip_setup_header(struct ip_hdr *iphdr, uint8_t proto,
 	iphdr->chksum = 0;
 	iphdr->src_addr.addr = hton32(saddr);
 	iphdr->dst_addr.addr = hton32(daddr);
+	// iphdr->chksum = chksum_internet((void *) iphdr, sizeof(struct ip_hdr));
 }
 
 int ip_send_one(struct eth_fg *cur_fg, struct ip_addr *dst_addr, struct rte_mbuf *pkt, size_t len);

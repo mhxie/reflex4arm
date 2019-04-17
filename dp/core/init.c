@@ -139,11 +139,11 @@ static struct init_vector_t init_tbl[] = {
 	{ "memp",    memp_init,    memp_init_cpu, NULL},
 	{ "tcpapi",  tcp_api_init, tcp_api_init_cpu, NULL},
 	{ "ethdev",  init_ethdev,  ethdev_init_cpu, NULL},
-	// { "nvmemem", init_nvme_request, init_nvme_request_cpu, NULL},
+	{ "nvmemem", init_nvme_request, init_nvme_request_cpu, NULL},
 	{ "migration", NULL, init_migration_cpu, NULL},
-	// { "nvmedev", init_nvmedev, NULL, NULL},               // before per-cpu init
+	{ "nvmedev", init_nvmedev, NULL, NULL},               // before per-cpu init
 	{ "hw",      init_hw,      NULL, NULL},               // spaws per-cpu init sequence
-	// { "nvmeqp",  NULL, init_nvmeqp_cpu, NULL},            // after per-cpu init
+	{ "nvmeqp",  NULL, init_nvmeqp_cpu, NULL},            // after per-cpu init
 	{ "syscall", NULL,         syscall_init_cpu, NULL},
 #ifdef ENABLE_KSTATS
 	{ "kstats",  NULL,         kstats_init_cpu, NULL},    // after timer
@@ -164,10 +164,12 @@ static struct rte_eth_conf default_eth_conf = {
 		.max_rx_pkt_len = 9128, /**< use this for jumbo frame */
 		.split_hdr_size = 0,
 		.header_split   = 0, /**< Header Split disabled */
-		.hw_ip_checksum = 1, /**< IP checksum offload disabled */
+		.hw_ip_checksum = 1, /**< IP/UDP/TCP checksum offload enable. */
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
 		.jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
 		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
+        .offloads = DEV_RX_OFFLOAD_CHECKSUM |
+                    DEV_RX_OFFLOAD_CRC_STRIP, // newly added
 		.mq_mode		= ETH_MQ_RX_RSS,
 	},
 	.rx_adv_conf = {
@@ -177,6 +179,9 @@ static struct rte_eth_conf default_eth_conf = {
 	},
 	.txmode = {
 		.mq_mode = ETH_MQ_TX_NONE,
+		.offloads = DEV_TX_OFFLOAD_IPV4_CKSUM  |
+					DEV_TX_OFFLOAD_UDP_CKSUM   |
+					DEV_TX_OFFLOAD_TCP_CKSUM,
 	},
 	.fdir_conf = {
 		.mode = RTE_FDIR_MODE_PERFECT, 
@@ -270,6 +275,9 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 		//rte_eth_rx_queue_info_get(port_id, 0, &rx_qinfo);
 		//rx_qinfo.scattered_rx = 1;
 		txconf->txq_flags = 0; 
+	} else {
+		rte_eth_dev_get_mtu(port_id, &mtu);
+		printf("Disable jumbo frames. MTU size is %d\n", mtu);
 	}
 
 	// initialize one queue per cpu
@@ -325,9 +333,9 @@ static int init_ethdev(void)
 	nb_ports = rte_eth_dev_count();
 	if (nb_ports == 0) rte_exit(EXIT_FAILURE, "No Ethernet ports - exiting\n");
 	if (nb_ports > 1) printf("WARNING: only 1 ethernet port is used\n");
-	if (nb_ports > RTE_MAX_ETHPORTS) nb_ports = RTE_MAX_ETHPORTS;
+	// if (nb_ports > RTE_MAX_ETHPORTS) nb_ports = RTE_MAX_ETHPORTS; // too many ports, comment for now
 	
-	for (port_id = 0; port_id < nb_ports; port_id++) {
+	for (port_id = nb_ports-1; port_id < nb_ports; port_id++) { // too many ports, only initialize the one used
 		init_port(port_id, &mac_addr);
 		log_info("Ethdev on port %d initialised.\n", port_id);
 		
@@ -341,7 +349,7 @@ static int init_ethdev(void)
 	}
 	
 	struct eth_addr* macaddr = &mac_addr;
-	CFG.mac = *macaddr;
+	CFG.mac = *macaddr;  // Always get the last port
 	//percpu_get(eth_num_queues) = CFG.num_cpus; //NOTE: assume num tx queues == num rx queues
 	percpu_get(eth_num_queues) = nb_ports;
 
@@ -676,11 +684,11 @@ int main(int argc, char *argv[])
 				panic("could not initialize IX\n");
 		}
 
-	ret = echoserver_main(argc - args_parsed, &argv[args_parsed]);
-	// if (argc > 1)
-	// 	ret = reflex_client_main(argc - args_parsed, &argv[args_parsed]);
-	// else
-	// 	ret = reflex_server_main(argc - args_parsed, &argv[args_parsed]);
+	// ret = echoserver_main(argc - args_parsed, &argv[args_parsed]);
+	if (argc > 1)
+		ret = reflex_client_main(argc - args_parsed, &argv[args_parsed]);
+	else
+		ret = reflex_server_main(argc - args_parsed, &argv[args_parsed]);
 	
 	if (ret) {
 		log_err("init: failed to start echoserver\n");

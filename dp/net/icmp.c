@@ -87,6 +87,7 @@ static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct icmp
 	ethhdr->dhost = ethhdr->shost;
 	ethhdr->shost = CFG.mac;
 
+	printf("eth_dhost: %d, eth_shost: %d\n", ethhdr->dhost, ethhdr->shost);
 	/* FIXME: check for invalid (e.g. multicast) src addr */
 	iphdr->dst_addr = iphdr->src_addr;
 	iphdr->src_addr.addr = hton32(CFG.host_addr.addr);
@@ -98,6 +99,8 @@ static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct icmp
 	pkt->pkt_len = rte_pktmbuf_pkt_len(pkt);
 	pkt->data_len = rte_pktmbuf_pkt_len(pkt);
 
+	printf("icmp_reflect: len %u, pkt %p, dst_addr is %x --> queue %d\n", len, pkt, iphdr->dst_addr, percpu_get(cpu_id));
+	printf("@active_eth_port: %d, tx_buf: %d\n", active_eth_port, percpu_get(tx_buf));
 	ret = rte_eth_tx_buffer(active_eth_port, 0, percpu_get(tx_buf), pkt); 
 
 	//if (unlikely(ret < 1)) {

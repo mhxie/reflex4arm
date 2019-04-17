@@ -75,10 +75,10 @@ int ix_poll(void)
 {
 	
 	int ret;
-	if (karr->len) {
-		printf("I will make syscall soon: ");
-		printf("%d\n", karr->descs);
-	}
+	// if (karr->len) {
+	// 	// printf("I will make syscall soon: ");
+	// 	printf("%d\n", karr->descs);
+	// }
 	ret = sys_bpoll(karr->descs, karr->len);
 	
 	if (ret) {
@@ -94,7 +94,7 @@ void ix_handle_events(void)
 	
 	for (i = 0; i < uarr->len; i++) {
 		struct bsys_desc d = uarr->descs[i];
-		printf("I am handling %dth user syscalls: %d event.\n", i, d.sysnr);
+		// printf("I am handling %dth user syscalls: %d event.\n", i, d.sysnr);
 		usys_tbl[d.sysnr](d.arga, d.argb, d.argc, d.argd, d.arge, d.argf);
 	}
 }

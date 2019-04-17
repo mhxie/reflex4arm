@@ -98,6 +98,6 @@ void logk(int level, const char *fmt, ...)
 	vsnprintf(buf + off, MAX_LOG_LEN - off, fmt, ptr);
 	va_end(ptr);
 
-	printf("%s", buf);
+	printf("%s", buf); // what's this
 }
 

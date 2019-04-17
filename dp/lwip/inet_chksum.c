@@ -381,7 +381,8 @@ in_pseudo(unsigned int sum, unsigned int b, unsigned int c)
     chksum += b;
     chksum += c;
     chksum = (chksum & 0xffffffff) + (chksum >> 32);
-    chksum = (chksum & 0xffff) + (sum >> 16);
+
+    chksum = (chksum & 0xffff) + (chksum >> 16);
     if (chksum > 0xffff) 
         chksum -= 0xffff; // get overflow
     return (chksum);
@@ -398,6 +399,11 @@ in_pseudo(unsigned int sum, unsigned int b, unsigned int c)
   sum = (sum & 0xffff) + (sum >> 16); 
   if (sum > 0xffff) 
       sum -= 0xffff; // get overflow
+  // u16_t sum_high = sum & 0xff00;
+  // u16_t sum_low = sum & 0x00ff;
+  // sum = (sum_high >> 8) + (sum_low << 8);
+  // sum = SWAP_BYTES_IN_WORD(sum);
+  // printf("The checksum we got is %04x.\n", sum);
   return (sum); 
 } 
 /* inet_chksum_pseudo:
@@ -417,8 +423,11 @@ u16_t
 inet_chksum_pseudo(struct pbuf *p, u8_t proto, u16_t proto_len,
        ip_addr_t *src, ip_addr_t *dest)
 {
+  // u32_t sum = inet_chksum_pbuf(p);
+  // printf("I am calculating: src-0x%04x + dst-0x%04x + 0x%04x\n", ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
+  // sum += in_pseudo(ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
+  // return (sum & 0xffff) + (sum >> 16);
 	return in_pseudo(ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
-
 }
 #if LWIP_IPV6
 /**

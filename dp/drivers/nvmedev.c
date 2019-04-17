@@ -1506,7 +1506,5 @@ void nvme_process_completions()
 		percpu_get(received_nvme_completions)++;
 	}
 	percpu_get(open_ev_ptr) = 0;
-	percpu_get(received_nvme_completions) +=
-		spdk_nvme_qpair_process_completions(percpu_get(qpair),
-						    max_completions);
+	percpu_get(received_nvme_completions) += spdk_nvme_qpair_process_completions(percpu_get(qpair), max_completions);
 }
