@@ -548,41 +548,40 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 	/****************************************/
 	/* LATENCY SLO POLICIES FOR FLOW GROUPS */
 	switch (id->dst_port) {
+		case 1234:
+			latency_us_SLO = 0; //best-effort
+			IOPS_SLO = 0;
+			rd_wr_ratio_SLO = 100;
+			break; 
+		case 1235:
+			latency_us_SLO = 0; //best-effort
+			IOPS_SLO = 0;
+			rd_wr_ratio_SLO = 100;
+			break;
+		case 1236:
+			latency_us_SLO = 0; //best-effort
+			IOPS_SLO = 0;
+			rd_wr_ratio_SLO = 100;
+			break;
+		case 1237:
+			latency_us_SLO = 0; //best-effort
+			IOPS_SLO = 0;
+			rd_wr_ratio_SLO = 100;
+			break;
+		case 5678: 
+			latency_us_SLO = 1000; //latency-critical
+			IOPS_SLO = 120000;
+			rd_wr_ratio_SLO = 100;
+			break;
+		case 5679: 
+			latency_us_SLO = 1000; //latency-critical
+			IOPS_SLO = 70000;
+			rd_wr_ratio_SLO = 80;
+			break;
 
-	case 1234:
-		latency_us_SLO = 0; //best-effort
-		IOPS_SLO = 0;
-		rd_wr_ratio_SLO = 100;
-		break; 
-	case 1235:
-		latency_us_SLO = 0; //best-effort
-		IOPS_SLO = 0;
-		rd_wr_ratio_SLO = 100;
-		break;
-	case 1236:
-		latency_us_SLO = 0; //best-effort
-		IOPS_SLO = 0;
-		rd_wr_ratio_SLO = 100;
-		break;
-	case 1237:
-		latency_us_SLO = 0; //best-effort
-		IOPS_SLO = 0;
-		rd_wr_ratio_SLO = 100;
-		break;
-	case 5678: 
-		latency_us_SLO = 1000; //latency-critical
-		IOPS_SLO = 120000;
-		rd_wr_ratio_SLO = 100;
-		break;
-	case 5679: 
-		latency_us_SLO = 1000; //latency-critical
-		IOPS_SLO = 70000;
-		rd_wr_ratio_SLO = 80;
-		break;
-
-	default:
-		printf("WARNING: unrecognized SLO policy, default is best-effort\n");
-		break;
+		default:
+			printf("WARNING: unrecognized SLO policy, default is best-effort\n");
+			break;
 	}
 	/*
 	 * FIXME: add support for dynamic SLO registration by client

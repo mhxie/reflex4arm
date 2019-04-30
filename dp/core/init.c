@@ -158,7 +158,6 @@ static int args_parsed;
 
 volatile int uaccess_fault;
 
-
 static struct rte_eth_conf default_eth_conf = {
 	.rxmode = {
 		.max_rx_pkt_len = 9128, /**< use this for jumbo frame */
@@ -170,7 +169,7 @@ static struct rte_eth_conf default_eth_conf = {
 		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
         .offloads = DEV_RX_OFFLOAD_CHECKSUM |
                     DEV_RX_OFFLOAD_CRC_STRIP, // newly added
-		.mq_mode		= ETH_MQ_RX_RSS,
+		.mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
 	},
 	.rx_adv_conf = {
 		.rss_conf = {
@@ -212,7 +211,7 @@ static struct rte_eth_conf default_eth_conf = {
  */
 int add_fdir_rules(uint8_t port_id)
 {
-	log_info("Adding FDIR rules.\n");
+	log_info("Adding FDIR rules:\n");
 	int ret;
 
 	// Check that flow director is supported.
@@ -229,7 +228,7 @@ int add_fdir_rules(uint8_t port_id)
 	}
 
 	// Add flow director rules (currently added from static config file in cfg.c).
-	ret = parse_cfg_fdir_rules(port_id);
+	ret = parse_cfg_fdir_rules(port_id); // FIXME: decouple this function
 
 	return ret;
 }
@@ -252,19 +251,20 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 	uint16_t nb_rx_desc = ETH_DEV_RX_QUEUE_SZ; //512
 	struct rte_eth_dev_info dev_info;
 	struct rte_eth_txconf* txconf;
-	struct rte_eth_rxconf* rxconf; 
+	// struct rte_eth_rxconf* rxconf; 
 	uint16_t mtu;
 		
 	if (dev_conf->rxmode.jumbo_frame) {
 		dev_conf->rxmode.max_rx_pkt_len = 9000 + ETHER_HDR_LEN + ETHER_CRC_LEN;
 	}
-	   
+	
+	/* Configure the Ethernet device. */
 	ret = rte_eth_dev_configure(port_id, nb_rx_q, nb_tx_q, dev_conf);
 	if (ret < 0) rte_exit(EXIT_FAILURE, "rte_eth_dev_configure:err=%d, port=%u\n", ret, (unsigned) port_id);
 
 	rte_eth_dev_info_get(port_id, &dev_info);
 	txconf = &dev_info.default_txconf;  //FIXME: this should go here but causes TCP rx bug
-	rxconf = &dev_info.default_rxconf;
+	// rxconf = &dev_info.default_rxconf;
 
 	if (dev_conf->rxmode.jumbo_frame) {
 		rte_eth_dev_set_mtu(port_id, 9000);	
@@ -274,33 +274,51 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 		//struct rte_eth_rxq_info rx_qinfo;
 		//rte_eth_rx_queue_info_get(port_id, 0, &rx_qinfo);
 		//rx_qinfo.scattered_rx = 1;
-		txconf->txq_flags = 0; 
+
+		//txconf->txq_flags = 0;
 	} else {
 		rte_eth_dev_get_mtu(port_id, &mtu);
 		printf("Disable jumbo frames. MTU size is %d\n", mtu);
 	}
 
-	// initialize one queue per cpu
-	int i;
-	for (i = 0; i < CFG.num_cpus; i++) {
-		log_info("setting up TX and RX queues...\n");
-		ret = rte_eth_tx_queue_setup(port_id, i, nb_tx_desc, rte_eth_dev_socket_id(port_id), txconf);
-		if (ret < 0) rte_exit(EXIT_FAILURE, "tx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);
-		rte_eth_rx_queue_setup(port_id, i, nb_rx_desc, rte_eth_dev_socket_id(port_id), rxconf, dpdk_pool);
-		if (ret <0 ) rte_exit(EXIT_FAILURE, "rx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);
+	/* initialize one queue per cpu */
+	unsigned lcore_id = 0;
+	
+	printf("max_tx_queues is %d\n", dev_info.max_tx_queues);
+	printf("max_rx_queues is %d\n", dev_info.max_rx_queues);
+
+	// RTE_LCORE_FOREACH(lcore_id) {
+	for (lcore_id = 0; lcore_id < CFG.num_cpus; lcore_id++) {
+		log_info("Setting up TX and RX queues for core %d...\n", lcore_id);
+
+		ret = rte_eth_tx_queue_setup(port_id, lcore_id, nb_tx_desc, rte_eth_dev_socket_id(port_id), txconf);
+		// ret = rte_eth_tx_queue_setup(port_id, lcore_id, nb_tx_desc, rte_eth_dev_socket_id(port_id), NULL);
+		if (ret < 0)
+			rte_exit(EXIT_FAILURE, "tx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);
+
+		// ret = rte_eth_rx_queue_setup(port_id, lcore_id, nb_rx_desc, rte_eth_dev_socket_id(port_id), rxconf, dpdk_pool);
+		ret = rte_eth_rx_queue_setup(port_id, lcore_id, nb_rx_desc, rte_eth_dev_socket_id(port_id), NULL, dpdk_pool);
+		if (ret < 0)
+			rte_exit(EXIT_FAILURE, "rx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);
 	}
-		 
-	rte_eth_promiscuous_enable(port_id);
-		
+	
+	printf("nb_tx_queues is %d\n", dev_info.nb_tx_queues);
+	printf("nb_rx_queues is %d\n", dev_info.nb_rx_queues);
+	
 	ret = rte_eth_dev_start(port_id);
+
+	// rte_eth_promiscuous_enable(port_id); // Should be here to avoid driver problem but do we really need this?
+
 	if (ret < 0) {
 		printf("ERROR starting device at port %d\n", port_id);
 	}
 	else {
 		printf("started device at port %d\n", port_id);
 	}
-		
+
+	// expansion of assert_link_status();
 	struct rte_eth_link	link;
+	memset(&link, 0, sizeof(link));
 	rte_eth_link_get(port_id, &link);
 
 	if (!link.link_status) {
@@ -334,8 +352,10 @@ static int init_ethdev(void)
 	if (nb_ports == 0) rte_exit(EXIT_FAILURE, "No Ethernet ports - exiting\n");
 	if (nb_ports > 1) printf("WARNING: only 1 ethernet port is used\n");
 	// if (nb_ports > RTE_MAX_ETHPORTS) nb_ports = RTE_MAX_ETHPORTS; // too many ports, comment for now
-	
-	for (port_id = nb_ports-1; port_id < nb_ports; port_id++) { // too many ports, only initialize the one used
+
+	// for (port_id = nb_ports-1; port_id < nb_ports; port_id++) { // too many ports, only initialize the one used
+	printf("We have %d nb_ports now.\n", nb_ports);
+	for (port_id = 0; port_id < nb_ports; port_id++) {
 		init_port(port_id, &mac_addr);
 		log_info("Ethdev on port %d initialised.\n", port_id);
 		
@@ -350,7 +370,7 @@ static int init_ethdev(void)
 	
 	struct eth_addr* macaddr = &mac_addr;
 	CFG.mac = *macaddr;  // Always get the last port
-	//percpu_get(eth_num_queues) = CFG.num_cpus; //NOTE: assume num tx queues == num rx queues
+	// percpu_get(eth_num_queues) = CFG.num_cpus; //NOTE: assume num tx queues == num rx queues
 	percpu_get(eth_num_queues) = nb_ports;
 
 	return 0;

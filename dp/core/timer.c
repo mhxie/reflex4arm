@@ -66,6 +66,7 @@
 #define DEBUG_TIMER
 
 #include <rte_per_lcore.h>
+#include <rte_cycles.h>
 #include <ix/timer.h>
 #include <ix/errno.h>
 #include <ix/log.h>
@@ -76,6 +77,7 @@
 #include <time.h>
 #include <ix/log.h>
 #include <stdio.h>
+#include <math.h>
 
 #define WHEEL_SHIFT_LOG2	3
 #define WHEEL_SHIFT		(1 << WHEEL_SHIFT_LOG2)
@@ -484,9 +486,8 @@ timer_calibrate_tsc(void)
 		ns += (t_end.tv_nsec - t_start.tv_nsec);
 
 		secs = (double)ns / 1000;
-		cycles_per_us = (uint64_t)((end - start) / secs);
-		log_info("timer: detected %d ticks per US\n",
-			 cycles_per_us);
+		cycles_per_us = (uint64_t)round((end - start) / secs);
+		log_info("timer: detected %d ticks per US\n", cycles_per_us);
 		return 0;
 	}
 

@@ -134,6 +134,8 @@ static void ixev_tcp_knock(hid_t handle, struct ip_tuple *id)
 {
 	struct ixev_ctx *ctx = ixev_global_ops.accept(id);
 
+	printf("A new connection is knocking!\n");
+
 	if (!ctx) {
 		ix_tcp_reject(handle);
 		return;
@@ -940,6 +942,7 @@ int ixev_init_thread(void)
 		return ret;
 
 	ret = ix_init(&ixev_ops, CMD_BATCH_SIZE*2);
+
 	if (ret) {
 		printf("error: ix_init failed in ixev_init_thread\n");
 		return ret;

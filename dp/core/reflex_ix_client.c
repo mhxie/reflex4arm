@@ -874,7 +874,7 @@ int reflex_client_main(int argc, char *argv[])
 
 		timer_calibrate_tsc();
 		
-		ip_tuple[i]->dst_port = port + i;
+		ip_tuple[i]->dst_port = port + i; // mutli-thread
 		ip_tuple[i]->src_port = port;
 		printf("Connecting to port: %i\n", port + i);
 	}
