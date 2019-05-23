@@ -78,7 +78,8 @@
 #define EMA_SMOOTH_FACTOR_2 0.125
 #define EMA_SMOOTH_FACTOR EMA_SMOOTH_FACTOR_0
 // #define MAX_NUM_IO_QUEUES 31
-#define MAX_NUM_IO_QUEUES 130
+// #define MAX_NUM_IO_QUEUES 130
+#define MAX_NUM_IO_QUEUES 127
 
 RTE_DEFINE_PER_LCORE(int, eth_num_queues);
 RTE_DEFINE_PER_LCORE(struct eth_rx_queue *, eth_rxqs[NETHDEV]);
@@ -146,6 +147,9 @@ int eth_process_poll(void)
 			if (ret && i > MAX_NUM_IO_QUEUES)
 				printf("Out of boundary.\n");
 			if (ret) {
+				#ifdef MQ_DEBUG
+				printf("One packet at queue %d.\n", percpu_get(cpu_id));
+				#endif
 				empty = false;
 				m = rx_pkts[i];
 				rte_prefetch0(rte_pktmbuf_mtod(m, void *)); 

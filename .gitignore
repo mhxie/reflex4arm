@@ -15,7 +15,7 @@ out.*
 /deps/pcidma
 /ix.conf
 /nvme_devname.devmodel
-/dp/ix
+/ix
 /apps/echoclient
 /apps/echoserver
 /apps/reflex_server

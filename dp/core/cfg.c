@@ -216,6 +216,12 @@ int parse_cfg_fdir_rules(uint8_t port_id)
 		if (!dst_port) return -EINVAL;
 		printf("\tdst_port = %u --> ", dst_port);
 
+		// Parse source port.
+		uint16_t src_port;
+		config_setting_lookup_int(entry, "src_port", &src_port);
+		if (!src_port) return -EINVAL;
+		printf("\tsrc_port = %u --> ", src_port);
+
 		// Parse queue number.
 		uint16_t queue;                                    // Technically queue should be uint8_t, but calling
 		config_setting_lookup_int(entry, "queue", &queue); // config_setting_lookup_int on that overwrites stack.
@@ -231,8 +237,10 @@ int parse_cfg_fdir_rules(uint8_t port_id)
 		filter.input.flow_type = RTE_ETH_FLOW_NONFRAG_IPV4_TCP;
 		filter.input.flow.tcp4_flow.ip.src_ip = hton32(src_ip);
 		filter.input.flow.tcp4_flow.ip.dst_ip = hton32(dst_ip);
-		filter.input.flow.tcp4_flow.src_port = hton16(0);
-		filter.input.flow.tcp4_flow.dst_port = hton16(dst_port);
+		// filter.input.flow.tcp4_flow.src_port = hton16(0);
+		filter.input.flow.tcp4_flow.src_port = hton16(src_port);
+		filter.input.flow.tcp4_flow.dst_port = hton16(0);
+		// filter.input.flow.tcp4_flow.dst_port = hton16(dst_port);
 		filter.action.rx_queue = queue;
 		filter.action.behavior = drop ? RTE_ETH_FDIR_REJECT : RTE_ETH_FDIR_ACCEPT;
 		filter.action.report_status = RTE_ETH_FDIR_REPORT_ID;

@@ -51,6 +51,10 @@ ifneq ($(DEBUG),)
 CFLAGS += -DDEBUG
 endif
 
+ifneq ($(MQ_DEBUG),)  # debug flag for multi-core/multi-queue issue
+CFLAGS += -DMQ_DEBUG
+endif
+
 ifneq ($(ENABLE_KSTATS),)
 CFLAGS += -DENABLE_KSTATS
 endif
@@ -95,9 +99,9 @@ SPDK_LIBS+=$(SPDK)/build/lib/libspdk_log.a
 IX_LIBS+=../libix/libix.a
 
 ix: $(DEPENDENCY) $(OBJS) # ix.ld
-	$(LD) $(LDFLAGS) -o ix $(OBJS) $(SPDK_LIBS) $(DPDK_LIBS) $(LDLIBS) $(IX_LIBS)
+	$(LD) $(LDFLAGS) -o ../ix $(OBJS) $(SPDK_LIBS) $(DPDK_LIBS) $(LDLIBS) $(IX_LIBS)
 clean:
-	rm -f $(OBJS) ix .depend
+	rm -f $(OBJS) ../ix .depend
 
 dist-clean: clean
 	rm *~

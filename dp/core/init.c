@@ -167,46 +167,54 @@ static struct rte_eth_conf default_eth_conf = {
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
 		.jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
 		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
-        .offloads = DEV_RX_OFFLOAD_CHECKSUM |
-                    DEV_RX_OFFLOAD_CRC_STRIP, // newly added
-		.mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
+        .offloads = DEV_RX_OFFLOAD_CHECKSUM,
+					// | DEV_RX_OFFLOAD_CRC_STRIP, // newly added
+		// .mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
 	},
-	.rx_adv_conf = {
-		.rss_conf = {
-			.rss_hf = ETH_RSS_NONFRAG_IPV4_TCP | ETH_RSS_NONFRAG_IPV4_UDP,
-		},
-	},
+	// .rx_adv_conf = {
+	// 	.rss_conf = {
+	// 		.rss_hf = ETH_RSS_NONFRAG_IPV4_TCP | ETH_RSS_NONFRAG_IPV4_UDP,
+	// 		// .rss_hf = ETH_RSS_IPV4_TCP
+	// 		// .rss_key_len = 40,
+	// 		.rss_key = {0x6d, 0x5a, 0x56, 0xda, 0x25, 0x5b, 0x0e, 0xc2,
+	// 					0x41, 0x67, 0x25, 0x3d, 0x43, 0xa3, 0x8f, 0xb0,
+	// 					0xd0, 0xca, 0x2b, 0xcb, 0xae, 0x7b, 0x30, 0xb4,
+	// 					0x77, 0xcb, 0x2d, 0xa3, 0x80, 0x30, 0xf2, 0x0c,
+	// 					0x6a, 0x42, 0xb7, 0x3b, 0xbe, 0xac, 0x01, 0xfa},
+	// 		// .rss_hf = ETH_RSS_PORT
+	// 	},
+	// },
 	.txmode = {
 		.mq_mode = ETH_MQ_TX_NONE,
 		.offloads = DEV_TX_OFFLOAD_IPV4_CKSUM  |
 					DEV_TX_OFFLOAD_UDP_CKSUM   |
 					DEV_TX_OFFLOAD_TCP_CKSUM,
 	},
-	.fdir_conf = {
-		.mode = RTE_FDIR_MODE_PERFECT, 
-		.pballoc = RTE_FDIR_PBALLOC_256K,
-		.mask = {
-			.vlan_tci_mask = 0x0,
-			.ipv4_mask = {
-				.src_ip = 0xFFFFFFFF,
-				.dst_ip = 0xFFFFFFFF,
-			},
-			.src_port_mask = 0,
-			.dst_port_mask = 0xFFFF,
-			.mac_addr_byte_mask = 0,
-			.tunnel_type_mask = 0,
-			.tunnel_id_mask = 0,
-		},
-		.drop_queue = 127,
-		.flex_conf = {
-			.nb_payloads = 0,
-			.nb_flexmasks = 0,
-		},
-	},
+	// .fdir_conf = {
+	// 	.mode = RTE_FDIR_MODE_PERFECT, 
+	// 	.pballoc = RTE_FDIR_PBALLOC_256K,
+	// 	.mask = {
+	// 		.vlan_tci_mask = 0x0,
+	// 		.ipv4_mask = {
+	// 			.src_ip = 0xFFFFFFFF,
+	// 			.dst_ip = 0xFFFFFFFF,
+	// 		},
+	// 		.src_port_mask = 0,
+	// 		.dst_port_mask = 0xFFFF,
+	// 		.mac_addr_byte_mask = 0,
+	// 		.tunnel_type_mask = 0,
+	// 		.tunnel_id_mask = 0,
+	// 	},
+	// 	.drop_queue = 127,
+	// 	.flex_conf = {
+	// 		.nb_payloads = 0,
+	// 		.nb_flexmasks = 0,
+	// 	},
+	// },
 };
 
 /**
- * add_fdir_fules
+ * add_fdir_rules
  * Sets up flow director to direct incoming packets.
  */
 int add_fdir_rules(uint8_t port_id)
@@ -244,27 +252,28 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 	uint16_t nb_rx_q = CFG.num_cpus; 
 	uint16_t nb_tx_q = CFG.num_cpus;
 	struct rte_eth_conf *dev_conf; 
-
 	dev_conf = &default_eth_conf;
-
-	uint16_t nb_tx_desc = ETH_DEV_TX_QUEUE_SZ; //1024
-	uint16_t nb_rx_desc = ETH_DEV_RX_QUEUE_SZ; //512
 	struct rte_eth_dev_info dev_info;
-	struct rte_eth_txconf* txconf;
-	// struct rte_eth_rxconf* rxconf; 
+
+	memset(&dev_info, 0, sizeof(dev_info));
+	rte_eth_dev_info_get(port_id, &dev_info);
+
 	uint16_t mtu;
 		
 	if (dev_conf->rxmode.jumbo_frame) {
 		dev_conf->rxmode.max_rx_pkt_len = 9000 + ETHER_HDR_LEN + ETHER_CRC_LEN;
 	}
-	
+
+	// print_rss_conf(port_id);
+
+	printf("nb_tx_queues is %d\n", dev_info.nb_tx_queues);
+	printf("nb_rx_queues is %d\n", dev_info.nb_rx_queues);
+
 	/* Configure the Ethernet device. */
 	ret = rte_eth_dev_configure(port_id, nb_rx_q, nb_tx_q, dev_conf);
 	if (ret < 0) rte_exit(EXIT_FAILURE, "rte_eth_dev_configure:err=%d, port=%u\n", ret, (unsigned) port_id);
 
-	rte_eth_dev_info_get(port_id, &dev_info);
-	txconf = &dev_info.default_txconf;  //FIXME: this should go here but causes TCP rx bug
-	// rxconf = &dev_info.default_rxconf;
+	// print_rss_conf(port_id);
 
 	if (dev_conf->rxmode.jumbo_frame) {
 		rte_eth_dev_set_mtu(port_id, 9000);	
@@ -280,46 +289,48 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 		rte_eth_dev_get_mtu(port_id, &mtu);
 		printf("Disable jumbo frames. MTU size is %d\n", mtu);
 	}
-
-	/* initialize one queue per cpu */
-	unsigned lcore_id = 0;
 	
-	printf("max_tx_queues is %d\n", dev_info.max_tx_queues);
-	printf("max_rx_queues is %d\n", dev_info.max_rx_queues);
+	init_queues(port_id, &dev_info);
 
-	// RTE_LCORE_FOREACH(lcore_id) {
-	for (lcore_id = 0; lcore_id < CFG.num_cpus; lcore_id++) {
-		log_info("Setting up TX and RX queues for core %d...\n", lcore_id);
+	// print_initial_reta_table();
 
-		ret = rte_eth_tx_queue_setup(port_id, lcore_id, nb_tx_desc, rte_eth_dev_socket_id(port_id), txconf);
-		// ret = rte_eth_tx_queue_setup(port_id, lcore_id, nb_tx_desc, rte_eth_dev_socket_id(port_id), NULL);
-		if (ret < 0)
-			rte_exit(EXIT_FAILURE, "tx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);
+	ret = rte_eth_dev_start(port_id); // this will alter the reta table
+	rte_eth_promiscuous_enable(port_id); // Should be here to avoid driver problem but do we really need this?
 
-		// ret = rte_eth_rx_queue_setup(port_id, lcore_id, nb_rx_desc, rte_eth_dev_socket_id(port_id), rxconf, dpdk_pool);
-		ret = rte_eth_rx_queue_setup(port_id, lcore_id, nb_rx_desc, rte_eth_dev_socket_id(port_id), NULL, dpdk_pool);
-		if (ret < 0)
-			rte_exit(EXIT_FAILURE, "rx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);
-	}
-	
-	printf("nb_tx_queues is %d\n", dev_info.nb_tx_queues);
-	printf("nb_rx_queues is %d\n", dev_info.nb_rx_queues);
-	
-	ret = rte_eth_dev_start(port_id);
-
-	// rte_eth_promiscuous_enable(port_id); // Should be here to avoid driver problem but do we really need this?
+	// print_rss_conf(port_id);
 
 	if (ret < 0) {
 		printf("ERROR starting device at port %d\n", port_id);
-	}
-	else {
+	} else {
 		printf("started device at port %d\n", port_id);
 	}
+
+	// print_initial_reta_table();
+
+	rte_eth_dev_info_get(port_id, &dev_info); // get new number
+	printf("nb_tx_queues is %d\n", dev_info.nb_tx_queues);
+	printf("nb_rx_queues is %d\n", dev_info.nb_rx_queues);
+
+	#ifdef MQ_DEBUG
+	// rss_reta_setup(port_id, &dev_info);
+	#endif
+
+	// print_initial_reta_table();
+
+	// /* PMD link up */
+	// ret = rte_eth_dev_set_link_up(port_id);
+	// /* Do not panic if PMD does not provide link up functionality */
+	// if (ret < 0 && ret != -ENOTSUP)
+	// 	rte_panic("Port %d: PMD set link up error %d", port_id, ret);
+
+
 
 	// expansion of assert_link_status();
 	struct rte_eth_link	link;
 	memset(&link, 0, sizeof(link));
 	rte_eth_link_get(port_id, &link);
+
+	// print_initial_reta_table();
 
 	if (!link.link_status) {
 		log_warn("eth:\tlink appears to be down, check connection.\n");
@@ -330,6 +341,118 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 			   ("full-duplex") : ("half-duplex"));
 		rte_eth_macaddr_get(port_id, mac_addr);
 		active_eth_port = port_id;
+	}
+
+}
+
+inline void print_rss_conf(port_id) {
+	struct rte_eth_rss_conf rss_conf;
+	int ret = rte_eth_dev_rss_hash_conf_get(port_id, &rss_conf);
+	if (ret < 0) {
+		printf("Unable to get the rss configuration.\n");
+	} else {
+		printf("The rss_key_len is %d, now printing\n", rss_conf.rss_key_len);
+		printf("The rss_key is at %p\n", rss_conf.rss_key);
+		if (rss_conf.rss_key) {
+			int i;
+			for (i = 0; i < rss_conf.rss_key_len; i++) {
+				printf("[%d]: %#1x\n", i, rss_conf.rss_key[i]);
+			}
+		}
+		printf("The rss_hf is %lx, which was set as %lx\n", rss_conf.rss_hf, ETH_RSS_NONFRAG_IPV4_TCP | ETH_RSS_NONFRAG_IPV4_UDP);
+	}
+}
+
+/* initialize one queue per cpu */
+inline void init_queues(uint8_t port_id, struct rte_eth_dev_info *dev_info) {
+	int ret;
+	uint16_t nb_tx_desc = ETH_DEV_TX_QUEUE_SZ; //1024
+	uint16_t nb_rx_desc = ETH_DEV_RX_QUEUE_SZ; //512
+	int nb_queues = CFG.num_cpus;
+	
+	// struct rte_eth_txconf* txconf;
+	// txconf = &dev_info.default_txconf;  //FIXME: this should go here but causes TCP rx bug
+	
+	printf("max_tx_queues is %d\n", dev_info->max_tx_queues);
+	printf("max_rx_queues is %d\n", dev_info->max_rx_queues);
+	
+	if (unlikely(nb_queues > dev_info->max_tx_queues || nb_queues > dev_info->max_rx_queues)) { // Assume #rx queues = #tx queues
+		log_info("Too many cores, only the first of %d will work\n", dev_info->max_tx_queues);
+		nb_queues = dev_info->max_tx_queues;
+	}
+
+	unsigned lcore_id = 0;
+	// RTE_LCORE_FOREACH(lcore_id) {
+	for (lcore_id = 0; lcore_id < nb_queues; lcore_id++) {
+		log_info("Setting up TX queues for core %d...\n", lcore_id);
+
+		ret = rte_eth_tx_queue_setup(port_id, lcore_id, nb_tx_desc, rte_eth_dev_socket_id(port_id), NULL/*txconf*/);
+		if (ret < 0)
+			rte_exit(EXIT_FAILURE, "tx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);
+	}
+
+	for (lcore_id = 0; lcore_id < nb_queues; lcore_id++) {
+		log_info("Setting up RX queues for core %d...\n", lcore_id);
+		ret = rte_eth_rx_queue_setup(port_id, lcore_id, nb_rx_desc, rte_eth_dev_socket_id(port_id), NULL, dpdk_pool);
+		if (ret < 0)
+			rte_exit(EXIT_FAILURE, "rx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);
+	}
+	
+	// rte_eth_dev_info_get(port_id, &dev_info); // get new number
+	// printf("nb_tx_queues is %d\n", dev_info->nb_tx_queues);
+	// printf("nb_rx_queues is %d\n", dev_info->nb_rx_queues);
+}
+
+inline void rss_reta_setup(uint8_t port_id, struct rte_eth_dev_info *dev_info) {
+	struct rte_eth_rss_reta_entry64 reta_conf[ETH_RSS_RETA_SIZE_128 / RTE_RETA_GROUP_SIZE];
+	uint32_t i;
+	int ret;
+
+    /* Get RETA size */
+	if (dev_info->reta_size == 0)
+		rte_panic("Port %u: RSS setup error (null RETA size)\n", port_id);
+
+	if (dev_info->reta_size > ETH_RSS_RETA_SIZE_512)
+		rte_panic("Port %u: RSS setup error (RETA size too big)\n", port_id);
+
+	/* Setup RETA contents */
+	memset(&reta_conf, 0, sizeof(reta_conf));
+
+	for (i = 0; i < dev_info->reta_size; i++)
+		reta_conf[i / RTE_RETA_GROUP_SIZE].mask = 0x3;
+
+	for (i = 0; i < dev_info->reta_size; i++) {
+		uint32_t reta_id = i / RTE_RETA_GROUP_SIZE;
+		uint32_t reta_pos = i % RTE_RETA_GROUP_SIZE;
+
+		reta_conf[reta_id].reta[reta_pos] = 1; // set all to queue 0, like 0x1
+	}
+
+	/* RETA update */
+	ret = rte_eth_dev_rss_reta_update(port_id, &reta_conf, dev_info->reta_size);
+	if (ret != 0)
+		rte_panic("Port %u: RSS setup error (RETA update failed)\n", port_id);
+}
+
+
+inline void print_initial_reta_table() {
+	log_info("Now printing the initial reta table:\n");
+	struct rte_eth_dev_info dev_info;
+	rte_eth_dev_info_get(0, &dev_info);
+	struct rte_eth_rss_reta_entry64 reta_conf[ETH_RSS_RETA_SIZE_128 / RTE_RETA_GROUP_SIZE];
+
+	//struct rte_eth_rss_reta_entry64 reta_conf;
+	int ret = rte_eth_dev_rss_reta_query(0, &reta_conf, dev_info.reta_size);
+	if (ret < 0) printf("Unable to get reta table\n");
+	else {
+		printf("Printing reta table:\n");
+		int i = 0;
+		for (; i < RTE_RETA_GROUP_SIZE; i++) {
+			printf("%d: %d\n", i, reta_conf[0].reta[i]);
+		}
+		for (; i < ETH_RSS_RETA_SIZE_128; i++) {
+			printf("%d: %d\n", i, reta_conf[1].reta[i]);
+		}
 	}
 }
 
@@ -357,8 +480,9 @@ static int init_ethdev(void)
 	printf("We have %d nb_ports now.\n", nb_ports);
 	for (port_id = 0; port_id < nb_ports; port_id++) {
 		init_port(port_id, &mac_addr);
+		// print_rss_conf(port_id); FIXME: this will cause segfault at spdk_nvme_probe
 		log_info("Ethdev on port %d initialised.\n", port_id);
-		
+
 		ret = add_fdir_rules(port_id);
 
 		if (ret) {
