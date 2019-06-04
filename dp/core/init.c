@@ -384,7 +384,7 @@ inline void init_queues(uint8_t port_id, struct rte_eth_dev_info *dev_info) {
 	unsigned lcore_id = 0;
 	// RTE_LCORE_FOREACH(lcore_id) {
 	for (lcore_id = 0; lcore_id < nb_queues; lcore_id++) {
-		log_info("Setting up TX queues for core %d...\n", lcore_id);
+		log_info("Setting up TX queues for core %d... at socket %d\n", lcore_id,  rte_eth_dev_socket_id(port_id));
 
 		ret = rte_eth_tx_queue_setup(port_id, lcore_id, nb_tx_desc, rte_eth_dev_socket_id(port_id), NULL/*txconf*/);
 		if (ret < 0)
@@ -392,7 +392,7 @@ inline void init_queues(uint8_t port_id, struct rte_eth_dev_info *dev_info) {
 	}
 
 	for (lcore_id = 0; lcore_id < nb_queues; lcore_id++) {
-		log_info("Setting up RX queues for core %d...\n", lcore_id);
+		log_info("Setting up RX queues for core %d... at socket %d\n", lcore_id,  rte_eth_dev_socket_id(port_id));
 		ret = rte_eth_rx_queue_setup(port_id, lcore_id, nb_rx_desc, rte_eth_dev_socket_id(port_id), NULL, dpdk_pool);
 		if (ret < 0)
 			rte_exit(EXIT_FAILURE, "rx queue setup: err=%d, port=%u\n", ret, (unsigned) port_id);

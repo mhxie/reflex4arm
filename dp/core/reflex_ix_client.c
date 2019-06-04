@@ -85,15 +85,25 @@
 #define MAX_SECTORS_PER_ACCESS 64
 #define MAX_LATENCY 5000 //2000
 #define MAX_IOPS 2000000
-#define NUM_TESTS 5 //16
+#define NUM_TESTS 40 //16
 #define DURATION 1
 #define MAX_NUM_MEASURE MAX_IOPS * DURATION
 // static const unsigned long sweep[NUM_TESTS] = {1000, 1100, 1200, 1300, 1400};
 
-static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 100000,
-					       150000, 200000, 250000, 300000,
-					       400000, 500000, 600000, 650000, 700000, 750000,
-					       800000, 850000,  MAX_IOPS};
+// static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 100000,
+// 					       150000, 200000, 250000, 300000,
+// 					       400000, 500000, 600000, 650000, 700000, 750000,
+// 					       800000, 850000,  MAX_IOPS};
+
+static const unsigned long sweep[NUM_TESTS] = {500000, 500000, 500000,
+					       500000, 500000, 500000, 500000, 500000, 500000,
+					       500000, 500000, 500000, 500000, 500000, 500000,
+					       500000, 500000, 500000, 500000, 500000,
+						   500000, 500000, 500000, 500000, 500000,
+						   500000, 500000, 500000, 500000, 500000,
+						   500000, 500000, 500000, 500000, 500000,
+						   500000, 500000, 500000, 500000, 500000}; // for 1k rand
+
 /*
 static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 25000, 30000, //100000,
 					       35000, 40000, 50000, 60000,

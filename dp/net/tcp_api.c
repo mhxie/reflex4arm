@@ -713,7 +713,7 @@ static struct eth_fg *get_port_with_fdir(struct ip_tuple *id)
 	filter.input.flow_type = RTE_ETH_FLOW_NONFRAG_IPV4_TCP;
 	filter.input.flow.tcp4_flow.ip.src_ip = hton32(id->dst_ip); 
 	filter.input.flow.tcp4_flow.ip.dst_ip = hton32(id->src_ip); // tos, ttl?
-	filter.input.flow.tcp4_flow.src_port = 0; 
+	filter.input.flow.tcp4_flow.src_port = hton16(0); 
 	filter.input.flow.tcp4_flow.dst_port = hton16(id->src_port);
 	filter.soft_id = 0;
 	filter.action.rx_queue = percpu_get(cpu_id); //FIXME: or should this always be 0? 

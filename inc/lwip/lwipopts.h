@@ -64,17 +64,20 @@
 #define MEM_LIBC_MALLOC 1
 #define MEMP_MEM_MALLOC 1
 
-// #define	LWIP_DEBUG		LWIP_DBG_ON
-#undef LWIP_DEBUG
+#ifdef MQ_DEBUG
+#define	LWIP_DEBUG		LWIP_DBG_ON
+// #undef LWIP_DEBUG
 #define	TCP_CWND_DEBUG		LWIP_DBG_OFF
-#define	TCP_DEBUG		LWIP_DBG_OFF
+#define	TCP_DEBUG		LWIP_DBG_ON
 #define	TCP_FR_DEBUG		LWIP_DBG_OFF
-#define	TCP_INPUT_DEBUG		LWIP_DBG_OFF
-#define	TCP_OUTPUT_DEBUG	LWIP_DBG_OFF
+#define	TCP_INPUT_DEBUG		LWIP_DBG_ON
+#define	TCP_OUTPUT_DEBUG	LWIP_DBG_ON
 #define	TCP_QLEN_DEBUG		LWIP_DBG_OFF
 #define	TCP_RST_DEBUG		LWIP_DBG_OFF
 #define	TCP_RTO_DEBUG		LWIP_DBG_OFF
 #define	TCP_WND_DEBUG		LWIP_DBG_OFF
+#endif
+
 
 #include <ix/stddef.h>
 #include <ix/byteorder.h>
