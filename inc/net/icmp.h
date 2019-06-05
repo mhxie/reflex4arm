@@ -108,7 +108,7 @@ struct icmp_ra_addr {
 /*
  * Structure of an icmp header.
  */
-struct icmp_hdr {
+struct lwip_icmp_hdr {
 	uint8_t	type;		/* type of message, see below */
 	uint8_t	code;		/* type sub code */
 	uint16_t chksum;	/* ones complement cksum of struct */
@@ -118,7 +118,7 @@ struct icmp_hdr {
  * Structure of an icmp packet.
  */
 struct icmp_pkt {
-	struct icmp_hdr hdr;
+	struct lwip_icmp_hdr hdr;
 	union {
 		uint8_t ih_pptr;		/* ICMP_PARAMPROB */
 		struct ip_addr ih_gwaddr;	/* ICMP_REDIRECT */

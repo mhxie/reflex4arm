@@ -81,7 +81,7 @@
 
 #define MSR_PKG_ENERGY_STATUS 0x00000611
 
-#if defined(__i386__)
+#if defined(__x86_64__)
 
 	#define cpu_relax() asm volatile("pause")
 
@@ -123,7 +123,7 @@
 		return vt;
 	}
 
-	static inline unsigned long rdtscp(void)
+	static inline unsigned long rdtscp(unsigned int *aux) // placeholder for now
 	{
 		unsigned long vt; 
 		asm volatile("isb;mrs %0, cntvct_el0" : "=r"(vt));

@@ -77,7 +77,7 @@
 
 #include "net.h"
 
-static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct icmp_hdr *hdr, int len)
+static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip_icmp_hdr *hdr, int len)
 {
 	struct eth_hdr *ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
 	struct ip_hdr *iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
@@ -118,7 +118,7 @@ static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct icmp
  * @pkt: the packet
  * @hdr: the ICMP header
  */
-void icmp_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct icmp_hdr *hdr, int len)
+void icmp_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip_icmp_hdr *hdr, int len)
 {
 	if (len < ICMP_MINLEN)
 		goto out;
@@ -138,8 +138,8 @@ void icmp_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct icmp_hdr *hd
 			uint64_t *icmptimestamp;
 			uint64_t time;
 
-			seq = mbuf_nextd_off(hdr, uint16_t *, sizeof(struct icmp_hdr) + 2);
-			icmptimestamp = mbuf_nextd_off(hdr, uint64_t *, sizeof(struct icmp_hdr) + 4);
+			seq = mbuf_nextd_off(hdr, uint16_t *, sizeof(struct lwip_icmp_hdr) + 2);
+			icmptimestamp = mbuf_nextd_off(hdr, uint64_t *, sizeof(struct lwip_icmp_hdr) + 4);
 
 			time = (rdtsc() - *icmptimestamp) / cycles_per_us;
 
@@ -175,9 +175,9 @@ int icmp_echo(struct eth_fg *cur_fg, struct ip_addr *dest, uint16_t id, uint16_t
 	ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
 	iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
 	icmppkt = mbuf_nextd(iphdr, struct icmp_pkt *);
-	icmptimestamp = mbuf_nextd_off(icmppkt, uint64_t *, sizeof(struct icmp_hdr) + 4);
+	icmptimestamp = mbuf_nextd_off(icmppkt, uint64_t *, sizeof(struct lwip_icmp_hdr) + 4);
 
-	len = sizeof(struct icmp_hdr) + 4 + sizeof(uint64_t);
+	len = sizeof(struct lwip_icmp_hdr) + 4 + sizeof(uint64_t);
 
 	iphdr->header_len = sizeof(struct ip_hdr) / 4;
 	iphdr->version = 4;

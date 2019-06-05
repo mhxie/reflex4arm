@@ -248,6 +248,12 @@ attach_cb(void *cb_ctx, struct spdk_pci_device *dev, struct spdk_nvme_ctrlr *ctr
 	unsigned int num_ns, nsid;
 	const struct spdk_nvme_ctrlr_data *cdata;
 	struct spdk_nvme_ns *ns = spdk_nvme_ctrlr_get_ns(ctrlr, 1);
+
+	/* FIXME: used for avoiding the default SSD */
+	if (spdk_nvme_ns_get_size(ns) == 0x35a800000) {
+		printf("Skipping this device.\n");
+		return;
+	}
 	
 	bitmap_init(ioq_bitmap, MAX_NUM_IO_QUEUES, 0);
 	if (active_nvme_devices < CFG_MAX_NVMEDEV) {

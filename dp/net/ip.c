@@ -137,7 +137,7 @@ static void ip_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct ip_hdr 
 		break;
 	case IPPROTO_ICMP:
 		icmp_input(cur_fg, pkt,										
-			   mbuf_nextd_off(hdr, struct icmp_hdr *, hdrlen),
+			   mbuf_nextd_off(hdr, struct lwip_icmp_hdr *, hdrlen),
 			   pktlen);
 
 		break;
@@ -168,7 +168,7 @@ void eth_input_process(struct rte_mbuf *pkt, int nb_pkts){
 		ip_input(fg, pkt, mbuf_nextd(ethhdr, struct ip_hdr *));
 	}
 	else if (ethhdr->type == hton16(ETHTYPE_ARP)){
-		arp_input(pkt, mbuf_nextd(ethhdr, struct arp_hdr *));
+		arp_input(pkt, mbuf_nextd(ethhdr, struct lwip_arp_hdr *));
 	}
 	else {
 		rte_pktmbuf_free(pkt); 
@@ -200,7 +200,7 @@ void eth_input(struct eth_rx_queue *rx_queue, struct mbuf *pkt)
 	if (ethhdr->type == hton16(ETHTYPE_IP))
 		ip_input(fg, pkt, mbuf_nextd(ethhdr, struct ip_hdr *));
 	else if (ethhdr->type == hton16(ETHTYPE_ARP))
-		arp_input(pkt, mbuf_nextd(ethhdr, struct arp_hdr *));
+		arp_input(pkt, mbuf_nextd(ethhdr, struct lwip_arp_hdr *));
 	else
 		mbuf_free(pkt);
 

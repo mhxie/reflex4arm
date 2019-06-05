@@ -60,8 +60,9 @@
 
 #include <net/ethernet.h>
 #include <net/ip.h>
+#include <rte_arp.h>  // to avoid redefinition problem
 
-struct arp_hdr {
+struct lwip_arp_hdr {
 	uint16_t htype;
 	uint16_t ptype;		/* the ETHERTYPE */
 	uint8_t  hlen;
@@ -91,10 +92,10 @@ struct arp_hdr_ethip {
 #define ARP_HTYPE_IEEE1394	24	/* firewire */
 #define ARP_HTYPE_INFINIBAND	32	/* infiniband */
 
-enum {
-	ARP_OP_REQUEST = 1,	/* request hw addr given protocol addr */
-	ARP_OP_REPLY = 2,	/* response hw addr given protocol addr  */
-	ARP_OP_REVREQUEST = 3,	/* request protocol addr given hw addr */
-	ARP_OP_REVREPLY = 4,	/* response protocol addr given hw addr */
-};
+// enum {
+// 	ARP_OP_REQUEST = 1,	/* request hw addr given protocol addr */
+// 	ARP_OP_REPLY = 2,	/* response hw addr given protocol addr  */
+// 	ARP_OP_REVREQUEST = 3,	/* request protocol addr given hw addr */
+// 	ARP_OP_REVREPLY = 4,	/* response protocol addr given hw addr */
+// };
 

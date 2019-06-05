@@ -127,7 +127,7 @@
 
 struct LWIP_Context {
 	struct tcp_seg inseg;
-	struct tcp_hdr *tcphdr;
+	struct lwip_tcp_hdr *tcphdr;
 	u32_t seqno;
 	u32_t ackno;
 	u8_t flags;
@@ -212,14 +212,14 @@ tcp_input(struct eth_fg *cur_fg, struct pbuf *p, ipX_addr_t *cur_src_addr, ipX_a
 	snmp_inc_tcpinsegs();
 	
 	MEMPOOL_SANITY_ACCESS(p);
-	lwip_context.tcphdr = (struct tcp_hdr *)p->payload;
+	lwip_context.tcphdr = (struct lwip_tcp_hdr *)p->payload;
 	
 #if TCP_INPUT_DEBUG
 	tcp_debug_print(lwip_context.tcphdr);
 #endif
 	
 	/* Check that TCP header fits in payload */
-	if (p->len < sizeof(struct tcp_hdr)) {
+	if (p->len < sizeof(struct lwip_tcp_hdr)) {
 		/* drop short packets */
 		LWIP_DEBUGF(TCP_INPUT_DEBUG, ("tcp_input: short packet (%"U16_F" bytes) discarded\n", p->tot_len));
 		TCP_STATS_INC(tcp.lenerr);

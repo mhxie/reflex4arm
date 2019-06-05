@@ -162,12 +162,12 @@ static struct rte_eth_conf default_eth_conf = {
 	.rxmode = {
 		.max_rx_pkt_len = 9128, /**< use this for jumbo frame */
 		.split_hdr_size = 0,
-		.header_split   = 0, /**< Header Split disabled */
-		.hw_ip_checksum = 1, /**< IP/UDP/TCP checksum offload enable. */
-		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		.jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
-		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
-        .offloads = DEV_RX_OFFLOAD_CHECKSUM,
+		// .header_split   = 0, /**< Header Split disabled */
+		// .hw_ip_checksum = 1, /**< IP/UDP/TCP checksum offload enable. */
+		// .hw_vlan_filter = 0, /**< VLAN filtering disabled */
+		// .jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
+		// .hw_strip_crc   = 1, /**< CRC stripped by hardware */
+        .offloads = DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_JUMBO_FRAME
 					// | DEV_RX_OFFLOAD_CRC_STRIP, // newly added
 		// .mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
 	},
@@ -186,9 +186,12 @@ static struct rte_eth_conf default_eth_conf = {
 	// },
 	.txmode = {
 		.mq_mode = ETH_MQ_TX_NONE,
-		.offloads = DEV_TX_OFFLOAD_IPV4_CKSUM  |
+		.offloads = DEV_TX_OFFLOAD_VLAN_INSERT |
+					DEV_TX_OFFLOAD_IPV4_CKSUM  |
 					DEV_TX_OFFLOAD_UDP_CKSUM   |
-					DEV_TX_OFFLOAD_TCP_CKSUM,
+					DEV_TX_OFFLOAD_TCP_CKSUM   |
+					DEV_TX_OFFLOAD_SCTP_CKSUM  |
+					DEV_TX_OFFLOAD_TCP_TSO,
 	},
 	// .fdir_conf = {
 	// 	.mode = RTE_FDIR_MODE_PERFECT, 
@@ -260,9 +263,9 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 
 	uint16_t mtu;
 		
-	if (dev_conf->rxmode.jumbo_frame) {
-		dev_conf->rxmode.max_rx_pkt_len = 9000 + ETHER_HDR_LEN + ETHER_CRC_LEN;
-	}
+	// if (dev_conf->rxmode.jumbo_frame) {
+	// 	dev_conf->rxmode.max_rx_pkt_len = 9000 + ETHER_HDR_LEN + ETHER_CRC_LEN;
+	// }
 
 	// print_rss_conf(port_id);
 
@@ -275,7 +278,7 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 
 	// print_rss_conf(port_id);
 
-	if (dev_conf->rxmode.jumbo_frame) {
+	if (dev_conf->rxmode.offloads & DEV_RX_OFFLOAD_JUMBO_FRAME) {
 		rte_eth_dev_set_mtu(port_id, 9000);	
 		rte_eth_dev_get_mtu(port_id, &mtu);
 		printf("Enable jumbo frames. MTU size is %d\n", mtu);

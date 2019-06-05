@@ -71,6 +71,8 @@
 #include <ix/hash.h>
 #include <assert.h>
 
+#include <rte_tcp.h>  // to avoid redefinition problem
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -177,7 +179,7 @@ err_t            tcp_process_refused_data(struct eth_fg *,struct tcp_pcb *pcb);
 #  include "arch/bpstruct.h"
 #endif
 PACK_STRUCT_BEGIN
-struct tcp_hdr {
+struct lwip_tcp_hdr {
   PACK_STRUCT_FIELD(u16_t src);
   PACK_STRUCT_FIELD(u16_t dest);
   PACK_STRUCT_FIELD(u32_t seqno);
@@ -315,7 +317,7 @@ struct tcp_seg {
 #define TF_SEG_DATA_CHECKSUMMED (u8_t)0x04U /* ALL data (not the header) is
                                                checksummed into 'chksum' */
 #define TF_SEG_OPTS_WND_SCALE   (u8_t)0x08U /* Include WND SCALE option */
-  struct tcp_hdr *tcphdr;  /* the TCP header */
+  struct lwip_tcp_hdr *tcphdr;  /* the TCP header */
 };
 
 #define LWIP_TCP_OPT_LEN_MSS  4
@@ -639,7 +641,7 @@ err_t tcp_recv_null(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err);
 #endif /* LWIP_CALLBACK_API */
 
 #if TCP_DEBUG || TCP_INPUT_DEBUG || TCP_OUTPUT_DEBUG
-void tcp_debug_print(struct tcp_hdr *tcphdr);
+void tcp_debug_print(struct lwip_tcp_hdr *tcphdr);
 void tcp_debug_print_flags(u8_t flags);
 void tcp_debug_print_state(enum tcp_state s);
 void tcp_debug_print_pcbs(void);

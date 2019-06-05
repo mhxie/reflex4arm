@@ -1879,10 +1879,10 @@ tcp_debug_state_str(enum tcp_state s)
 /**
  * Print a tcp header for debugging purposes.
  *
- * @param tcphdr pointer to a struct tcp_hdr
+ * @param tcphdr pointer to a struct lwip_tcp_hdr
  */
 void
-tcp_debug_print(struct tcp_hdr *tcphdr)
+tcp_debug_print(struct lwip_tcp_hdr *tcphdr)
 {
   LWIP_DEBUGF(TCP_DEBUG, ("TCP header:\n"));
   LWIP_DEBUGF(TCP_DEBUG, ("+-------------------------------+\n"));

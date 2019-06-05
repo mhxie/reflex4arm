@@ -481,7 +481,7 @@ timer_calibrate_tsc(void)
 		start = rdtsc();
 		nanosleep(&sleeptime, NULL);
 		clock_gettime(CLOCK_MONOTONIC_RAW, &t_end);
-		end = rdtscp();
+		end = rdtscp(NULL);
 		ns = ((t_end.tv_sec - t_start.tv_sec) * 1E9);
 		ns += (t_end.tv_nsec - t_start.tv_nsec);
 

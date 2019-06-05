@@ -25,18 +25,25 @@
 
 DPDK	= ../deps/dpdk
 SPDK    = ../deps/spdk
+uname_p := $(shell uname -p)
 
-BUILD	= build
+ifeq ($(uname_p), x86_64)
+	BUILD = x86_64-native-linuxapp-gcc
+endif
+ifeq ($(uname_p), aarch64)
+	BUILD = arm64-native-linuxapp-gcc
+endif
 DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common 
 SPDK_INC = -idirafter$(SPDK)/include
 INC	= -I../inc -I../inc/lwip -I../inc/lwip/ipv4 -I../inc/lwip/ipv6 $(DPDK_INC) $(SPDK_INC) -I../libix
 CC	= gcc
 
 DPDK_MACHINE_FLAGS = -march=native
-ifeq ($(uname_p), i386)
+ifeq ($(uname_p), x86_64)
 DPDK_MACHINE_FLAGS += -DRTE_MACHINE_CPUFLAG_SSE -DRTE_MACHINE_CPUFLAG_SSE2 -DRTE_MACHINE_CPUFLAG_SSE3 -DRTE_MACHINE_CPUFLAG_SSSE3 -DRTE_MACHINE_CPUFLAG_SSE4_1 -DRTE_MACHINE_CPUFLAG_SSE4_2 -DRTE_MACHINE_CPUFLAG_AES -DRTE_MACHINE_CPUFLAG_PCLMULQDQ -DRTE_MACHINE_CPUFLAG_AVX -DRTE_MACHINE_CPUFLAG_RDRAND -DRTE_MACHINE_CPUFLAG_FSGSBASE -DRTE_MACHINE_CPUFLAG_F16C -DRTE_MACHINE_CPUFLAG_AVX2
-else ifeq ($(uname_p), aarch64)
-DPDK_MACHINE_FLAGS += -DRTE_MACHINE_CPUFLAG_CRC32
+endif
+ifeq ($(uname_p), aarch64)
+DPDK_MACHINE_FLAGS += -DRTE_MACHINE_CPUFLAG_NEON -DRTE_MACHINE_CPUFLAG_CRC32 -DRTE_MACHINE_CPUFLAG_AES -DRTE_MACHINE_CPUFLAG_PMULL -DRTE_MACHINE_CPUFLAG_SHA1 -DRTE_MACHINE_CPUFLAG_SHA2
 endif
 
 # CFLAGS	= -g -w -fno-omit-frame-pointer -fno-dwarf2-cfi-asm -fno-asynchronous-unwind-tables -O0 $(INC) $(EXTRA_CFLAGS) -DSPDK_STRING_H $(DPDK_MACHINE_FLAGS) # -fno-stack-protector
@@ -89,12 +96,13 @@ DPDK_LIBS=
 DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_pmd_bnxt.a # library for Broadcom NIC
 DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_mempool_ring.a $(DPDK)/$(BUILD)/lib/librte_mempool.a
 DPDK_LIBS+=-Wl,-no-whole-archive $(DPDK)/$(BUILD)/lib/librte_mbuf.a $(DPDK)/$(BUILD)/lib/librte_ethdev.a $(DPDK)/$(BUILD)/lib/librte_hash.a $(DPDK)/$(BUILD)/lib/librte_ring.a $(DPDK)/$(BUILD)/lib/librte_eal.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_bus_pci.a $(DPDK)/$(BUILD)/lib/librte_pci.a # Additional support to Stingray
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_bus_pci.a $(DPDK)/$(BUILD)/lib/librte_pci.a $(DPDK)/build/lib/librte_kvargs.a# Additional support to Stingray
 
 SPDK_LIBS=$(SPDK)/build/lib/libspdk_nvme.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_util.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_env_dpdk.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_log.a
+SPDK_LIBS+=$(SPDK)/build/lib/libspdk_sock.a #patch
 
 IX_LIBS+=../libix/libix.a
 

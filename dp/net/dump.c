@@ -96,7 +96,7 @@ void dump_eth_pkt(int loglvl, struct eth_hdr *hdr)
  * If @ethip is NULL, then assumes an unsupported htype and/or ptype.
  */
 void dump_arp_pkt(int loglvl,
-		  struct arp_hdr *arphdr,
+		  struct lwip_arp_hdr *arphdr,
 		  struct arp_hdr_ethip *ethip)
 {
 	struct eth_addr *smac = &ethip->sender_mac;

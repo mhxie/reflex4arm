@@ -74,12 +74,12 @@
 #define UDP_PKT_SIZE		  \
 	(sizeof(struct eth_hdr) + \
 	 sizeof(struct ip_hdr)  + \
-	 sizeof(struct udp_hdr))
+	 sizeof(struct lwip_udp_hdr))
 
 #define UDP_MAX_LEN \
-	(ETH_MTU - sizeof(struct ip_hdr) - sizeof(struct udp_hdr))
+	(ETH_MTU - sizeof(struct ip_hdr) - sizeof(struct lwip_udp_hdr))
 
-void udp_input(struct mbuf *pkt, struct ip_hdr *iphdr, struct udp_hdr *udphdr)
+void udp_input(struct mbuf *pkt, struct ip_hdr *iphdr, struct lwip_udp_hdr *udphdr)
 {
 	void *data = mbuf_nextd(udphdr, void *);
 	uint16_t len = ntoh16(udphdr->len);
@@ -133,8 +133,8 @@ static int udp_output(struct mbuf *__restrict pkt,
 {
 	struct eth_hdr *ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
 	struct ip_hdr *iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
-	struct udp_hdr *udphdr = mbuf_nextd(iphdr, struct udp_hdr *);
-	size_t full_len = len + sizeof(struct udp_hdr);
+	struct lwip_udp_hdr *udphdr = mbuf_nextd(iphdr, struct lwip_udp_hdr *);
+	size_t full_len = len + sizeof(struct lwip_udp_hdr);
 	struct ip_addr dst_addr;
 	int ret;
 

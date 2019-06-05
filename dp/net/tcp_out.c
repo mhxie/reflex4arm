@@ -145,22 +145,22 @@ static void tcp_output_segment(struct eth_fg *cur_fg,struct tcp_seg *seg, struct
  * functions other than the default tcp_output -> tcp_output_segment
  * (e.g. tcp_send_empty_ack, etc.)
  *
- * @param pcb tcp pcb for which to send a packet (used to initialize tcp_hdr)
+ * @param pcb tcp pcb for which to send a packet (used to initialize lwip_tcp_hdr)
  * @param optlen length of header-options
  * @param datalen length of tcp data to reserve in pbuf
  * @param seqno_be seqno in network byte order (big-endian)
- * @return pbuf with p->payload being the tcp_hdr
+ * @return pbuf with p->payload being the lwip_tcp_hdr
  */
 static struct pbuf *
 tcp_output_alloc_header(struct tcp_pcb *pcb, u16_t optlen, u16_t datalen,
                       u32_t seqno_be /* already in network byte order */)
 {
-  struct tcp_hdr *tcphdr;
+  struct lwip_tcp_hdr *tcphdr;
   struct pbuf *p = pbuf_alloc(PBUF_IP, TCP_HLEN + optlen + datalen, PBUF_RAM);
   if (p != NULL) {
-    LWIP_ASSERT("check that first pbuf can hold struct tcp_hdr",
+    LWIP_ASSERT("check that first pbuf can hold struct lwip_tcp_hdr",
                  (p->len >= TCP_HLEN + optlen));
-    tcphdr = (struct tcp_hdr *)p->payload;
+    tcphdr = (struct lwip_tcp_hdr *)p->payload;
     tcphdr->src = htons(pcb->local_port);
     tcphdr->dest = htons(pcb->remote_port);
     tcphdr->seqno = seqno_be;
@@ -252,7 +252,7 @@ tcp_create_segment(struct tcp_pcb *pcb, struct pbuf *p, u8_t flags, u32_t seqno,
     tcp_seg_free(seg);
     return NULL;
   }
-  seg->tcphdr = (struct tcp_hdr *)seg->p->payload;
+  seg->tcphdr = (struct lwip_tcp_hdr *)seg->p->payload;
   seg->tcphdr->src = htons(pcb->local_port);
   seg->tcphdr->dest = htons(pcb->remote_port);
   seg->tcphdr->seqno = htonl(seqno);
@@ -931,7 +931,7 @@ tcp_send_empty_ack(struct eth_fg *cur_fg,struct tcp_pcb *pcb)
   struct pbuf *p;
   u8_t optlen = 0;
 #if LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP
-  struct tcp_hdr *tcphdr;
+  struct lwip_tcp_hdr *tcphdr;
 #endif /* LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP */
 
 #if LWIP_TCP_TIMESTAMPS
@@ -946,7 +946,7 @@ tcp_send_empty_ack(struct eth_fg *cur_fg,struct tcp_pcb *pcb)
     return ERR_BUF;
   }
 #if LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP
-  tcphdr = (struct tcp_hdr *)p->payload;
+  tcphdr = (struct lwip_tcp_hdr *)p->payload;
 #endif /* LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP */
   LWIP_DEBUGF(TCP_OUTPUT_DEBUG,
               ("tcp_output: sending ACK for %"U32_F"\n", pcb->rcv_nxt));
@@ -1319,16 +1319,16 @@ tcp_rst_impl(struct eth_fg *cur_fg,u32_t seqno, u32_t ackno,
   )
 {
   struct pbuf *p;
-  struct tcp_hdr *tcphdr;
+  struct lwip_tcp_hdr *tcphdr;
   p = pbuf_alloc(PBUF_IP, TCP_HLEN, PBUF_RAM);
   if (p == NULL) {
       LWIP_DEBUGF(TCP_DEBUG, ("tcp_rst: could not allocate memory for pbuf\n"));
       return;
   }
-  LWIP_ASSERT("check that first pbuf can hold struct tcp_hdr",
-              (p->len >= sizeof(struct tcp_hdr)));
+  LWIP_ASSERT("check that first pbuf can hold struct lwip_tcp_hdr",
+              (p->len >= sizeof(struct lwip_tcp_hdr)));
 
-  tcphdr = (struct tcp_hdr *)p->payload;
+  tcphdr = (struct lwip_tcp_hdr *)p->payload;
   tcphdr->src = htons(local_port);
   tcphdr->dest = htons(remote_port);
   tcphdr->seqno = htonl(seqno);
@@ -1498,7 +1498,7 @@ tcp_keepalive(struct eth_fg *cur_fg,struct tcp_pcb *pcb)
 
   struct pbuf *p;
 #if CHECKSUM_GEN_TCP
-  struct tcp_hdr *tcphdr;
+  struct lwip_tcp_hdr *tcphdr;
 #endif /* CHECKSUM_GEN_TCP */
 
   LWIP_DEBUGF(TCP_DEBUG, ("tcp_keepalive: sending KEEPALIVE probe to "));
@@ -1515,7 +1515,7 @@ tcp_keepalive(struct eth_fg *cur_fg,struct tcp_pcb *pcb)
     return;
   }
 #if CHECKSUM_GEN_TCP
-  tcphdr = (struct tcp_hdr *)p->payload;
+  tcphdr = (struct lwip_tcp_hdr *)p->payload;
 
   tcphdr->chksum = ipX_chksum_pseudo(PCB_ISIPV6(pcb), p, IP_PROTO_TCP, p->tot_len,
       &pcb->local_ip, &pcb->remote_ip);
@@ -1552,7 +1552,7 @@ tcp_zero_window_probe(struct eth_fg *cur_fg,struct tcp_pcb *pcb)
 {
 
   struct pbuf *p;
-  struct tcp_hdr *tcphdr;
+  struct lwip_tcp_hdr *tcphdr;
   struct tcp_seg *seg;
   u16_t len;
   u8_t is_fin;
@@ -1584,7 +1584,7 @@ tcp_zero_window_probe(struct eth_fg *cur_fg,struct tcp_pcb *pcb)
     LWIP_DEBUGF(TCP_DEBUG, ("tcp_zero_window_probe: no memory for pbuf\n"));
     return;
   }
-  tcphdr = (struct tcp_hdr *)p->payload;
+  tcphdr = (struct lwip_tcp_hdr *)p->payload;
 
   if (is_fin) {
     /* FIN segment, no data */

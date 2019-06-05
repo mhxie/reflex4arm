@@ -73,15 +73,15 @@
 /* Address Resolution Protocol (ARP) definitions */
 extern int arp_lookup_mac(struct ip_addr *addr, struct eth_addr *mac);
 extern int arp_insert(struct ip_addr *addr, struct eth_addr *mac);
-extern void arp_input(struct rte_mbuf *pkt, struct arp_hdr *hdr);
+extern void arp_input(struct rte_mbuf *pkt, struct lwip_arp_hdr *hdr);
 extern int arp_init(void);
 
 /* Internet Control Message Protocol (ICMP) definitions */
-extern void icmp_input(struct eth_fg *, struct rte_mbuf *pkt, struct icmp_hdr *hdr, int len);
+extern void icmp_input(struct eth_fg *, struct rte_mbuf *pkt, struct lwip_icmp_hdr *hdr, int len);
 
 /* Unreliable Datagram Protocol (UDP) definitions */
 extern void udp_input(struct mbuf *pkt, struct ip_hdr *iphdr,
-		      struct udp_hdr *udphdr);
+		      struct lwip_udp_hdr *udphdr);
 
 /* Transmission Control Protocol (TCP) definitions */
 /* FIXME: change when we integrate better with LWIP */

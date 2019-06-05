@@ -20,14 +20,20 @@
 # THE SOFTWARE.
 
 # A Makefile for libIX.
+uname_p := $(shell uname -p)
 
 DPDK	= ../deps/dpdk
-BUILD	= build
-DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common -I$(DPDK)/drivers/net/ixgbe
+ifeq ($(uname_p), x86_64)
+	BUILD = x86_64-native-linuxapp-gcc
+endif
+ifeq ($(uname_p), aarch64)
+	BUILD = arm64-native-linuxapp-gcc
+endif
+DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common # -I$(DPDK)/drivers/net/ixgbe
 
 INC	= -I. -I../inc $(DPDK_INC)
 CC 	= gcc
-CFLAGS	= -g -Wall -fno-omit-frame-pointer -O3 $(INC)
+CFLAGS	= -g -Wall -fno-omit-frame-pointer -O3 $(INC) -march=native
 AR	= ar
 
 SRCS	= main.c ixev.c ixev_timer.c

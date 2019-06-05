@@ -84,7 +84,7 @@
 #include "net.h"
 
 #define ARP_PKT_SIZE (sizeof(struct eth_hdr) +		\
-		      sizeof(struct arp_hdr) +		\
+		      sizeof(struct lwip_arp_hdr) +		\
 		      sizeof(struct arp_hdr_ethip))
 
 struct pending_pkt {
@@ -267,7 +267,7 @@ static int arp_send_pkt(uint16_t op,
 	int ret;
 	struct rte_mbuf *pkt;
 	struct eth_hdr *ethhdr;
-	struct arp_hdr *arphdr;
+	struct lwip_arp_hdr *arphdr;
 	struct arp_hdr_ethip *ethip;
 
 	pkt = mbuf_alloc_local();
@@ -275,7 +275,7 @@ static int arp_send_pkt(uint16_t op,
 		return -ENOMEM;
 
 	ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
-	arphdr = mbuf_nextd(ethhdr, struct arp_hdr *);
+	arphdr = mbuf_nextd(ethhdr, struct lwip_arp_hdr *);
 	ethip = mbuf_nextd(arphdr, struct arp_hdr_ethip *);
 
 	ethhdr->dhost = *target_mac;
@@ -309,7 +309,7 @@ static int arp_send_pkt(uint16_t op,
 }
 
 static int arp_send_response_reuse(struct rte_mbuf *pkt,
-				   struct arp_hdr *arphdr,
+				   struct lwip_arp_hdr *arphdr,
 				   struct arp_hdr_ethip *ethip)
 {
 	int ret;
@@ -344,14 +344,14 @@ static int arp_send_response_reuse(struct rte_mbuf *pkt,
  * @pkt: the packet
  * @hdr: the ARP header (inside the packet)
  */
-void arp_input(struct rte_mbuf *pkt, struct arp_hdr *hdr)
+void arp_input(struct rte_mbuf *pkt, struct lwip_arp_hdr *hdr)
 {
 	int op;
 	struct arp_hdr_ethip *ethip;
 	struct ip_addr sender_ip, target_ip;
 	bool am_target;
 
-	if (!mbuf_enough_space(pkt, hdr, sizeof(struct arp_hdr)))
+	if (!mbuf_enough_space(pkt, hdr, sizeof(struct lwip_arp_hdr)))
 		goto out;
 
 	/* make sure the arp header is valid */
