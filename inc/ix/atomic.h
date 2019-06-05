@@ -84,7 +84,9 @@
  */
 //#define wmb() _mm_sfence()
 
+#if defined(__x86_64__)
 #include <emmintrin.h>
+#endif
 
 #define ATOMIC_INIT(val) {(val)}
 

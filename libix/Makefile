@@ -33,7 +33,7 @@ DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common # -I$(DPDK
 
 INC	= -I. -I../inc $(DPDK_INC)
 CC 	= gcc
-CFLAGS	= -g -Wall -fno-omit-frame-pointer -O3 $(INC) -march=native
+CFLAGS	= -g -Wall -fno-omit-frame-pointer -O3 $(INC) -march=native # -mtune=cortex-a72 -mfpu=crypto-neon-fp-armv8
 AR	= ar
 
 SRCS	= main.c ixev.c ixev_timer.c

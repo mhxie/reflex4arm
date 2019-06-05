@@ -102,8 +102,9 @@ SPDK_LIBS=$(SPDK)/build/lib/libspdk_nvme.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_util.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_env_dpdk.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_log.a
-SPDK_LIBS+=$(SPDK)/build/lib/libspdk_sock.a #patch
-
+ifeq ($(uname_p), x86_64)
+SPDK_LIBS+=$(SPDK)/build/lib/libspdk_sock.a #temp patch
+endif
 IX_LIBS+=../libix/libix.a
 
 ix: $(DEPENDENCY) $(OBJS) # ix.ld
