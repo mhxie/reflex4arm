@@ -30,6 +30,7 @@
  */
 
 #include <sys/socket.h>
+#include <math.h>
 #include <rte_per_lcore.h>
 
 #include <ix/cfg.h>
@@ -49,6 +50,7 @@ static long global_ns_id = 1;
 static long global_ns_size = 1;
 static long global_ns_sector_size = 1;
 static long active_nvme_devices = 0;
+static int cpu_per_ssd = 1;
 // struct pci_dev *g_nvme_dev[CFG_MAX_NVMEDEV];
 
 #define MAX_OPEN_BATCH 32 
@@ -258,6 +260,9 @@ attach_cb(void *cb_ctx, struct spdk_pci_device *dev, struct spdk_nvme_ctrlr *ctr
 	bitmap_init(ioq_bitmap, MAX_NUM_IO_QUEUES, 0);
 	if (active_nvme_devices < CFG_MAX_NVMEDEV) {
 		nvme_ctrlr[active_nvme_devices++] = ctrlr;
+	} else {
+		panic("ERROR: only support %d nvme devices\n", CFG_MAX_NVMEDEV);
+		return -RET_INVAL;
 	}
 	cdata = spdk_nvme_ctrlr_get_data(ctrlr);
 
@@ -289,8 +294,12 @@ int init_nvmedev(void)
 {
 	// if (CFG.num_nvmedev > 1)
 	// 	printf("IX supports only one NVME device, ignoring all further devices\n");
-	if (CFG.num_nvmedev == 0)
+	if (CFG.num_nvmedev == 0) {
 		return 0;
+	} else if (CFG.num_nvmedev > cores_active) {
+		panic("ERROR: cores are fewer than SSDs\n");
+	}
+	cpu_per_ssd = ceil(cores_active / CFG.num_nvmedev);
 	// int i;
 	// const struct pci_addr *addr[CFG.num_nvmedev];
 	// struct pci_dev *dev[CFG.num_nvmedev];
@@ -324,7 +333,7 @@ int init_nvmeqp_cpu(void)
 	opts.io_queue_requests = 4096;
 
 	
-	percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(nvme_ctrlr[percpu_get(cpu_id)/2], &opts, sizeof(opts)); // FIXME: hardcoded mapping from CPU to SSDs
+	percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd], &opts, sizeof(opts)); // FIXME: naive mapping from CPU to SSDs
 	assert(percpu_get(qpair));
 	
 	return 0;
@@ -332,7 +341,7 @@ int init_nvmeqp_cpu(void)
 
 void nvmedev_exit(void)
 {
-	struct spdk_nvme_ctrlr *nvme = nvme_ctrlr[percpu_get(cpu_id)/2]; // FIXME: hardcoded mapping from CPU to SSDs
+	struct spdk_nvme_ctrlr *nvme = nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd]; // FIXME: naive mapping from CPU to SSDs
 	if (!nvme)
 		return;
 }
@@ -508,7 +517,7 @@ long bsys_nvme_open(long dev_id, long ns_id)
 	bitmap_init(nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS, 0);
 
 	percpu_get(open_ev[percpu_get(open_ev_ptr)++]) = ioq;
-	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/2], ns_id); // FIXME: hardcoded mapping from CPU to SSDs
+	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd], ns_id); // FIXME: naive mapping from CPU to SSDs
 	global_ns_size = spdk_nvme_ns_get_size(ns);
 	global_ns_sector_size = spdk_nvme_ns_get_sector_size(ns);
 	printf("NVMe device namespace size: %lu bytes, sector size: %lu\n", spdk_nvme_ns_get_size(ns), spdk_nvme_ns_get_sector_size(ns));
@@ -937,7 +946,7 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr, unsigned lo
 	void* paddr;
 	int ret;
 
-	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/2], global_ns_id);  // FIXME: hardcoded mapping from CPU to SSDs
+	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd], global_ns_id);  // FIXME: naive mapping from CPU to SSDs
 	ctx = alloc_local_nvme_ctx();
 	if (ctx == NULL) {
 		printf("ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_write\n");
@@ -995,7 +1004,7 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr, unsigned lon
 	unsigned int ns_sector_size;
 	int ret;
 	
-	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/2], global_ns_id);  // FIXME: hardcoded mapping from CPU to SSDs
+	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd], global_ns_id);  // FIXME: naive mapping from CPU to SSDs
 	
 	ctx = alloc_local_nvme_ctx();
 	if (ctx == NULL) {
@@ -1095,7 +1104,7 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf, int num_sgl
 	struct nvme_ctx *ctx;
 	int ret;
 	
-	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/2], global_ns_id);  // FIXME: hardcoded mapping from CPU to SSDs
+	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd], global_ns_id);  // FIXME: naive mapping from CPU to SSDs
 	
 	ctx = alloc_local_nvme_ctx();
 	if (ctx == NULL) {
@@ -1142,7 +1151,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf, int num_sgls
 	struct nvme_ctx *ctx;
 	int ret;
 	
-	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/2], global_ns_id);  // FIXME: hardcoded mapping from CPU to SSDs
+	ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd], global_ns_id);  // FIXME: naive mapping from CPU to SSDs
 	
 	ctx = alloc_local_nvme_ctx();
 	if (ctx == NULL) {

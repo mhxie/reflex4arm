@@ -260,6 +260,7 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 
 	memset(&dev_info, 0, sizeof(dev_info));
 	rte_eth_dev_info_get(port_id, &dev_info);
+	dev_conf->txmode.offloads &= dev_info.tx_offload_capa;
 
 	uint16_t mtu;
 		
