@@ -471,7 +471,7 @@ timer_calibrate_tsc(void)
 	struct timespec sleeptime = {.tv_nsec = 5E8 }; /* 1/2 second */
 	struct timespec t_start, t_end;
 
-	#if defined(__i386__)
+	#if defined(__i386__) || defined(__x86_64__)
 		cpu_serialize();
 	#endif
 	if (clock_gettime(CLOCK_MONOTONIC_RAW, &t_start) == 0) {
@@ -487,7 +487,7 @@ timer_calibrate_tsc(void)
 
 		secs = (double)ns / 1000;
 		cycles_per_us = (uint64_t)round((end - start) / secs);
-		log_info("timer: detected %d ticks per US\n", cycles_per_us);
+		log_info("timer: detected %d ticks per US (dpdk: %d)\n", cycles_per_us, rte_get_timer_hz()/1000UL/1000UL);
 		return 0;
 	}
 

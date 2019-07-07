@@ -84,7 +84,7 @@
  */
 //#define wmb() _mm_sfence()
 
-#if defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 #include <emmintrin.h>
 #endif
 

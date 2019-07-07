@@ -127,7 +127,7 @@ struct pp_conn {
 static struct mempool_datastore pp_conn_datastore;
 static __thread struct mempool pp_conn_pool;
 
-static __thread hqu_t handle; 
+static __thread hqu_t handle;
 
 
 static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason);
@@ -391,6 +391,11 @@ static void receive_req(struct pp_conn *conn)
 			//allocate lba_count sector sized nvme bufs
 			header = (BINARY_HEADER *)&conn->data_recv[0];
 			
+			if (header->magic != sizeof(BINARY_HEADER)) {
+				printf("The stored magic(%d) is not as expected(%d). cpu_nr: %d, cpu_id: %d\n", header->magic, sizeof(BINARY_HEADER), percpu_get(cpu_nr), percpu_get(cpu_id));
+			} else {
+				// printf("The stored magic is correct.\n");
+			}
 			assert(header->magic == sizeof(BINARY_HEADER));
 
 			num4k = (header->lba_count * ns_sector_size) / 4096;
@@ -466,7 +471,10 @@ static void receive_req(struct pp_conn *conn)
 		req->ctx.handle = handle;
 		req->conn = conn;
 
-		nvme_addr = (void*)(header->lba << 9); 
+		nvme_addr = (void*)(header->lba << 9);
+		if (nvme_addr >= ns_size) {
+			printf("nvme_addr: %lu is larger than ns_size: %lu.\n", (unsigned long)nvme_addr, ns_size);
+		}
 		assert((unsigned long)nvme_addr < ns_size);
 		
 		conn->in_flight_pkts++;
@@ -477,19 +485,26 @@ static void receive_req(struct pp_conn *conn)
 		switch (header->opcode) {
 		case CMD_SET:
 			ixev_set_nvme_handler(&req->ctx, IXEV_NVME_WR, &nvme_written_cb);
+			#ifndef NVME_ENABLE
+			nvme_written_cb(&req->ctx, IXEV_NVME_WR);
+			#else
 			//ixev_nvme_write(conn->nvme_fg_handle, req->buf[0], header->lba, header->lba_count, (unsigned long)&req->ctx);
 			ixev_nvme_writev(conn->nvme_fg_handle, (void**)&req->buf[0], num4k,
 					header->lba, header->lba_count, (unsigned long)&req->ctx);
+			#endif
 			conn->nvme_pending++;	
 			break;
 		case CMD_GET:
 			ixev_set_nvme_handler(&req->ctx, IXEV_NVME_RD, &nvme_response_cb);
-			// ixev_nvme_read(conn->nvme_fg_handle, req->buf[0], header->lba, header->lba_count, (unsigned long)&req->ctx);
+			#ifndef NVME_ENABLE
 			// printf("Received GET msg - early reply\n");
-			// nvme_response_cb(&req->ctx, IXEV_NVME_RD); // By passing the real call for now
+			nvme_response_cb(&req->ctx, IXEV_NVME_RD);
+			#else
+			// ixev_nvme_read(conn->nvme_fg_handle, req->buf[0], header->lba, header->lba_count, (unsigned long)&req->ctx);
 			ixev_nvme_readv(conn->nvme_fg_handle, (void**)&req->buf[0], num4k,
 					header->lba, header->lba_count, (unsigned long)&req->ctx);
-			conn->nvme_pending++;	
+			#endif
+			conn->nvme_pending++;
 			break;
 		default:
 			printf("Received illegal msg - dropping msg\n");
@@ -568,6 +583,26 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 			IOPS_SLO = 0;
 			rd_wr_ratio_SLO = 100;
 			break;
+		case 1238:
+			latency_us_SLO = 0; //best-effort
+			IOPS_SLO = 0;
+			rd_wr_ratio_SLO = 100;
+			break;
+		case 1239:
+			latency_us_SLO = 0; //best-effort
+			IOPS_SLO = 0;
+			rd_wr_ratio_SLO = 100;
+			break;
+		case 1240:
+			latency_us_SLO = 0; //best-effort
+			IOPS_SLO = 0;
+			rd_wr_ratio_SLO = 100;
+			break;
+		case 1241:
+			latency_us_SLO = 0; //best-effort
+			IOPS_SLO = 0;
+			rd_wr_ratio_SLO = 100;
+			break;
 		case 5678: 
 			latency_us_SLO = 1000; //latency-critical
 			IOPS_SLO = 120000;
@@ -588,7 +623,9 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 	 * Current hack: associate a port with an SLO (defined in case statement above)
 	 * Client communicates with server using dst_port that corresponds to its SLO
 	 */
+	printf("The id->dst_port is %d.\n", id->dst_port);
 	ixev_nvme_register_flow(id->dst_port, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
+	
 	return &conn->ctx;
 }
 

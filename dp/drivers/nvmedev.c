@@ -45,6 +45,8 @@
 #include <spdk/nvme.h>
 #include <limits.h>
 
+// #define NO_SCHED
+
 static struct spdk_nvme_ctrlr *nvme_ctrlr[CFG_MAX_NVMEDEV] = {NULL};
 static long global_ns_id = 1;
 static long global_ns_size = 1;
@@ -297,9 +299,12 @@ int init_nvmedev(void)
 	if (CFG.num_nvmedev == 0) {
 		return 0;
 	} else if (CFG.num_nvmedev > cores_active) {
-		panic("ERROR: cores are fewer than SSDs\n");
+		// panic("ERROR: cores are fewer than SSDs\n");
+		printf("WARNING: %d nvme devices are not available.\n", CFG.num_nvmedev - cores_active);
 	}
-	cpu_per_ssd = ceil(cores_active / CFG.num_nvmedev);
+	
+	cpu_per_ssd = ceil((double)cores_active / CFG.num_nvmedev); // #core should be a multiple of #nvme devices
+	printf("Each SSD will be processed by %d cores.", cpu_per_ssd);
 	// int i;
 	// const struct pci_addr *addr[CFG.num_nvmedev];
 	// struct pci_dev *dev[CFG.num_nvmedev];
@@ -837,7 +842,7 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
 		 * Default way to procede here is to overwrite the whole tenant's SLO with the new one 
 		 *
 		 */
-		printf("warning: tenant connection registered different SLO, will overwrite previous SLO for all of this tenant's connections. 1 SLO per tenant.\n");
+		printf("WARNING: tenant connection registered different SLO, will overwrite previous SLO for all of this tenant's connections. 1 SLO per tenant.\n");
 		nvme_fg->scaled_IOPuS_limit = nvme_fg->scaled_IOPS_limit / (double) 1E6; 
 	}
 	
@@ -852,7 +857,7 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
 		nvme_fg->scaled_IOPuS_limit = nvme_fg->scaled_IOPS_limit / (double) 1E6; 
 		ret = recalculate_weights_add(fg_handle); 
 		if (ret < 0) {
-			printf("warning: cannot satisfy SLO\n"); 
+			printf("WARNING: cannot satisfy SLO\n"); 
 			return -RET_CANTMEETSLO;
 		}
 
@@ -1071,7 +1076,7 @@ static int sgl_next_cb(void *cb_arg, uint64_t *address, uint32_t *length)
 	if (ctx->user_buf.sgl_buf.current_sgl >= ctx->user_buf.sgl_buf.num_sgls) {
 		*address = 0;
 		*length = 0;
-		printf("Warning: nvme req size mismatch\n"); 
+		printf("WARNING: nvme req size mismatch\n"); 
 		assert(0);
 	}
 	else {

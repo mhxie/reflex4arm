@@ -81,7 +81,7 @@
 
 #define MSR_PKG_ENERGY_STATUS 0x00000611
 
-#if defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 
 	#define cpu_relax() asm volatile("pause")
 
