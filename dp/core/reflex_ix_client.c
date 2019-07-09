@@ -114,7 +114,8 @@ static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 25000, 30000, //1000
 //fixme: hard-coding sector size for now
 static int ns_sector_size = 512;
 //fixme: hard-coding namespace size for device tested
-static long ns_size = 0x37E3EE56000;	// Samsung 1721
+static long ns_size = 0xE8E0DB6000;	// Samsung a801
+// static long ns_size = 0x37E3EE56000;	// Samsung 1721
 // static long ns_size = 0x1749a956000;    // Samsung 1725 
 // static long ns_size = 0x5d27216000;  // Intel P3600 400GB capacity 
 
@@ -337,10 +338,10 @@ static void receive_req(struct pp_conn *conn)
 
 		if (!SWEEP && qdepth) {
 			time(&curr_time);
-			report_cond = difftime(curr_time, start_time) > run_time && tid == 0 && num_measured_reads != 0;
+			report_cond = difftime(curr_time, start_time) > run_time && tid == nr_threads-1 && num_measured_reads != 0;
 			terminate_cond = difftime(curr_time, start_time) > run_time;
 		} else {
-			report_cond = measure == NUM_MEASURE * 2 && tid == 0 && num_measured_reads != 0;
+			report_cond = measure == NUM_MEASURE * 2 && tid == nr_threads-1 && num_measured_reads != 0;
 			terminate_cond = measure == NUM_MEASURE * 3;
 		}	
 
@@ -362,9 +363,10 @@ static void receive_req(struct pp_conn *conn)
 				target_IOPS = global_target_IOPS; 
 			}
 
+			printf("RqIOPS:\t IOPS:\t Avg:\t 10th:\t 20th:\t 30th:\t 40th:\t 50th:\t 60th:\t 70th:\t 80th:\t 90th:\t 95th:\t 99th:\t max:\t missed:\n");
 			printf("%lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\n",
 			       target_IOPS,
-			       nr_threads * (NUM_MEASURE * usecs) / ((rdtsc() - phase_start) / cycles_per_us),
+			       nr_threads * (NUM_MEASURE * usecs) / ((rdtsc() - phase_start) / cycles_per_us), // HELPME
 			       avg/num_measured_reads, 
 			       get_percentile(measurements, num_measured_reads, 10),
 			       get_percentile(measurements, num_measured_reads, 20),
@@ -382,7 +384,7 @@ static void receive_req(struct pp_conn *conn)
 		}
 
 		if (terminate_cond) {
-			printf("debug: terminating\n");
+			printf("CPU %d: debug: terminating\n", percpu_get(cpu_nr));
 			if (!qdepth) assert(sent == NUM_MEASURE * 3); // HELPME
 			terminate = true;
 			measure = 0;
@@ -414,6 +416,7 @@ int send_client_req(struct nvme_req *req)
 	int ret = 0;
 	BINARY_HEADER *header;
 	
+	assert(conn);
 	if(!conn->tx_pending){
 		//setup header
 		header = (BINARY_HEADER *)&conn->data_send[0];
@@ -439,7 +442,9 @@ int send_client_req(struct nvme_req *req)
 			}
 			conn->tx_sent += ret;
 		}
-	
+		if(conn->tx_sent!=sizeof(BINARY_HEADER)) {
+			printf("tx_sent is %d, header is %d, last ret is %d.\n", conn->tx_sent, sizeof(BINARY_HEADER), ret);
+		}
 		assert(conn->tx_sent==sizeof(BINARY_HEADER));
 		conn->tx_pending = true;
 		conn->tx_sent = 0;
@@ -498,7 +503,8 @@ void send_handler(void * arg, int num_req)
 	unsigned long now;
 	int ssents = 0;
 
-	int send_cond, measure_cond; 
+	int send_cond;
+	int measure_cond; //
 	if (!SWEEP && qdepth) {
 		time(&curr_time);
 		if (difftime(curr_time, start_time) > run_time)
@@ -571,14 +577,13 @@ void send_handler(void * arg, int num_req)
 		}
 		
 		if (measure_cond) {
-			//missed send?
-			if ((rdtsc() - last_send)  > (cycles_between_req * 105)/100) {  // why hardcoded here
+			if ((rdtsc() - last_send)  > (cycles_between_req * 110)/100) {  // 10% more latency then expected
 				missed_sends++;
 			}
 		}
 
 
-		req->sent_time = rdtsc();
+		// req->sent_time = rdtsc(); // duplicate?
 		last_send = now;
 		sent++;
 
@@ -614,14 +619,11 @@ static void pp_dialed(struct ixev_ctx *ctx, long ret)
 	
 	ixev_set_handler(&conn->ctx, IXEVIN | IXEVOUT | IXEVHUP, &main_handler);
 	running = true;
-	if (tid == 0){
-		printf("RqIOPS:\t IOPS:\t Avg:\t 10th:\t 20th:\t 30th:\t 40th:\t 50th:\t 60th:\t 70th:\t 80th:\t 90th:\t 95th:\t 99th:\t max:\t missed:\n");
-	}
+	printf("Tenant %d is dialed.\n", tid);
 	
 	conn_opened++;
 
-	while(rdtsc() < now + 1000000) {} 
-	
+	while(rdtsc() < now + 1000000) {}
 	return; 
 }
 
@@ -629,8 +631,8 @@ static void pp_release(struct ixev_ctx *ctx)
 {
 	struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
 	conn_opened--;
-	if(conn_opened==0)
-		printf("Tid: %lx All connections released handle %lx open conns still %i\n", pthread_self(), conn->ctx.handle, conn_opened);
+	// if(conn_opened==0)
+	// 	printf("Tid: %lx All connections released handle %lx open conns still %i\n", pthread_self(), conn->ctx.handle, conn_opened);
 	mempool_free(&pp_conn_pool, conn);
 	terminate = true;
 	running = false;
@@ -708,6 +710,7 @@ static void* receive_loop(void *arg)
 	flags = fcntl(STDIN_FILENO, F_GETFL, 0);
 	fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 
+	sleep(tid*5); // try to serialize
 	ixev_dial(&conn->ctx, ip_tuple[tid]);
 	if (preconditioning)
 		SWEEP = 0;
@@ -726,13 +729,15 @@ static void* receive_loop(void *arg)
 			NUM_MEASURE = sweep[i] * DURATION / nr_threads;
 		}
 		else { 
-			cycles_between_req = ((unsigned long)cycles_per_us * 1000UL * 1000UL * nr_threads) / global_target_IOPS;	
+			cycles_between_req = ((unsigned long)cycles_per_us * 1000UL * 1000UL * nr_threads) / global_target_IOPS;
 			NUM_MEASURE = global_target_IOPS * DURATION / nr_threads;
 		}
+		if (tid == 0)
+			printf("Test round %d: cycles between requests is %lu(%d us/request, DDL: %lu), NUM_MEASURE is %d.\n", i, cycles_between_req, cycles_between_req/cycles_per_us, cycles_between_req+cycles_between_req/10, NUM_MEASURE);
 		assert(NUM_MEASURE <= MAX_NUM_MEASURE);
 		if (preconditioning) //write each lba once
 			NUM_MEASURE = (ns_size / ns_sector_size) / req_size;
-		pthread_barrier_wait(&barrier);
+		pthread_barrier_wait(&barrier); // caution
 	 
 		time(&start_time);
 		//---
@@ -770,7 +775,7 @@ int reflex_client_main(int argc, char *argv[])
 	unsigned int pp_conn_pool_entries;
 	int nr_cpu, req_size_bytes;
 	pthread_t thread[64];
-	int tid[64];
+	int tid[64]; // why
  	int i;
 	
 	sleep(10);
@@ -921,7 +926,7 @@ int reflex_client_main(int argc, char *argv[])
 		return ret;
 	}
 
-       	/*
+    /*
 	sys_spawnmode(true);
 	for (int i = 1; i < nr_threads; i++) {
 		tid[i] = i;
@@ -936,7 +941,7 @@ int reflex_client_main(int argc, char *argv[])
 		//ret = pthread_create(&tid, NULL, start_cpu, (void *)(unsigned long) i);
 		log_info("rte_eal_remote_launch...receive_loop\n");
 		tid[i] = i;
-		//ret = rte_eal_remote_launch(receive_loop, (void *)(unsigned long) i, i);		
+		// ret = rte_eal_remote_launch(receive_loop, (void *)(unsigned long) i, i);	
 		ret = rte_eal_remote_launch(receive_loop, &tid[i], i);		
 
 		if (ret) {
