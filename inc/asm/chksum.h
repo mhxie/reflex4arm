@@ -72,7 +72,7 @@ static inline uint16_t chksum_internet(const char *buf, int len)
 {
 	__uint64_t sum = 0; // 64bit
 	// printf("Calculating chksum, buf is %s, len is %d\n", buf, len);
-	#if defined(__i386__)
+	#if defined(__i386__) || defined(__x86_64__)
 	asm volatile("xorq %0, %0\n"
 
 		     /* process 8 byte chunks */

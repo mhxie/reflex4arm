@@ -240,7 +240,7 @@ tcp_input(struct eth_fg *cur_fg, struct pbuf *p, ipX_addr_t *cur_src_addr, ipX_a
   /* Verify TCP checksum. */
   chksum = ipX_chksum_pseudo(ip_current_is_v6(), p, IP_PROTO_TCP, p->tot_len,
                              ipX_current_src_addr(), ipX_current_dest_addr());
-  if (chksum != 0) {
+  if (chksum != lwip_context.tcphdr->chksum) { // FIXME: use not equal zero with better APIs
 	  LWIP_DEBUGF(TCP_INPUT_DEBUG, ("tcp_input: packet discarded due to failing checksum 0x%04"X16_F"\n",
 					chksum));
 	  tcp_debug_print(lwip_context.tcphdr);

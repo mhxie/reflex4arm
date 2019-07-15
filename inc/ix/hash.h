@@ -67,7 +67,7 @@
 
 static inline uint64_t __mm_crc32_u64(uint64_t crc, uint64_t val)
 {
-	#if defined(__i386__)
+	#if defined(__i386__) || defined(__x86_64__)
 		asm("crc32q %1, %0" : "+r"(crc) : "rm"(val));
 	#elif defined(__aarch64__)
 		asm("crc32cx %w[crc], %w[crc], %x[value]" : [crc] "+r"(crc) : [value] "r" (val));

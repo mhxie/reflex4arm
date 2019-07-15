@@ -64,19 +64,19 @@
 #define MEM_LIBC_MALLOC 1
 #define MEMP_MEM_MALLOC 1
 
-#ifdef MQ_DEBUG
+
 #define	LWIP_DEBUG		LWIP_DBG_ON
 // #undef LWIP_DEBUG
 #define	TCP_CWND_DEBUG		LWIP_DBG_OFF
-#define	TCP_DEBUG		LWIP_DBG_ON
+#define	TCP_DEBUG		    LWIP_DBG_OFF
 #define	TCP_FR_DEBUG		LWIP_DBG_OFF
-#define	TCP_INPUT_DEBUG		LWIP_DBG_ON
-#define	TCP_OUTPUT_DEBUG	LWIP_DBG_ON
+#define	TCP_INPUT_DEBUG		LWIP_DBG_OFF
+#define	TCP_OUTPUT_DEBUG	LWIP_DBG_OFF
 #define	TCP_QLEN_DEBUG		LWIP_DBG_OFF
 #define	TCP_RST_DEBUG		LWIP_DBG_OFF
 #define	TCP_RTO_DEBUG		LWIP_DBG_OFF
 #define	TCP_WND_DEBUG		LWIP_DBG_OFF
-#endif
+
 
 
 #include <ix/stddef.h>
@@ -107,8 +107,8 @@
 //#define TCP_WND  (2048 * 1460) //Not sure what correct TCP_WND setting should be
 #define TCP_WND 1<<15
 
-#define CHECKSUM_CHECK_IP               0
-#define CHECKSUM_CHECK_TCP              0
+#define CHECKSUM_CHECK_IP               1
+#define CHECKSUM_CHECK_TCP              1
 #define TCP_ACK_DELAY (1 * ONE_MS)
 #define RTO_UNITS (500 * ONE_MS)
 

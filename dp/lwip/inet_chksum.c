@@ -355,7 +355,7 @@ inet_cksum_pseudo_base(struct pbuf *p, u8_t proto, u16_t proto_len, u32_t acc)
 static __inline unsigned short 
 in_pseudo(unsigned int sum, unsigned int b, unsigned int c) 
 {
-  #if defined(__i386__)    
+  #if defined(__i386__) || defined(__x86_64__)
     __asm(
       "addl %1, %0\n" 
       "adcl %2, %0\n" 

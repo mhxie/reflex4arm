@@ -936,6 +936,7 @@ int tcp_output_packet(struct eth_fg *cur_fg, struct tcp_pcb *pcb, struct pbuf *p
 	pkt->ol_flags = PKT_TX_IP_CKSUM;
 	pkt->ol_flags |= PKT_TX_TCP_CKSUM;
 	pkt->ol_flags |= PKT_TX_IPV4;
+	pkt->ol_flags |= PKT_TX_TCP_SEG; // if DEV_TX_OFFLOAD_TCP_TSO
 
 	pkt->l2_len = sizeof (struct eth_hdr);
 	pkt->l3_len = sizeof (struct ip_hdr);

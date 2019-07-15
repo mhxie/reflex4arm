@@ -167,7 +167,11 @@ static struct rte_eth_conf default_eth_conf = {
 		// .hw_vlan_filter = 0, /**< VLAN filtering disabled */
 		// .jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
 		// .hw_strip_crc   = 1, /**< CRC stripped by hardware */
-        .offloads = DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_JUMBO_FRAME
+		// .offloads = DEV_RX_OFFLOAD_JUMBO_FRAME
+        // .offloads = DEV_RX_OFFLOAD_CHECKSUM    |
+		.offloads = DEV_RX_OFFLOAD_IPV4_CKSUM  |
+					DEV_RX_OFFLOAD_TCP_CKSUM   |
+					DEV_RX_OFFLOAD_JUMBO_FRAME,
 					// | DEV_RX_OFFLOAD_CRC_STRIP, // newly added
 		// .mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
 	},
@@ -186,12 +190,12 @@ static struct rte_eth_conf default_eth_conf = {
 	// },
 	.txmode = {
 		.mq_mode = ETH_MQ_TX_NONE,
-		.offloads = DEV_TX_OFFLOAD_VLAN_INSERT |
-					DEV_TX_OFFLOAD_IPV4_CKSUM  |
-					DEV_TX_OFFLOAD_UDP_CKSUM   |
-					DEV_TX_OFFLOAD_TCP_CKSUM   |
-					DEV_TX_OFFLOAD_SCTP_CKSUM  |
+		.offloads = DEV_TX_OFFLOAD_IPV4_CKSUM	|
+					DEV_TX_OFFLOAD_TCP_CKSUM	|
 					DEV_TX_OFFLOAD_TCP_TSO,
+					// DEV_TX_OFFLOAD_VLAN_INSERT |
+					// DEV_TX_OFFLOAD_UDP_CKSUM   |
+					// DEV_TX_OFFLOAD_SCTP_CKSUM,
 	},
 	// .fdir_conf = {
 	// 	.mode = RTE_FDIR_MODE_PERFECT, 
@@ -261,9 +265,16 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 	memset(&dev_info, 0, sizeof(dev_info));
 	rte_eth_dev_info_get(port_id, &dev_info);
 	dev_conf->txmode.offloads &= dev_info.tx_offload_capa;
+	dev_conf->rxmode.offloads &= dev_info.rx_offload_capa;
 
 	uint16_t mtu;
-		
+
+	if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_TCP_CKSUM) {
+		printf("TX TCP checksum offloading is supported\n");
+	} else {
+		// enable software checksum
+	}
+
 	// if (dev_conf->rxmode.jumbo_frame) {
 	// 	dev_conf->rxmode.max_rx_pkt_len = 9000 + ETHER_HDR_LEN + ETHER_CRC_LEN;
 	// }
