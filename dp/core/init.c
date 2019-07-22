@@ -61,6 +61,7 @@
 #include <rte_launch.h>
 #include <rte_atomic.h>
 #include <rte_ethdev.h>
+#include <rte_version.h>
 
 #include <pthread.h>
 #include <stdio.h>
@@ -162,17 +163,20 @@ static struct rte_eth_conf default_eth_conf = {
 	.rxmode = {
 		.max_rx_pkt_len = 9128, /**< use this for jumbo frame */
 		.split_hdr_size = 0,
-		// .header_split   = 0, /**< Header Split disabled */
-		// .hw_ip_checksum = 1, /**< IP/UDP/TCP checksum offload enable. */
-		// .hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		// .jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
+		#if (RTE_VER_YEAR <= 18) && (RTE_VER_MONTH < 8)
+		.header_split   = 0, /**< Header Split disabled */
+		.hw_ip_checksum = 0, /**< IP/UDP/TCP checksum offload enable. */
+		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
+		.jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
 		// .hw_strip_crc   = 1, /**< CRC stripped by hardware */
-		// .offloads = DEV_RX_OFFLOAD_JUMBO_FRAME
-        // .offloads = DEV_RX_OFFLOAD_CHECKSUM    |
-		.offloads = DEV_RX_OFFLOAD_IPV4_CKSUM  |
-					DEV_RX_OFFLOAD_TCP_CKSUM   |
+		#else
+        .offloads =
+		#if (RTE_VER_YEAR <= 18) && (RTE_VER_MONTH < 11)
+					DEV_RX_OFFLOAD_CRC_STRIP	|
+		#endif
+					DEV_RX_OFFLOAD_CHECKSUM		|
 					DEV_RX_OFFLOAD_JUMBO_FRAME,
-					// | DEV_RX_OFFLOAD_CRC_STRIP, // newly added
+		#endif
 		// .mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
 	},
 	// .rx_adv_conf = {
@@ -191,8 +195,8 @@ static struct rte_eth_conf default_eth_conf = {
 	.txmode = {
 		.mq_mode = ETH_MQ_TX_NONE,
 		.offloads = DEV_TX_OFFLOAD_IPV4_CKSUM	|
-					DEV_TX_OFFLOAD_TCP_CKSUM	|
-					DEV_TX_OFFLOAD_TCP_TSO,
+					DEV_TX_OFFLOAD_TCP_CKSUM,
+					// DEV_TX_OFFLOAD_TCP_TSO		|
 					// DEV_TX_OFFLOAD_VLAN_INSERT |
 					// DEV_TX_OFFLOAD_UDP_CKSUM   |
 					// DEV_TX_OFFLOAD_SCTP_CKSUM,
@@ -275,6 +279,7 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 		// enable software checksum
 	}
 
+	// Already checked by underlying codes
 	// if (dev_conf->rxmode.jumbo_frame) {
 	// 	dev_conf->rxmode.max_rx_pkt_len = 9000 + ETHER_HDR_LEN + ETHER_CRC_LEN;
 	// }

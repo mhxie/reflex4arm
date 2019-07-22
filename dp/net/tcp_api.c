@@ -178,6 +178,8 @@ static inline hid_t tcpapi_to_handle(struct eth_fg *cur_fg, struct tcpapi_pcb *p
 static void recv_a_pbuf(struct tcpapi_pcb *api, struct pbuf *p)
 {
 	struct rte_mbuf *pkt;
+	uint64_t rx_ol_flags, tx_ol_flags;
+
 	MEMPOOL_SANITY_LINK(api, p);
 
 	// Walk through the full receive chain 
@@ -185,7 +187,17 @@ static void recv_a_pbuf(struct tcpapi_pcb *api, struct pbuf *p)
 		pkt = p->mbuf;
 		pkt->pkt_len = p->len; // repurpose len for recv_done 
 		pkt->data_len = p->len; // repurpose len for recv_done 
-	
+
+		#ifdef TCP_INPUT_DEBUG
+		rx_ol_flags = pkt->ol_flags;
+
+		if ((rx_ol_flags & PKT_RX_IP_CKSUM_MASK) == PKT_RX_IP_CKSUM_BAD)
+			printf("Got an IP packet with bad chksum.\n");
+		
+		if ((rx_ol_flags & PKT_RX_L4_CKSUM_MASK) == PKT_RX_L4_CKSUM_BAD)
+			printf("Got a TCP packet with bad chksum.\n");
+		#endif
+		
 		usys_tcp_recv(api->handle, api->cookie, p->payload, p->len);
 
 		p = p->next;
@@ -933,10 +945,9 @@ int tcp_output_packet(struct eth_fg *cur_fg, struct tcp_pcb *pcb, struct pbuf *p
 	iphdr->dest.addr = pcb->remote_ip.addr;
 
 	// Offload IP and TCP tx checksums 
-	pkt->ol_flags = PKT_TX_IP_CKSUM;
+	pkt->ol_flags |= PKT_TX_IP_CKSUM | PKT_TX_IPV4;
 	pkt->ol_flags |= PKT_TX_TCP_CKSUM;
-	pkt->ol_flags |= PKT_TX_IPV4;
-	pkt->ol_flags |= PKT_TX_TCP_SEG; // if DEV_TX_OFFLOAD_TCP_TSO
+	// pkt->ol_flags |= PKT_TX_TCP_SEG; // if DEV_TX_OFFLOAD_TCP_TSO
 
 	pkt->l2_len = sizeof (struct eth_hdr);
 	pkt->l3_len = sizeof (struct ip_hdr);

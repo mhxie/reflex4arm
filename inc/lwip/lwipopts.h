@@ -108,7 +108,7 @@
 #define TCP_WND 1<<15
 
 #define CHECKSUM_CHECK_IP               1
-#define CHECKSUM_CHECK_TCP              1
+#define CHECKSUM_CHECK_TCP              0
 #define TCP_ACK_DELAY (1 * ONE_MS)
 #define RTO_UNITS (500 * ONE_MS)
 
