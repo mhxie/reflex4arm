@@ -62,6 +62,10 @@ ifneq ($(MQ_DEBUG),)  # debug flag for multi-core/multi-queue issue
 CFLAGS += -DMQ_DEBUG
 endif
 
+ifneq ($(CLI_DEBUG),)  # debug flag for multi-core/multi-queue issue
+CFLAGS += -DCLI_DEBUG
+endif
+
 ifneq ($(ENABLE_KSTATS),)
 CFLAGS += -DENABLE_KSTATS
 endif
