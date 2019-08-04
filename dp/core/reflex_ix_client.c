@@ -141,7 +141,7 @@ static int req_size = 1024;
 static volatile int nr_threads = 1;
 static unsigned long iops = 0;
 static int sequential = 0;
-static int verify = 0;
+static int verify = 1; // read write verification
 struct ip_tuple *ip_tuple[64];
 static int read_percentage = 100;
 static int SWEEP = 1;
@@ -233,7 +233,7 @@ struct pp_conn {
 	long sent_pkts;
 	long list_len;
 	bool receive_loop;
-	unsigned long seq_count;
+	unsigned long last_count; //aka seq_count when verify = 0
 	struct list_head pending_requests;
 	long nvme_fg_handle; 		//nvme flow group handle
 	char data[4096 + sizeof(BINARY_HEADER)];
@@ -315,9 +315,11 @@ static void receive_req(struct pp_conn *conn)
 							last_req_buf,
 							req_size*ns_sector_size) == 0)
 				{
-					printf("Request %d: verification passed.\n", sent);
+					#ifdef CLI_DEBUG
+					printf("Request %d: verification passed (@%p).\n", sent, last_req_buf);
+					#endif
 				} else {
-					printf("Request %d: got different data from the server.\n", sent);
+					printf("Request %d: got different data (@%p) from the server.\n", sent, last_req_buf);
 				}
 			}
 		}
@@ -361,9 +363,6 @@ static void receive_req(struct pp_conn *conn)
 			}
 			last_req_buf = req->buf;
 		} else {
-			#if CLI_DEBUG
-			printf("Now the req->buf %p is being freed.\n", req->buf);
-			#endif
 			mempool_free(&nvme_req_buf_pool, req->buf);
 		}
 		mempool_free(&req_pool, req);
@@ -603,22 +602,35 @@ void send_handler(void * arg, int num_req)
 		
 		if (verify) {
 			if (sent % 2) {
+				#ifdef CLI_DEBUG
 				printf("Sending GET to verify...\n");
+				#endif
 				req->cmd = CMD_GET;
 			} else {
+				#ifdef CLI_DEBUG
 				printf("Sending SET to initialize...\n");
+				#endif
 				req->cmd = CMD_SET;
 			}
 		}
 		//only do aligned accesses
 		if (!sequential) {
-			req->lba = rand() % (ns_size >> intlog2(ns_sector_size));
-			//align
-			req->lba = req->lba & ~7;
+			if (!(verify && sent % 2)) {
+				req->lba = rand() % (ns_size >> intlog2(ns_sector_size));
+				//align
+				req->lba = req->lba & ~7;
+				conn->last_count = req->lba;
+			} else {
+				req->lba = conn->last_count;
+			}
 		} else {
-			conn->seq_count += req_size;
-			req->lba = conn->seq_count;
-			assert (req->lba < ns_size / ns_sector_size);
+			if (!(verify && sent % 2))
+				conn->last_count += req_size; // add when SET
+			req->lba = conn->last_count;
+			if (req->lba >= ns_size / ns_sector_size) {
+				req->lba %= ns_size / ns_sector_size;
+				conn->last_count = req->lba;
+			}
 			if ((req->lba % (((ns_size / ns_sector_size) / req_size)/ 100)) == 0)
 				printf("lba %lu %lu %lu\n", req->lba, NUM_MEASURE, ns_size / ns_sector_size);
 		}
@@ -757,7 +769,8 @@ static void* receive_loop(void *arg)
 	conn->sent_pkts = 0x0UL;
 	conn->list_len = 0x0UL;
 	conn->receive_loop = true;
-	conn->seq_count = 0;
+	conn->last_count = rand() % (ns_size >> intlog2(ns_sector_size)); // random start
+	conn->last_count = conn->last_count & ~7; // align
 	
 	ixev_ctx_init(&conn->ctx);
 	
@@ -855,15 +868,12 @@ int reflex_client_main(int argc, char *argv[])
 			case 'p' :
 				port = atoi(optarg);
 				break;
-                        case 'w' :
+            case 'w' :
 				if (strcmp(optarg, "seq") == 0)
 					sequential = 1;
 				else if (strcmp(optarg, "rand") == 0)
 					sequential = 0;
-				else if (strcmp(optarg, "veri") == 0)
-					verify = sequential = 1;
 				else {
-					verify = 0;
 					sequential = 0;
 					printf("WARNING: invalid workload type, use random by default\n");
 				}
@@ -885,7 +895,7 @@ int reflex_client_main(int argc, char *argv[])
                                 if (req_size_bytes % ns_sector_size != 0){
                                         printf("WARNING: request size should be multiple of sector size\n");
                                 }
-				req_size = req_size_bytes / ns_sector_size;
+								req_size = req_size_bytes / ns_sector_size;
                                 break;
                         case 'P' :
                                 preconditioning = atoi(optarg);
