@@ -137,11 +137,11 @@ static struct mempool_datastore nvme_usr_datastore;
 static const int outstanding_reqs = 512; // 4096 * 8; // HELPME
 static volatile int started_conns = 0;
 static pthread_barrier_t barrier;
-static int req_size = 1024;
+static int req_size = 2; // in lbas, 1024 bytes
 static volatile int nr_threads = 1;
 static unsigned long iops = 0;
 static int sequential = 0;
-static int verify = 1; // read write verification
+static int verify = 0; // read write verification
 struct ip_tuple *ip_tuple[64];
 static int read_percentage = 100;
 static int SWEEP = 1;
@@ -359,6 +359,13 @@ static void receive_req(struct pp_conn *conn)
 		if (verify && header->opcode == CMD_SET) {
 			// save last buf
 			if (last_req_buf != NULL) {
+				#ifdef CLI_DEBUG
+				if(strncmp(	req->buf,
+							last_req_buf,
+							req_size*ns_sector_size) == 0) {
+					printf("WARNING: writing same data (@%p) with last request (@%p).\n", req->buf, last_req_buf);
+				}
+				#endif
 				mempool_free(&nvme_req_buf_pool, last_req_buf);
 			}
 			last_req_buf = req->buf;
@@ -586,6 +593,14 @@ void send_handler(void * arg, int num_req)
 
 		req->buf = mempool_alloc(&nvme_req_buf_pool);
 		#ifdef CLI_DEBUG
+		const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWZYZ";
+		if (verify) { // generate random data to write
+			int size = req_size*ns_sector_size;
+			for (size_t i = 0; i < size; i++) {
+				int key = rand() % (int) (sizeof charset - 1);
+				req->buf[i] = charset[key];
+			}
+		}
 		if (!req->buf) {
 			printf("NVME_REQ_BUF: MEMPOOL ALLOC FAILED !\n");
 			return NULL;
@@ -616,6 +631,7 @@ void send_handler(void * arg, int num_req)
 		//only do aligned accesses
 		if (!sequential) {
 			if (!(verify && sent % 2)) {
+
 				req->lba = rand() % (ns_size >> intlog2(ns_sector_size));
 				//align
 				req->lba = req->lba & ~7;
@@ -627,10 +643,14 @@ void send_handler(void * arg, int num_req)
 			if (!(verify && sent % 2))
 				conn->last_count += req_size; // add when SET
 			req->lba = conn->last_count;
+			#ifdef CLI_DEBUG
+			printf("Requesting lba @%lu\n", req->lba);
+			#endif
 			if (req->lba >= ns_size / ns_sector_size) {
 				req->lba %= ns_size / ns_sector_size;
 				conn->last_count = req->lba;
 			}
+			
 			if ((req->lba % (((ns_size / ns_sector_size) / req_size)/ 100)) == 0)
 				printf("lba %lu %lu %lu\n", req->lba, NUM_MEASURE, ns_size / ns_sector_size);
 		}
@@ -643,7 +663,7 @@ void send_handler(void * arg, int num_req)
 		}
 		
 		if (measure_cond) {
-			if ((rdtsc() - last_send)  > (cycles_between_req * 110)/100) {  // 10% more latency then expected
+			if ((rdtsc() - last_send)  > (cycles_between_req * 105)/100) {
 				missed_sends++;
 			}
 		}
@@ -769,6 +789,7 @@ static void* receive_loop(void *arg)
 	conn->sent_pkts = 0x0UL;
 	conn->list_len = 0x0UL;
 	conn->receive_loop = true;
+	srand(rdtsc());
 	conn->last_count = rand() % (ns_size >> intlog2(ns_sector_size)); // random start
 	conn->last_count = conn->last_count & ~7; // align
 	
