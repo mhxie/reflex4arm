@@ -234,6 +234,10 @@ int parse_cfg_fdir_rules(uint8_t port_id)
 		uint16_t queue;                                    // Technically queue should be uint8_t, but calling
 		config_setting_lookup_int(entry, "queue", &queue); // config_setting_lookup_int on that overwrites stack.
 		printf("\tqueue %u\n", queue);
+		if (queue >= CFG.num_cpus) {
+			printf("Skipping invalid fdir at queue %d\n", queue);
+			continue;
+		}
 		
 		uint8_t drop = 0; // Currently hardcoded to zero, adding drop field/rules in cfg would be possible.
 		uint8_t soft_id = i;
