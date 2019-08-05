@@ -188,6 +188,10 @@ static void recv_a_pbuf(struct tcpapi_pcb *api, struct pbuf *p)
 		pkt->pkt_len = p->len; // repurpose len for recv_done 
 		pkt->data_len = p->len; // repurpose len for recv_done 
 
+		if (pkt->ol_flags & PKT_RX_TIMESTAMP) {
+			printf("A new packet arrived at %"PRIu64".\n", pkt->timestamp);
+		}
+		
 		#ifdef TCP_INPUT_DEBUG
 		rx_ol_flags = pkt->ol_flags;
 

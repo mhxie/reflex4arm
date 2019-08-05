@@ -83,7 +83,7 @@
 
 
 #define MAX_SECTORS_PER_ACCESS 64
-#define MAX_LATENCY 5000 //2000
+#define MAX_LATENCY 2000
 // #define MAX_IOPS 1750000 // 1k
 // #define MAX_IOPS 1120000 // 4k
 #define MAX_IOPS 2900000 // net
@@ -340,15 +340,16 @@ static void receive_req(struct pp_conn *conn)
 		}
 		//if (req->cmd == CMD_GET) { //only report read latency (not write)
 			if (measure_cond) {
-				unsigned long now = rdtsc();
-				if(((now - req->sent_time) / cycles_per_us) >= MAX_LATENCY)
+				// unsigned long now = rdtsc();
+				unsigned long latency = (rdtsc() - req->sent_time) / cycles_per_us;
+				if(latency >= MAX_LATENCY)
 					measurements[MAX_LATENCY - 1]++;
 				else
-					measurements[(now - req->sent_time) / cycles_per_us]++;
+					measurements[latency]++;
 
-				avg += (now - req->sent_time) / cycles_per_us;
-				if (((now - req->sent_time) / cycles_per_us) > max)
-					max = (now - req->sent_time) / cycles_per_us;
+				avg += latency;
+				if (latency > max)
+					max = latency;
 			
 				num_measured_reads++;
 			}
@@ -592,15 +593,16 @@ void send_handler(void * arg, int num_req)
 		req->conn = conn;
 
 		req->buf = mempool_alloc(&nvme_req_buf_pool);
-		#ifdef CLI_DEBUG
+		
 		const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWZYZ";
-		if (verify) { // generate random data to write
+		if (verify || preconditioning) { // generate random data to write
 			int size = req_size*ns_sector_size;
 			for (size_t i = 0; i < size; i++) {
 				int key = rand() % (int) (sizeof charset - 1);
 				req->buf[i] = charset[key];
 			}
 		}
+		#ifdef CLI_DEBUG
 		if (!req->buf) {
 			printf("NVME_REQ_BUF: MEMPOOL ALLOC FAILED !\n");
 			return NULL;
@@ -635,6 +637,9 @@ void send_handler(void * arg, int num_req)
 				req->lba = rand() % (ns_size >> intlog2(ns_sector_size));
 				//align
 				req->lba = req->lba & ~7;
+				#ifdef CLI_DEBUG
+				printf("Requesting lba @%lu\n", req->lba);
+				#endif
 				conn->last_count = req->lba;
 			} else {
 				req->lba = conn->last_count;

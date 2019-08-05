@@ -170,7 +170,7 @@ static struct rte_eth_conf default_eth_conf = {
 		.jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
 		// .hw_strip_crc   = 1, /**< CRC stripped by hardware */
 		#else
-        .offloads =
+		.offloads = DEV_RX_OFFLOAD_TIMESTAMP	|
 		#if (RTE_VER_YEAR <= 18) && (RTE_VER_MONTH < 11)
 					DEV_RX_OFFLOAD_CRC_STRIP	|
 		#endif
@@ -273,10 +273,16 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 
 	uint16_t mtu;
 
-	if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_TCP_CKSUM) {
-		printf("TX TCP checksum offloading is supported\n");
+	if (dev_conf->txmode.offloads & DEV_TX_OFFLOAD_TCP_CKSUM) {
+		printf("TX TCP checksum offloading is enabled\n");
 	} else {
-		// enable software checksum
+		printf("WARNING: TX TCP offloading not supported\n");
+	}
+
+	if (dev_conf->rxmode.offloads & DEV_RX_OFFLOAD_TIMESTAMP) {
+		printf("RX Timestamp offloading is enabled\n");
+	} else {
+		printf("WARNING: RX Timestamp offloading not supported\n");
 	}
 
 	// Already checked by underlying codes
