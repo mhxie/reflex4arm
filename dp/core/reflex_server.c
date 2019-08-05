@@ -77,6 +77,7 @@
 #define PAGE_SIZE 4096
 
 #define MAX_NUM_CONTIG_ALLOC_RETRIES 5
+// #define MAX_LATENCY 2000
 
 static int outstanding_reqs = 4096 * 64; 
 static int outstanding_req_bufs = 4096 * 64; //4096 * 64;
@@ -90,6 +91,9 @@ static struct mempool_datastore nvme_req_datastore;
 static __thread struct mempool nvme_req_pool;
 static __thread int conn_opened;
 static __thread long reqs_allocated = 0;
+// static __thread unsigned long measurements[MAX_LATENCY];
+static __thread unsigned long avg = 0;
+static __thread unsigned long num_requests = 0;
 
 struct nvme_req {
 	struct ixev_nvme_req_ctx ctx;
@@ -180,6 +184,7 @@ int send_req(struct nvme_req *req)
 			
 			if (ret < 0) {
 				if(!conn->nvme_pending) {
+					printf("ixev_send ret < 0, then ivev_close.\n");
 					ixev_close(&conn->ctx);
 				}
 				return -2;
@@ -313,6 +318,9 @@ static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason)
 	conn->in_flight_pkts--;
 	conn->sent_pkts++;
 	list_add_tail(&conn->pending_requests, &req->link);
+	avg += (rdtsc() - req->timestamp) / cycles_per_us;
+	num_requests++;
+	// printf("This request costs %lu us locally\n", (rdtsc() - req->timestamp) / cycles_per_us);
 	send_pending_reqs(conn);
 	return;
 }
@@ -482,6 +490,7 @@ static void receive_req(struct pp_conn *conn)
 		if (((header->lba_count * ns_sector_size) % PAGE_SIZE) != 0)
 			num4k++;
 		
+		req->timestamp = rdtsc();
 		switch (header->opcode) {
 		case CMD_SET:
 			ixev_set_nvme_handler(&req->ctx, IXEV_NVME_WR, &nvme_written_cb);
@@ -526,6 +535,9 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason)
 	}
 	if(reason==IXEVHUP) {
 		ixev_nvme_unregister_flow(conn->nvme_fg_handle);
+		printf("IXEVHUP: the avg local latency was %lu.\n", avg / num_requests);
+		avg = 0;
+		num_requests = 0;
 		ixev_close(&conn->ctx);
 		return;
 	}
