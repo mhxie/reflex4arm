@@ -126,6 +126,7 @@ static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 25000, 30000, //1000
 
 //FIXEME: hard-coding sector size for now
 static int ns_sector_size = 512;
+static int log_ns_sector_size = 9;
 //FIXME: hard-coding namespace size for device tested
 static long ns_size = 0xE8E0DB6000;	// Samsung a801
 // static long ns_size = 0x37E3EE56000;	// Samsung 1721
@@ -134,7 +135,7 @@ static long ns_size = 0xE8E0DB6000;	// Samsung a801
 
 
 static struct mempool_datastore nvme_usr_datastore;
-static const int outstanding_reqs = 512; // 4096 * 8; // HELPME
+static const int outstanding_reqs = 4096 * 8;
 static volatile int started_conns = 0;
 static pthread_barrier_t barrier;
 static int req_size = 2; // in lbas, 1024 bytes
@@ -161,8 +162,10 @@ static __thread unsigned long bench_start = 0;
 static __thread unsigned long avg = 0;
 static __thread unsigned long max = 0;
 static __thread unsigned long measure = 0;
+static __thread unsigned long failed_alloc_reqs = 0;
 static __thread unsigned long num_measured_reads = 0;
 static __thread long sent = 0;
+// static __thread long sent_batch = 0;
 static __thread unsigned long measurements[MAX_LATENCY];
 static __thread unsigned long missed_sends = 0;
 static __thread bool running = false;
@@ -392,7 +395,7 @@ static void receive_req(struct pp_conn *conn)
 
 		if (report_cond) {
 			unsigned long usecs = 1000UL * 1000UL;
-			unsigned long target_IOPS;
+			unsigned long target_IOPS, guide_IOPS;
 
 			if (!qdepth) {		
 				assert(measure <= MAX_NUM_MEASURE + NUM_MEASURE);
@@ -406,10 +409,11 @@ static void receive_req(struct pp_conn *conn)
 				target_IOPS = global_target_IOPS; 
 			}
 
+			guide_IOPS = nr_threads * (NUM_MEASURE * usecs) / ((rdtsc() - phase_start) / cycles_per_us);
 			printf("RqIOPS:\t IOPS:\t Avg:\t 10th:\t 20th:\t 30th:\t 40th:\t 50th:\t 60th:\t 70th:\t 80th:\t 90th:\t 95th:\t 99th:\t max:\t missed:\n");
 			printf("%lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\n",
 			       target_IOPS,
-			       nr_threads * (NUM_MEASURE * usecs) / ((rdtsc() - phase_start) / cycles_per_us),
+			       guide_IOPS,
 			       avg/num_measured_reads, 
 			       get_percentile(measurements, num_measured_reads, 10),
 			       get_percentile(measurements, num_measured_reads, 20),
@@ -424,7 +428,12 @@ static void receive_req(struct pp_conn *conn)
 			       get_percentile(measurements, num_measured_reads, 99),
 			       max, missed_sends);
 			run++;
+			if ((double)target_IOPS / guide_IOPS > 2) {
+				printf("Got weird IOPS, the num of measured read is %lu, the measure is %lu, the sent is %lu.\n", num_measured_reads, measure, sent);
+			}
 		}
+
+
 
 		if (terminate_cond) {
 			#ifdef CLI_DEBUG
@@ -460,8 +469,9 @@ int send_client_req(struct nvme_req *req)
 	struct pp_conn *conn = req->conn;
 	int ret = 0;
 	BINARY_HEADER *header;
-	
+
 	assert(conn);
+
 	if(!conn->tx_pending){
 		//setup header
 		header = (BINARY_HEADER *)&conn->data_send[0];
@@ -524,10 +534,14 @@ int send_client_req(struct nvme_req *req)
 int send_pending_client_reqs(struct pp_conn *conn) 
 {
 	int sent_reqs = 0;
-	
+	// int chksum = conn->list_len;
+
 	while(!list_empty(&conn->pending_requests)) {
 		int ret;
+		// assert(sent_reqs+conn->list_len == chksum); // checkpoint @4
 		struct nvme_req *req = list_top(&conn->pending_requests, struct nvme_req, link);
+		// assert(req->conn); // checkpoint @5
+		// assert(conn == req->conn); // checkpoint @6
 		req->sent_time = rdtsc();
 		ret = send_client_req(req);
 		if(!ret) {
@@ -561,7 +575,7 @@ void send_handler(void * arg, int num_req)
 	} else { 
 	        if (sent == NUM_MEASURE * 3)
                         return;
-                if (((now = rdtsc()) - last_send) < (cycles_between_req ))
+                if (((now = rdtsc()) - last_send) < (cycles_between_req))
                         return;
                 if (sent == NUM_MEASURE)
                         phase_start = now;
@@ -585,14 +599,19 @@ void send_handler(void * arg, int num_req)
 		if (!req) {
 			receive_req(conn);
 			//limited qd, if we run out of req, try again later
+			failed_alloc_reqs++;
 			break;
 		}
 
 		ixev_nvme_req_ctx_init(&req->ctx);
 		req->lba_count = req_size;
+		
 		req->conn = conn;
-
-		req->buf = mempool_alloc(&nvme_req_buf_pool);
+		// assert(conn==req->conn); // checkpoint @0
+		
+		req->buf = mempool_alloc(&nvme_req_buf_pool); // FIXME: should return NULL if it fails
+		assert(req->buf);
+		assert(conn==req->conn); // checkpoint @1
 		
 		const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWZYZ";
 		if (verify || preconditioning) { // generate random data to write
@@ -633,8 +652,7 @@ void send_handler(void * arg, int num_req)
 		//only do aligned accesses
 		if (!sequential) {
 			if (!(verify && sent % 2)) {
-
-				req->lba = rand() % (ns_size >> intlog2(ns_sector_size));
+				req->lba = rand() % (ns_size >> log_ns_sector_size);
 				//align
 				req->lba = req->lba & ~7;
 				#ifdef CLI_DEBUG
@@ -651,16 +669,19 @@ void send_handler(void * arg, int num_req)
 			#ifdef CLI_DEBUG
 			printf("Requesting lba @%lu\n", req->lba);
 			#endif
-			if (req->lba >= ns_size / ns_sector_size) {
-				req->lba %= ns_size / ns_sector_size;
+			if (req->lba >= (ns_size >> log_ns_sector_size)) {
+				req->lba %= (ns_size >> log_ns_sector_size);
 				conn->last_count = req->lba;
-			}
-			
-			if ((req->lba % (((ns_size / ns_sector_size) / req_size)/ 100)) == 0)
-				printf("lba %lu %lu %lu\n", req->lba, NUM_MEASURE, ns_size / ns_sector_size);
+			}	
+			if ((req->lba % (((ns_size >> log_ns_sector_size) / req_size)/ 100)) == 0) // cross the 1/100 of ssd namespace
+				printf("CPU %d || lba %lu %lu %lu\n", percpu_get(cpu_id), req->lba, NUM_MEASURE, ns_size >> log_ns_sector_size);
 		}
 		conn->list_len++;
 		list_add_tail(&conn->pending_requests, &req->link);
+
+		// struct nvme_req *tmp_req = list_top(&conn->pending_requests, struct nvme_req, link);
+		// assert(tmp_req->conn); // checkpoint @2
+		// assert(conn == tmp_req->conn); // checkpoint @3
 
 		if (sent == NUM_MEASURE) {
 			phase_start = rdtsc();
@@ -683,24 +704,30 @@ void send_handler(void * arg, int num_req)
 		} else { 
 			send_cond = ((now - bench_start) / cycles_between_req) >= sent && sent < (NUM_MEASURE * 3);
 		}
+		// assert(req->conn); // checkpoint @3.5
 	}
-
-	send_pending_client_reqs(conn);
+	
+	int ret = send_pending_client_reqs(conn);
+	// if (ret)
+	// 	printf("CPU %d | Sent %d batched requests.\n", percpu_get(cpu_id), ret);
 }
 
 static void main_handler(struct ixev_ctx *ctx, unsigned int reason)
 {
 	struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
+	int ret;
 	
 	if(reason == IXEVOUT) {
-		send_pending_client_reqs(conn);
+		ret = send_pending_client_reqs(conn);
+		if (ret)
+			printf("IXEVOUT: CPU %d | Sent %d batched requests.\n", percpu_get(cpu_id), ret);
 	}
 	else if(reason == IXEVHUP) {
 		printf("Connection close 5\n");
 		ixev_close(ctx);
 		return;
 	}
-	receive_req(conn); // first recv
+	receive_req(conn);
 }
 
 static void pp_dialed(struct ixev_ctx *ctx, long ret)
@@ -795,7 +822,7 @@ static void* receive_loop(void *arg)
 	conn->list_len = 0x0UL;
 	conn->receive_loop = true;
 	srand(rdtsc());
-	conn->last_count = rand() % (ns_size >> intlog2(ns_sector_size)); // random start
+	conn->last_count = rand() % (ns_size >> log_ns_sector_size); // random start, are they same for different threads?
 	conn->last_count = conn->last_count & ~7; // align
 	
 	ixev_ctx_init(&conn->ctx);
@@ -1004,7 +1031,6 @@ int reflex_client_main(int argc, char *argv[])
 		return ret;
 	}
 
-	// for header?
 	ret = mempool_create_datastore(&nvme_usr_datastore, 
 				       outstanding_reqs * 2,
 				       sizeof(struct nvme_req),  "nvme_req_1");
@@ -1013,7 +1039,6 @@ int reflex_client_main(int argc, char *argv[])
 		return ret;
 	}
 
-	// for payload?
 	ret = mempool_create_datastore(&nvme_req_buf_datastore,
 				       // *2 avoids out-of-mem error
 				       outstanding_reqs * 2,

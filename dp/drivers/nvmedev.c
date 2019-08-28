@@ -1417,7 +1417,7 @@ static inline void nvme_sched_subround2(void)
 			break;
 		}
 		log_debug("schedule tenant second %d\n", j);
-		log_debug("subround2: sched tenant handle %ld, tenant_tokens %lu\n", nvme_swq->fg_handle, tenant_tokens);
+		// log_debug("subround2: sched tenant handle %ld, tenant_tokens %lu\n", nvme_swq->fg_handle, tenant_tokens);
 		if (!nvme_fgs[nvme_swq->fg_handle].latency_critical_flag){		
 			be_tokens += nvme_sw_queue_take_saved_tokens(nvme_swq); 
 			token_increment = (atomic_read(&global_be_token_rate_per_tenant) * time_delta_cycles) / (double) (cycles_per_us * 1E6);
