@@ -53,4 +53,3 @@
  */
 
 extern struct rte_mempool *dpdk_pool;
-

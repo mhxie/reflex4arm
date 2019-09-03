@@ -92,7 +92,8 @@ static __thread struct mempool nvme_req_pool;
 static __thread int conn_opened;
 static __thread long reqs_allocated = 0;
 // static __thread unsigned long measurements[MAX_LATENCY];
-static __thread unsigned long avg = 0;
+static __thread unsigned long local_avg = 0; // warm-up needed
+static __thread unsigned long send_avg = 0; // warm-up needed
 static __thread unsigned long num_requests = 0;
 
 struct nvme_req {
@@ -142,6 +143,8 @@ static void send_completed_cb(struct ixev_ref *ref)
 	struct pp_conn *conn = req->conn;
 	int i, num4k;
 	
+	send_avg += (rdtsc() - req->timestamp) / cycles_per_us;
+
 	num4k = (req->lba_count * ns_sector_size) / 4096;
 	if (((req->lba_count * ns_sector_size) % 4096) != 0)
 		num4k++;
@@ -286,6 +289,8 @@ static void nvme_written_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason)
 	conn->in_flight_pkts--;
 	conn->sent_pkts++;
 	list_add_tail(&conn->pending_requests, &req->link);
+	local_avg += (rdtsc() - req->timestamp) / cycles_per_us;
+	num_requests++;
 	send_pending_reqs(conn);
 	return;
 }
@@ -318,7 +323,7 @@ static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason)
 	conn->in_flight_pkts--;
 	conn->sent_pkts++;
 	list_add_tail(&conn->pending_requests, &req->link);
-	avg += (rdtsc() - req->timestamp) / cycles_per_us;
+	local_avg += (rdtsc() - req->timestamp) / cycles_per_us;
 	num_requests++;
 	// printf("This request costs %lu us locally\n", (rdtsc() - req->timestamp) / cycles_per_us);
 	send_pending_reqs(conn);
@@ -535,8 +540,12 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason)
 	}
 	if(reason==IXEVHUP) {
 		ixev_nvme_unregister_flow(conn->nvme_fg_handle);
-		printf("IXEVHUP: the avg local latency was %lu.\n", avg / num_requests);
-		avg = 0;
+		printf("Thread %d: IXEVHUP: Connection closed.\nAvg nvme latency was %luus, avg send latency was %luus.\n",
+			percpu_get(cpu_id),
+			local_avg / num_requests,
+			(send_avg - local_avg) / num_requests);
+		local_avg = 0;
+		send_avg = 0;
 		num_requests = 0;
 		ixev_close(&conn->ctx);
 		return;

@@ -108,6 +108,7 @@ static int parse_devices(void);
 static int parse_nvme_devices(void);
 static int parse_nvme_device_model(void);
 static int parse_cpu(void);
+// static int parse_mem_channel(void);
 static int parse_batch(void);
 static int parse_loader_path(void);
 static int parse_scheduler_mode(void);
@@ -133,6 +134,7 @@ static struct config_vector_t config_tbl[] = {
 	{ "devices",      parse_devices},
 	{ "nvme_devices", parse_nvme_devices},
 	{ "nvme_device_model", parse_nvme_device_model},
+	// { "mem_channel", parse_mem_channel},
 	{ "batch",        parse_batch},
 	{ "loader_path",  parse_loader_path},
 	{ "scheduler", 	  parse_scheduler_mode},
@@ -640,6 +642,17 @@ static int parse_cpu(void)
 
 	cores_active = config_setting_length(cpus);
 	
+	return 0;
+}
+
+int cfg_parse_mem(void)
+{
+	int mem_channel = -1;
+	config_lookup_int(&cfg, "mem_channel", &mem_channel);
+	if (!mem_channel || mem_channel < -1) {
+		return -EINVAL;
+	}
+	dpdk_mem_channel = mem_channel;
 	return 0;
 }
 

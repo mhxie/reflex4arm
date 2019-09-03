@@ -97,6 +97,7 @@
 #define ENERGY_UNIT_OFFSET 0x08
 
 static int init_parse_cpu(void);
+static int init_parse_mem(void);
 static int init_cfg(void);
 static int init_firstcpu(void);
 static int init_hw(void);
@@ -130,6 +131,7 @@ struct init_vector_t {
 static struct init_vector_t init_tbl[] = {
 	{ "CPU",     cpu_init,     NULL, NULL},
 	{ "cfgcpu",     init_parse_cpu,     NULL, NULL},            // after cpu  
+	{ "cfgmem",     init_parse_mem,     NULL, NULL},            // after cpu  
 	{ "dpdk",    dpdk_init,    NULL, NULL},
 	{ "timer",   timer_init,   timer_init_cpu, NULL},
 	{ "net",     net_init,     NULL, NULL},
@@ -800,6 +802,12 @@ static int init_cfg(void)
 static int init_parse_cpu(void)
 {
 	return cfg_parse_cpu(init_argc, init_argv, &args_parsed);
+
+}
+
+static int init_parse_mem(void)
+{
+	return cfg_parse_mem(init_argc, init_argv, &args_parsed);
 
 }
 

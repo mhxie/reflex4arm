@@ -90,15 +90,22 @@ int dpdk_init(void)
 {
 	struct spdk_env_opts opts;
 	int nb_ports, ret;
-        
+	
 	spdk_env_opts_init(&opts);
     opts.name = "reflex";
-    opts.shm_id = -1;	
+	// opts->shm_id = SPDK_ENV_DPDK_DEFAULT_SHM_ID;
+	// opts->mem_size = SPDK_ENV_DPDK_DEFAULT_MEM_SIZE;
+	// opts->master_core = SPDK_ENV_DPDK_DEFAULT_MASTER_CORE;
+	opts.shm_id = -1;
+	opts.mem_size = -1;
+	opts.master_core = -1;
 
-	int core_num = pow(2, cores_active)-1;
+	int core_num = pow(2, cores_active)-1; // from cfg
 	char mask[3];
 	sprintf(mask, "%x", core_num); 
 	opts.core_mask = mask;
+	// opts->mem_channel = SPDK_ENV_DPDK_DEFAULT_MEM_CHANNEL;
+	opts.mem_channel = dpdk_mem_channel; // from cfg
 
     spdk_env_init(&opts);
 	

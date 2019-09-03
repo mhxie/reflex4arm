@@ -127,3 +127,4 @@ int dev_model_size;
 extern int cfg_init(int argc, char *argv[], int *args_parsed);
 
 int cores_active;
+int dpdk_mem_channel;
