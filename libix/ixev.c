@@ -68,7 +68,7 @@
 #define CMD_BATCH_SIZE	4096
 
 /* FIXME: implement automatic TCP Buffer Tuning, Jeffrey Semke et. al. */
-#define IXEV_SEND_WIN_SIZE	65536
+#define IXEV_SEND_WIN_SIZE	65536*2
 
 static __thread uint64_t ixev_generation;
 static struct ixev_conn_ops ixev_global_ops;
@@ -83,6 +83,7 @@ static inline void __ixev_check_generation(struct ixev_ctx *ctx)
 		ctx->generation = ixev_generation;
 		ctx->recv_done_desc = NULL;
 		ctx->sendv_desc = NULL;
+		// printf("Core %d || generation mismatch\n", percpu_get(cpu_id));
 	}
 }
 
@@ -474,7 +475,7 @@ ssize_t ixev_send(struct ixev_ctx *ctx, void *addr, size_t len)
 		return -EIO;
 
 	if (!actual_len)
-		return -EAGAIN;
+		return -ENOBUFS;
 
 	/* hot path: is there already a buffer? */
 	if (ctx->send_count && ctx->cur_buf) {
@@ -539,9 +540,11 @@ ssize_t ixev_send_zc(struct ixev_ctx *ctx, void *addr, size_t len)
 	if (ctx->is_dead)
 		return -EIO;
 	if (!actual_len)
+		return -ENOBUFS;
+	if (ctx->send_count >= IXEV_SEND_DEPTH) {
 		return -EAGAIN;
-	if (ctx->send_count >= IXEV_SEND_DEPTH)
-		return -EAGAIN;
+	}
+		
 
 	ctx->cur_buf = NULL;
 

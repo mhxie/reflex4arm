@@ -104,7 +104,7 @@ struct power_accumulator {
 
 static struct power_accumulator power_acc;
 
-unsigned int eth_rx_max_batch = 64;
+unsigned int eth_rx_max_batch = 64; //128; //64
 
 //#define PRINT_RTE_STATS 1
 

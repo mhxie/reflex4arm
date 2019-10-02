@@ -241,10 +241,10 @@ again:
 	cpu_do_bookkeeping();
 	KSTATS_POP(NULL);
 
-	KSTATS_PUSH(timer, NULL);
-	timer_run();
-	unset_current_fg();
-	KSTATS_POP(NULL);
+	// KSTATS_PUSH(timer, NULL);
+	// timer_run();
+	// unset_current_fg();
+	// KSTATS_POP(NULL);
 
 	KSTATS_PUSH(rx_poll, NULL);
 	eth_process_poll();

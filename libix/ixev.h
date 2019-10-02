@@ -62,8 +62,8 @@
 #include <stdio.h>
 
 /* FIXME: we won't need recv depth when i get a chance to fix the kernel */
-#define IXEV_RECV_DEPTH	1024
-#define IXEV_SEND_DEPTH	16
+#define IXEV_RECV_DEPTH	1024*2 //*1 for client
+#define IXEV_SEND_DEPTH	16*2 //*1 for client
 
 struct ixev_ctx;
 struct ixev_nvme_ioq_ctx;

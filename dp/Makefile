@@ -99,7 +99,7 @@ DPDK_LIBS=
 # DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/build/lib/librte_pmd_ixgbe.a $(DPDK)/build/lib/librte_pmd_ena.a
 DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_pmd_bnxt.a # library for Broadcom NIC
 DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_mempool_ring.a $(DPDK)/$(BUILD)/lib/librte_mempool.a
-DPDK_LIBS+=-Wl,-no-whole-archive $(DPDK)/$(BUILD)/lib/librte_mbuf.a $(DPDK)/$(BUILD)/lib/librte_ethdev.a $(DPDK)/$(BUILD)/lib/librte_hash.a $(DPDK)/$(BUILD)/lib/librte_ring.a $(DPDK)/$(BUILD)/lib/librte_eal.a
+DPDK_LIBS+=-Wl,-no-whole-archive $(DPDK)/$(BUILD)/lib/librte_mbuf.a $(DPDK)/$(BUILD)/lib/librte_ethdev.a $(DPDK)/$(BUILD)/lib/librte_hash.a $(DPDK)/$(BUILD)/lib/librte_ring.a $(DPDK)/$(BUILD)/lib/librte_eal.a $(DPDK)/$(BUILD)/lib/librte_timer.a
 DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_bus_pci.a $(DPDK)/$(BUILD)/lib/librte_pci.a $(DPDK)/build/lib/librte_kvargs.a# Additional support to Stingray
 
 SPDK_LIBS=$(SPDK)/build/lib/libspdk_nvme.a

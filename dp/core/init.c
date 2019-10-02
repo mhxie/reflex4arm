@@ -96,6 +96,8 @@
 #define ENERGY_UNIT_MASK 0x1F00
 #define ENERGY_UNIT_OFFSET 0x08
 
+#define RSS_ENABLE
+
 static int init_parse_cpu(void);
 static int init_parse_mem(void);
 static int init_cfg(void);
@@ -169,7 +171,7 @@ static struct rte_eth_conf default_eth_conf = {
 		.header_split   = 0, /**< Header Split disabled */
 		.hw_ip_checksum = 0, /**< IP/UDP/TCP checksum offload enable. */
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		.jumbo_frame	= 1, /**< Jumbo Frame Support disabled */
+		.jumbo_frame	= 1, /**< Jumbo Frame Support enabled */
 		// .hw_strip_crc   = 1, /**< CRC stripped by hardware */
 		#else
 		.offloads = DEV_RX_OFFLOAD_TIMESTAMP	|
@@ -179,7 +181,9 @@ static struct rte_eth_conf default_eth_conf = {
 					DEV_RX_OFFLOAD_CHECKSUM		|
 					DEV_RX_OFFLOAD_JUMBO_FRAME,
 		#endif
-		// .mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
+		#ifdef RSS_ENABLE
+		.mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
+		#endif
 	},
 	// .rx_adv_conf = {
 	// 	.rss_conf = {
@@ -203,27 +207,29 @@ static struct rte_eth_conf default_eth_conf = {
 					// DEV_TX_OFFLOAD_UDP_CKSUM   |
 					// DEV_TX_OFFLOAD_SCTP_CKSUM,
 	},
-	// .fdir_conf = {
-	// 	.mode = RTE_FDIR_MODE_PERFECT, 
-	// 	.pballoc = RTE_FDIR_PBALLOC_256K,
-	// 	.mask = {
-	// 		.vlan_tci_mask = 0x0,
-	// 		.ipv4_mask = {
-	// 			.src_ip = 0xFFFFFFFF,
-	// 			.dst_ip = 0xFFFFFFFF,
-	// 		},
-	// 		.src_port_mask = 0,
-	// 		.dst_port_mask = 0xFFFF,
-	// 		.mac_addr_byte_mask = 0,
-	// 		.tunnel_type_mask = 0,
-	// 		.tunnel_id_mask = 0,
-	// 	},
-	// 	.drop_queue = 127,
-	// 	.flex_conf = {
-	// 		.nb_payloads = 0,
-	// 		.nb_flexmasks = 0,
-	// 	},
-	// },
+	#ifndef RSS_ENABLE
+	.fdir_conf = {
+		.mode = RTE_FDIR_MODE_PERFECT, 
+		.pballoc = RTE_FDIR_PBALLOC_256K,
+		.mask = {
+			.vlan_tci_mask = 0x0,
+			.ipv4_mask = {
+				.src_ip = 0xFFFFFFFF,
+				.dst_ip = 0xFFFFFFFF,
+			},
+			.src_port_mask = 0xFFFF,
+			.dst_port_mask = 0x0,
+			.mac_addr_byte_mask = 0,
+			.tunnel_type_mask = 0,
+			.tunnel_id_mask = 0,
+		},
+		.drop_queue = 127,
+		.flex_conf = {
+			.nb_payloads = 0,
+			.nb_flexmasks = 0,
+		},
+	},
+	#endif
 };
 
 /**
@@ -511,13 +517,14 @@ static int init_ethdev(void)
 		// print_rss_conf(port_id); FIXME: this will cause segfault at spdk_nvme_probe
 		log_info("Ethdev on port %d initialised.\n", port_id);
 
+		#ifndef RSS_ENABLE
 		ret = add_fdir_rules(port_id);
-
 		if (ret) {
 			log_err("Adding FDIR rules failed. (Error %d)\n", ret);
 		} else {
 			log_info("All FDIR rules added.\n");
-		}	
+		}
+		#endif
 	}
 	
 	struct eth_addr* macaddr = &mac_addr;

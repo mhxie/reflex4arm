@@ -72,6 +72,7 @@
 #include <eal_internal_cfg.h>
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
+#include <rte_timer.h>
 
 /* IX includes */
 #include <ix/log.h>
@@ -108,6 +109,8 @@ int dpdk_init(void)
 	opts.mem_channel = dpdk_mem_channel; // from cfg
 
     spdk_env_init(&opts);
+
+	// rte_timer_subsystem_init();
 	
 	/* pool_size sets an implicit limit on cores * NICs that DPDK allows */
 	const int pool_size = 32768;

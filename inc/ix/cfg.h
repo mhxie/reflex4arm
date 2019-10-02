@@ -65,7 +65,7 @@
 #define CFG_MAX_PORTS    16
 #define CFG_MAX_CPU     128
 #define CFG_MAX_ETHDEV   16
-#define CFG_MAX_NVMEDEV   4
+#define CFG_MAX_NVMEDEV   24
 
 enum dev_types {
 	ETH_DEV,
