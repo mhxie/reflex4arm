@@ -51,6 +51,7 @@ struct msg_header {
 #define CMD_GET  0x00
 #define CMD_SET  0x01
 #define CMD_SET_NO_ACK  0x02
+#define CMD_REG  0x03
  
 #define RESP_OK 0x00
 #define RESP_EINVAL 0x04
@@ -64,8 +65,9 @@ typedef struct __attribute__ ((__packed__)) {
   uint16_t magic;
   uint16_t opcode;
   void *req_handle;
-  unsigned long lba;
-  unsigned int lba_count;
+  unsigned long lba; // IOPS_SLO
+  unsigned int lba_count;  // 0xffffff00: latency_SLO; 0x000000ff: rd_wr_ratio_SLO
+  
 } binary_header_blk_t;
 
 

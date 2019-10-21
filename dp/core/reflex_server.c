@@ -141,6 +141,7 @@ struct pp_conn {
 	unsigned long req_received;
 	struct list_head pending_requests;
 	long nvme_fg_handle; //nvme flow group handle
+	long conn_fg_handle; //set for src_port for now
 	struct nvme_req *current_req;
 	char data_send[sizeof(BINARY_HEADER)]; //use zero-copy for payload
 	char data_recv[sizeof(BINARY_HEADER)]; //use zero-copy for payload
@@ -545,6 +546,14 @@ static void receive_req(struct pp_conn *conn)
 
 		}
 		else if (header->opcode == CMD_GET) {}
+		else if (header->opcode == CMD_REG) { // if reregister at runtime, may mislead the scheduler
+			unsigned long cookie = (unsigned long) &conn->ctx;
+			unsigned long IOPS_SLO = header->lba;
+			unsigned int latency_us_SLO = header->lba_count & 0xffffff00;
+			int rd_wr_ratio_SLO = header->lba_count & 0x000000ff;
+			// FIXME: rewrite the flow id mapping from network to storage
+			ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
+		}
 		else {
 			printf("Received unsupported command, closing connection\n");
 			ixev_close(&conn->ctx);
@@ -644,7 +653,7 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 	unsigned long cookie;
 	unsigned int latency_us_SLO = 0;
 	unsigned long IOPS_SLO = 0;
-	int rd_wr_ratio_SLO = 50;
+	int rd_wr_ratio_SLO = 100;
 	
 	struct pp_conn *conn = mempool_alloc(&pp_conn_pool);
 	if (!conn) {
@@ -665,73 +674,11 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id)
 	conn_opened++;
 
 	conn->nvme_fg_handle = 0; //set to this for now
+	conn->conn_fg_handle = id->src_port;
 	cookie = (unsigned long) &conn->ctx;
 
-	/****************************************/
-	/* LATENCY SLO POLICIES FOR FLOW GROUPS */
-	switch (id->dst_port) {
-		case 1234:
-			latency_us_SLO = 0; //best-effort
-			IOPS_SLO = 0;
-			rd_wr_ratio_SLO = 100;
-			break; 
-		case 1235:
-			latency_us_SLO = 0; //best-effort
-			IOPS_SLO = 0;
-			rd_wr_ratio_SLO = 100;
-			break;
-		case 1236:
-			latency_us_SLO = 0; //best-effort
-			IOPS_SLO = 0;
-			rd_wr_ratio_SLO = 100;
-			break;
-		case 1237:
-			latency_us_SLO = 0; //best-effort
-			IOPS_SLO = 0;
-			rd_wr_ratio_SLO = 100;
-			break;
-		case 1238:
-			latency_us_SLO = 0; //best-effort
-			IOPS_SLO = 0;
-			rd_wr_ratio_SLO = 100;
-			break;
-		case 1239:
-			latency_us_SLO = 0; //best-effort
-			IOPS_SLO = 0;
-			rd_wr_ratio_SLO = 100;
-			break;
-		case 1240:
-			latency_us_SLO = 0; //best-effort
-			IOPS_SLO = 0;
-			rd_wr_ratio_SLO = 100;
-			break;
-		case 1241:
-			latency_us_SLO = 0; //best-effort
-			IOPS_SLO = 0;
-			rd_wr_ratio_SLO = 100;
-			break;
-		case 5678: 
-			latency_us_SLO = 1000; //latency-critical
-			IOPS_SLO = 120000;
-			rd_wr_ratio_SLO = 100;
-			break;
-		case 5679: 
-			latency_us_SLO = 1000; //latency-critical
-			IOPS_SLO = 70000;
-			rd_wr_ratio_SLO = 80;
-			break;
-
-		default:
-			printf("WARNING: unrecognized SLO policy, default is best-effort\n");
-			break;
-	}
-	/*
-	 * FIXME: add support for dynamic SLO registration by client
-	 * Current hack: associate a port with an SLO (defined in case statement above)
-	 * Client communicates with server using dst_port that corresponds to its SLO
-	 */
-	printf("The id->dst_port is %d.\n", id->dst_port);
-	ixev_nvme_register_flow(id->dst_port, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
+	printf("The id->dst_port is %d, id->src_port is %d.\n", id->dst_port, id->src_port);
+	ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
 	
 	return &conn->ctx;
 }
