@@ -217,7 +217,7 @@ static struct rte_eth_conf default_eth_conf = {
 				.src_ip = 0xFFFFFFFF,
 				.dst_ip = 0xFFFFFFFF,
 			},
-			.src_port_mask = 0x0,
+			.src_port_mask = 0xFFFF,
 			.dst_port_mask = 0xFFFF,
 			.mac_addr_byte_mask = 0,
 			.tunnel_type_mask = 0,

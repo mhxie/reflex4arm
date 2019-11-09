@@ -67,6 +67,7 @@
 #include <ixev.h>
 #include <ix/mempool.h>
 #include <ix/list.h>
+#include <ix/cfg.h>
 #include <ix/timer.h>
 
 #include "reflex.h" 
@@ -84,51 +85,18 @@
 
 #define MAX_SECTORS_PER_ACCESS 64
 #define MAX_LATENCY 2000
-// #define MAX_IOPS 1750000 // 1k
-// #define MAX_IOPS 1120000 // 4k
-#define MAX_IOPS 2900000 // net
-#define NUM_TESTS 11 //16
+#define MAX_IOPS 2000000
+#define NUM_TESTS 8
 #define DURATION 1
 #define MAX_NUM_MEASURE MAX_IOPS * DURATION
-// static const unsigned long sweep[NUM_TESTS] = {1000, 1100, 1200, 1300, 1400};
 
-// static const unsigned long sweep[NUM_TESTS] = {	 100000, 200000, 400000, 600000, 800000,
-// 												1000000, 1200000, 1400000, 1500000, 1600000,
-// 												1620000, 1640000, 1660000, 1680000, 1690000,
-// 												1700000, 1710000, 1720000, 1730000, 1740000,
-// 												1742000, 1742400, 1742800, 1732000, MAX_IOPS}; // 1k rand with 4 threads
-// static const unsigned long sweep[NUM_TESTS] = {	 /*100000, 200000, 300000, 400000, 500000,
-// 												600000, 700000, 800000, 900000, 1000000,
-// 												1020000, 1040000, 1060000, 1080000, 1100000,*/
-// 												1110000, 1120000, 1130000, 11400000, 11500000,};
-// 												// 1112000, 1114000, 1116000, 1118000, MAX_IOPS}; // 4k rand with 4 threads
-static const unsigned long sweep[NUM_TESTS] = {	/*00000, 400000, 600000, 800000, 1000000,
-												1200000, 1400000, 1600000, 1800000, 2000000,
-												2200000, 2400000, 2600000, 2800000, */ 2820000,
-												2840000, 2860000, 2880000, 2882000, 2884000,
-												2886000, 2888000, 2889000, 2890000, MAX_IOPS}; // net perf
-
-// static const unsigned long sweep[NUM_TESTS] = {500000, 500000, 500000,
-// 					       500000, 500000, 500000, 500000, 500000, 500000,
-// 					       500000, 500000, 500000, 500000, 500000, 500000,
-// 					       500000, 500000, 500000, 500000, 500000,
-// 						   500000, 500000, 500000, 500000, 500000,
-// 						   500000, 500000, 500000, 500000, 500000,
-// 						   500000, 500000, 500000, 500000, 500000,
-// 						   500000, 500000, 500000, 500000, 500000}; // for 1k rand
-
-/*
-static const unsigned long sweep[NUM_TESTS] = {1000, 10000, 25000, 30000, //100000,
-					       35000, 40000, 50000, 60000,
-					       70000, 80000, 90000, 100000,
-					       200000, 250000, 900000, MAX_IOPS};
-*/
+static const unsigned long sweep[NUM_TESTS] = { 100000, 200000, 300000, 400000,
+												500000, 600000, 700000, 800000};
 
 //FIXEME: hard-coding sector size for now
 static int ns_sector_size = 512;
 static int log_ns_sector_size = 9;
-//FIXME: hard-coding namespace size for device tested
-static long ns_size = 0xE8E0DB6000;	// Samsung a801
+// static long ns_size = 0xE8E0DB6000;	// Samsung a801
 // static long ns_size = 0x37E3EE56000;	// Samsung 1721
 // static long ns_size = 0x1749a956000;    // Samsung 1725 
 // static long ns_size = 0x5d27216000;  // Intel P3600 400GB capacity 
@@ -561,6 +529,7 @@ void send_handler(void * arg, int num_req)
 	struct ixev_ctx *ctx = (struct ixev_ctx *)arg;
 	struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
 	unsigned long now;
+	unsigned long ns_size = CFG.ns_sizes[0];
 	int ssents = 0;
 
 	int send_cond;
@@ -694,8 +663,6 @@ void send_handler(void * arg, int num_req)
 			}
 		}
 
-
-		// req->sent_time = rdtsc(); // duplicate?
 		last_send = now;
 		sent++;
 
@@ -775,6 +742,9 @@ static void* receive_loop(void *arg)
 	int ret, i;
 	int flags;
 	int num_tests;
+	unsigned long ns_size = CFG.ns_sizes[0];
+
+	printf("ns_size is 0x%x\n", ns_size);
 
 	tid = *(int *)arg;
 	conn_opened = 0;	
@@ -1014,7 +984,7 @@ int reflex_client_main(int argc, char *argv[])
 		timer_calibrate_tsc();
 		
 		ip_tuple[i]->dst_port = port + i; // mutli-thread
-		ip_tuple[i]->src_port = port;
+		ip_tuple[i]->src_port = port + i;
 		printf("Connecting to port: %i\n", port + i);
 	}
 
@@ -1048,17 +1018,6 @@ int reflex_client_main(int argc, char *argv[])
 		return ret;
 	}
 
-    /*
-	sys_spawnmode(true);
-	for (int i = 1; i < nr_threads; i++) {
-		tid[i] = i;
-		if (pthread_create(&thread[i], NULL, receive_loop, &tid[i])) {
-			fprintf(stderr, "failed to spawn thread %d\n", i);
-			exit(-1);
-		}
-	}
-	*/
-
 	for (i = 1; i < nr_cpu; i++) {
 		//ret = pthread_create(&tid, NULL, start_cpu, (void *)(unsigned long) i);
 		log_info("rte_eal_remote_launch...receive_loop\n");
@@ -1076,12 +1035,6 @@ int reflex_client_main(int argc, char *argv[])
 	tid[0] = 0;
 
 	receive_loop(&tid[0]);
-	/*
-	for (int i = 1; i < nr_threads; i++) {
-		pthread_join(thread[i], NULL);
-	}
-	printf("joined. Total IOPS: %lu\n", iops);
-	*/
 	return 0;
 }
 

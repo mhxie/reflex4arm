@@ -138,7 +138,7 @@ int init_nvme_request_cpu(void)
 		return 0;
 	}
 
-	if (CFG.num_nvmedev == 0) {
+	if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0) {
 		printf("No NVMe devices found, skipping initialization\n");
 		return 0;
 	}
@@ -185,7 +185,7 @@ int init_nvme_request(void)
 	struct mempool_datastore *m2 = &ctx_datastore;
 	struct mempool_datastore *m3 = &nvme_swq_datastore;
 
-	if (CFG.num_nvmedev == 0) {
+	if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0) {
 		return 0;
 	}
 
@@ -296,7 +296,7 @@ int init_nvmedev(void)
 {
 	// if (CFG.num_nvmedev > 1)
 	// 	printf("IX supports only one NVME device, ignoring all further devices\n");
-	if (CFG.num_nvmedev == 0) {
+	if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0) {
 		return 0;
 	} else if (CFG.num_nvmedev > cores_active) {
 		// panic("ERROR: cores are fewer than SSDs\n");
@@ -326,9 +326,8 @@ int init_nvmedev(void)
 
 int init_nvmeqp_cpu(void)
 {
-	if (CFG.num_nvmedev == 0)
+	if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0)
 		return 0;
-	
 	assert(nvme_ctrlr);
 
 	
@@ -1523,7 +1522,7 @@ void nvme_process_completions()
 	int i;
 	int max_completions = 4096;
 
-	if (CFG.num_nvmedev == 0)
+	if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0)
 		return;
 
 	for(i = 0; i < percpu_get(open_ev_ptr); i++) {

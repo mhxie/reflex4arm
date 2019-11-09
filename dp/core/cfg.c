@@ -106,6 +106,7 @@ static int parse_gateway_addr(void);
 static int parse_arp(void);
 static int parse_devices(void);
 static int parse_nvme_devices(void);
+static int parse_ns_sizes(void);
 static int parse_nvme_device_model(void);
 static int parse_cpu(void);
 // static int parse_mem_channel(void);
@@ -133,6 +134,7 @@ static struct config_vector_t config_tbl[] = {
 	{ "arp",          parse_arp},
 	{ "devices",      parse_devices},
 	{ "nvme_devices", parse_nvme_devices},
+	{ "ns_sizes",     parse_ns_sizes},
 	{ "nvme_device_model", parse_nvme_device_model},
 	// { "mem_channel", parse_mem_channel},
 	{ "batch",        parse_batch},
@@ -449,6 +451,38 @@ static int parse_nvme_devices(void)
 	}
 	return 0;
 }
+
+static int add_nvme_size(const char *hex_size)
+{
+	log_info("------------1CFG.num_ethdev %d\n", CFG.num_ethdev);
+	CFG.ns_sizes[CFG.num_nvmedev++] = (unsigned long)strtol(hex_size, NULL, 0);
+	log_info("------------2CFG.num_ethdev %d\n", CFG.num_ethdev);
+	if (CFG.num_nvmedev >= CFG_MAX_NVMEDEV)
+		return -E2BIG;
+	return 0;
+}
+
+static int parse_ns_sizes(void) {
+	const config_setting_t *ns_sizes = NULL;
+	const char *hex_size = NULL;
+	int i, ret;
+
+	ns_sizes = config_lookup(&cfg, "ns_size");
+	if (!ns_sizes)
+		return 0;
+	hex_size = config_setting_get_string(ns_sizes);
+	if (hex_size)
+		return add_nvme_size(hex_size);
+	for (i = 0; i < config_setting_length(ns_sizes); ++i) {
+		hex_size = NULL;
+		hex_size = config_setting_get_string_elem(ns_sizes, i);
+		ret = add_nvme_size(hex_size);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
 int compare_lat_tokenrate (const void * a, const void * b)
 {
    struct lat_tokenrate_pair *a_pair = (struct lat_tokenrate_pair*) a;

@@ -98,6 +98,7 @@ struct cfg_parameters {
 
 	int num_nvmedev;
 	struct pci_addr nvmedev[CFG_MAX_NVMEDEV];
+	unsigned long ns_sizes[CFG_MAX_NVMEDEV];
 
 	int num_ports;
 	uint16_t ports[CFG_MAX_PORTS];

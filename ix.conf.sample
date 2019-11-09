@@ -11,15 +11,16 @@
 
 ## host_addr : CIDR IP address and netmask that will be assigned to
 ##      the adapter once it comes up.
-host_addr="192.168.40.1/16"
+host_addr="10.10.66.3/24"
 
 # gateway_addr : default gateway IP address
-gateway_addr="192.168.1.1"
+gateway_addr="10.10.66.1"
 
 ## port : port(s) that will be bound to the application by the
 ##      kernel when launching IX.
 ##      You can specify multiple entries, e.g. 'port=[X, Y, Z]'
-port=1234
+##      adding admitted ports here when using more cores
+port=[1234, 1235, 1236, 1237, 1238, 1239, 1240, 1241]
 
 ###############################################################################
 # Hardware parameters
@@ -33,8 +34,12 @@ port=1234
 ##      available Ethernet controllers. Similarly, `lspci | grep Non-Volatile` 
 ##	    allows to see available NVMe SSD controllers. 
 ##      You can specify multiple entries, e.g. 'devices=["X","Y","Z"]'
-devices="0:05:00.0"
-nvme_devices="0:04:00.0"
+##      Updates:
+##      1. Now support Broadcom NICs (e.g. BCM58800 etc.)
+##      2. Now support multiple NVMes SSDs
+devices="0008:01:00.0"
+# nvme_devices="0000:01:00.0"
+nvme_devices=["0000:01:00.0", "0001:01:00.0", "0006:01:00.0", "0007:01:00.0"]
 
 ###############################################################################
 # ReFlex I/O scheduler parameters
@@ -53,7 +58,8 @@ nvme_devices="0:04:00.0"
 #
 # scheduler: 		 "on" (by default) 
 # 					 "off" means I/O submitted directly to flash, 
-# 					     no SW queueing, no QoS scheduling 			 
+# 					     no SW queueing, no QoS scheduling 
+#                    turn off this in the client			 
 nvme_device_model="sample.devmodel" 
 scheduler="on"
 
@@ -72,7 +78,8 @@ batch=64
 
 ## loader_path : kernel loader to use with IX module:
 ##
-loader_path="/lib64/ld-linux-x86-64.so.2"
+# loader_path="/lib64/ld-linux-x86-64.so.2"
+loader_path="/lib/ld-linux-aarch64.so.1"
 
 ###############################################################################
 # Optional parameters
@@ -96,18 +103,54 @@ loader_path="/lib64/ld-linux-x86-64.so.2"
 #		  Use this to steer traffic to particular cores when multi-core ReFlex.
 #         Queue number corresponds to CPU core id
 #
-##fdir=(
-#  {
-#	dst_ip : "192.168.40.1"
-#    src_ip : "XX.XX.XX.XX"
-#    dst_port : 1234
-#    queue : 0
-#  },
-#  {
-#	dst_ip : "192.168.40.1"
-#    src_ip : "YY.YY.YY.YY"
-#    dst_port : 5678
-#    queue : 1
-#  }
-#)
-
+# fdir=(
+#     {
+#         dst_ip : "10.10.66.3"
+#         src_ip : "10.10.66.2"
+#         dst_port : 1234
+#         queue : 0
+#     },
+#     {
+# 	      dst_ip : "10.10.66.3"
+#         src_ip : "10.10.66.2"
+#         dst_port : 1235
+#         queue : 1
+#     },
+#     {
+# 	      dst_ip : "10.10.66.3"
+#         src_ip : "10.10.66.2"
+#         dst_port : 1236
+#         queue : 2
+#     },
+#     {
+# 	      dst_ip : "10.10.66.3"
+#         src_ip : "10.10.66.2"
+#         dst_port : 1237
+#         queue : 3
+#     },
+#     {
+# 	      dst_ip : "10.10.66.3"
+#         src_ip : "10.10.66.2"
+#         dst_port : 1238
+#         queue : 4
+#     },
+#     {
+# 	      dst_ip : "10.10.66.3"
+#         src_ip : "10.10.66.2"
+#         dst_port : 1239
+#         queue : 5
+#     },
+#     {
+# 	      dst_ip : "10.10.66.3"
+#         src_ip : "10.10.66.2"
+#         dst_port : 1240
+#         queue : 6
+#     },
+#     {
+# 	      dst_ip : "10.10.66.3"
+#         src_ip : "10.10.66.2"
+#         dst_port : 1241
+#         queue : 7
+#     }
+#     # add more entries here and changing the dst_port and queue accordingly
+# )
