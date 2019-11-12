@@ -475,7 +475,7 @@ ssize_t ixev_send(struct ixev_ctx *ctx, void *addr, size_t len)
 		return -EIO;
 
 	if (!actual_len)
-		return -ENOBUFS;
+		return -EAGAIN;
 
 	/* hot path: is there already a buffer? */
 	if (ctx->send_count && ctx->cur_buf) {
@@ -514,9 +514,13 @@ ssize_t ixev_send(struct ixev_ctx *ctx, void *addr, size_t len)
 
 out:
 	if (!so_far)
-		return -EAGAIN;
+		return -ENOBUFS;
 
 	ixev_update_send_stats(ctx, so_far);
+	if(so_far < 0) {
+		printf("GDB tackpoint.\n");
+		exit(-1);
+	}
 	return so_far;
 }
 
@@ -540,9 +544,9 @@ ssize_t ixev_send_zc(struct ixev_ctx *ctx, void *addr, size_t len)
 	if (ctx->is_dead)
 		return -EIO;
 	if (!actual_len)
-		return -ENOBUFS;
-	if (ctx->send_count >= IXEV_SEND_DEPTH) {
 		return -EAGAIN;
+	if (ctx->send_count >= IXEV_SEND_DEPTH) {
+		return -ENOBUFS;
 	}
 		
 

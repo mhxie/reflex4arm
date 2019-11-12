@@ -60,12 +60,13 @@
 
 #include <ix/stddef.h>
 #include <ix/mempool.h>
+#include <lwip/lwipopts.h>
 
 #include <pthread.h>
 #include <string.h>
 
 
-#define BUF_SIZE	1460 * 4
+#define BUF_SIZE	TCP_MSS * 4
 
 extern __thread struct mempool ixev_buf_pool;
 
@@ -117,6 +118,10 @@ static inline size_t ixev_buf_store(struct ixev_buf *buf, void *addr, size_t len
 
 	if (!avail)
 		return 0;
+	if (avail < 0) {
+		printf("buf->len - %d is larger than BUF_SIZE - %d.\n", buf->len, BUF_SIZE);
+		exit(-1);
+	}
 
 	memcpy(&buf->payload[buf->len], addr, avail);
 	buf->len += avail;

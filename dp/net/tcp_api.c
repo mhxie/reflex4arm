@@ -697,26 +697,52 @@ static uint32_t compute_toeplitz_hash(const uint8_t *key, uint32_t src_addr, uin
 	return result;
 }
 
+// FIXME: simplify fdir add and delete
 static void remove_fdir_filter(struct ip_tuple *id)
 {
-	struct rte_fdir_filter fdir_ftr;
-	struct ix_rte_eth_dev *dev;
+	// struct rte_fdir_filter fdir_ftr;
+	// struct ix_rte_eth_dev *dev;
+	// int ret = 0;
 
-	fdir_ftr.iptype = RTE_FDIR_IPTYPE_IPV4;
-	fdir_ftr.l4type = RTE_FDIR_L4TYPE_TCP;
-	fdir_ftr.ip_src.ipv4_addr = id->dst_ip;
-	fdir_ftr.ip_dst.ipv4_addr = id->src_ip;
-	fdir_ftr.port_src = 0; // needs to be 0 when mask out src port in fdir config 
-	fdir_ftr.port_dst = id->src_port;
-	dev = percpu_get(eth_rxqs[0])->dev;
-	dev->dev_ops->fdir_remove_perfect_filter(dev, &fdir_ftr, 0);
+	// fdir_ftr.iptype = RTE_FDIR_IPTYPE_IPV4;
+	// fdir_ftr.l4type = RTE_FDIR_L4TYPE_TCP;
+	// fdir_ftr.ip_src.ipv4_addr = id->dst_ip;
+	// fdir_ftr.ip_dst.ipv4_addr = id->src_ip;
+	// fdir_ftr.port_src = id->dst_port;
+	// fdir_ftr.port_dst = id->src_port;
+	// dev = percpu_get(eth_rxqs[0])->dev;
+	// ret = dev->dev_ops->fdir_remove_perfect_filter(dev, &fdir_ftr, 0);
+	// if (ret < 0) {
+	// 	log_err("cfg: failed to remove FDIR rule, ret %d.\n", ret);
+	// 	return ret;
+	// }
+	int ret;
+	struct rte_eth_fdir_filter filter;
+	struct ix_rte_eth_dev *dev;
+	struct eth_rx_queue *queue;
+
+	filter.input.flow_type = RTE_ETH_FLOW_NONFRAG_IPV4_TCP;
+	filter.input.flow.tcp4_flow.ip.src_ip = hton32(id->dst_ip); 
+	filter.input.flow.tcp4_flow.ip.dst_ip = hton32(id->src_ip); // tos, ttl?
+	filter.input.flow.tcp4_flow.src_port = hton16(id->dst_port); 
+	filter.input.flow.tcp4_flow.dst_port = hton16(id->src_port);
+	filter.soft_id = 0;
+	filter.action.rx_queue = percpu_get(cpu_id);
+	filter.action.behavior = RTE_ETH_FDIR_ACCEPT; 
+	filter.action.report_status = RTE_ETH_FDIR_REPORT_ID;
+
+	ret = rte_eth_dev_filter_ctrl(active_eth_port, RTE_ETH_FILTER_FDIR, RTE_ETH_FILTER_DELETE, &filter);
+	if (ret < 0) {
+		log_err("cfg: failed to remove FDIR rule, ret %d.\n", ret);
+		return ret;
+	}
 }
 
 
 static struct eth_fg *get_port_with_fdir(struct ip_tuple *id)
 {
 	int ret;
-	struct rte_eth_fdir_filter filter;
+	struct rte_eth_fdir_filter filter; // FIXEME: Try rte_eth_ntuple_filter
 	struct ix_rte_eth_dev *dev;
 	struct eth_rx_queue *queue;
 

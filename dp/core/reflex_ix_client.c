@@ -199,11 +199,12 @@ struct pp_conn {
 	size_t tx_sent;
 	bool rx_pending;			//is there a ReFlex req currently being received/sent
 	bool tx_pending;
+	bool alive;
 	int nvme_pending;
 	long in_flight_pkts;
 	long sent_pkts;
 	long list_len;
-	bool receive_loop;
+	// bool receive_loop;
 	unsigned long last_count; //aka seq_count when verify = 0
 	struct list_head pending_requests;
 	long nvme_fg_handle; 		//nvme flow group handle
@@ -241,7 +242,10 @@ static void receive_req(struct pp_conn *conn)
 				if (ret != -EAGAIN) {
 					if(!conn->nvme_pending) {
 						printf("Connection close 6\n");
-						ixev_close(&conn->ctx);
+						if (conn->alive) {
+							ixev_close(&conn->ctx);
+							conn->alive = false;
+						}
 					}
 				}
 				break; // exception
@@ -270,7 +274,10 @@ static void receive_req(struct pp_conn *conn)
 					assert(0);
 					if(!conn->nvme_pending) {
 						printf("Connection close 7\n");
-						ixev_close(&conn->ctx);
+						if (conn->alive) {
+							ixev_close(&conn->ctx);
+							conn->alive = false;
+						}
 					}
 				}
 				break; // exception
@@ -298,7 +305,10 @@ static void receive_req(struct pp_conn *conn)
 		}
 		else {
 			printf("Received unsupported command, closing connection\n");
-			ixev_close(&conn->ctx);
+			if (conn->alive) {
+				ixev_close(&conn->ctx);
+				conn->alive = false;
+			}
 			return;  // exception
 		}
 
@@ -452,13 +462,16 @@ int send_client_req(struct nvme_req *req)
 		while (conn->tx_sent < sizeof(BINARY_HEADER)) {
 			ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent],
 					sizeof(BINARY_HEADER) - conn->tx_sent);
-			if (ret == -EAGAIN){
+			if (ret == -EAGAIN || ret == -ENOBUFS){
 				return -1;
-			}
-			if (ret < 0) {
+			} else if (ret < 0) {
+				printf("ixev_send - ret is %d.\n", ret);
 				if(!conn->nvme_pending) {
-					printf("Connection close 2\n");
-					ixev_close(&conn->ctx);
+					printf("[%d] Connection close 2\n", percpu_get(cpu_id));
+					if (conn->alive) {
+						ixev_close(&conn->ctx);
+						conn->alive = false;
+					}
 				}
 				return -2;
 				ret = 0;
@@ -480,11 +493,14 @@ int send_client_req(struct nvme_req *req)
 			ret = ixev_send_zc(&conn->ctx, &req->buf[conn->tx_sent],
 					   req->lba_count * ns_sector_size - conn->tx_sent); 
 			if (ret < 0) {
-				if (ret == -EAGAIN)
+				if (ret == -EAGAIN || ret == -ENOBUFS)
 					return -2;
 				if(!conn->nvme_pending) {
 					printf("Connection close 3\n");
-					ixev_close(&conn->ctx);
+					if (conn->alive) {
+						ixev_close(&conn->ctx);
+						conn->alive = false;
+					}
 				}
 				return -2;
 			}
@@ -518,7 +534,7 @@ int send_pending_client_reqs(struct pp_conn *conn)
 			conn->list_len--;
 		}
 		else
-			return ret;//sent_reqs;
+			return ret;
 	}
 	return sent_reqs;
 }
@@ -691,7 +707,10 @@ static void main_handler(struct ixev_ctx *ctx, unsigned int reason)
 	}
 	else if(reason == IXEVHUP) {
 		printf("Connection close 5\n");
-		ixev_close(ctx);
+		if (conn->alive) {
+			ixev_close(&conn->ctx);
+			conn->alive = false;
+		}
 		return;
 	}
 	receive_req(conn);
@@ -790,7 +809,7 @@ static void* receive_loop(void *arg)
 	conn->in_flight_pkts = 0x0UL;
 	conn->sent_pkts = 0x0UL;
 	conn->list_len = 0x0UL;
-	conn->receive_loop = true;
+	// conn->receive_loop = true;
 	srand(rdtsc());
 	conn->last_count = rand() % (ns_size >> log_ns_sector_size); // random start, are they same for different threads?
 	conn->last_count = conn->last_count & ~7; // align
@@ -798,6 +817,7 @@ static void* receive_loop(void *arg)
 	ixev_ctx_init(&conn->ctx);
 	
 	conn->nvme_fg_handle = 0; //set to this for now
+	conn->alive = true;
 
 	flags = fcntl(STDIN_FILENO, F_GETFL, 0);
 	fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
@@ -855,7 +875,13 @@ static void* receive_loop(void *arg)
 		//---
 	}
 	running = true;
-	ixev_close(&conn->ctx);
+	if (conn->alive) {
+		printf("[%d] Connection normally closed.\n", percpu_get(cpu_id));
+		ixev_close(&conn->ctx);
+		conn->alive = false;
+	} else {
+		running = false;
+	}
 	
 	while (running)
 		ixev_wait();
