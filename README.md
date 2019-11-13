@@ -129,10 +129,10 @@ Client-end:
 
 There are several options for clients in the original ReFlex implementations, but we have only tested an IX-based client that opens TCP connections to ReFlex and sends read/write requests to logical blocks.
 
-	* In order to get best 4k read performance out of our 100Gbps server, you might also need to change some networking parameters for the client. Open the inc/lwip/lwipopts to modify:
-    - TCP_SND_BUF from 65536 to 4096 bytes (for 4k read/write test)
-    - TCP_WND from 1 << 15 to 1 << 16 (for 100Gbps networking)
-    - TCP_MSS from 1460  to 6000 or even 8960 bytes (to enable jumbe frame capability)
+	* In order to get best performance out of our 100Gbps server, you might also need to tune some networking parameters carefully at the client. Modify the inc/lwip/lwipopts:
+    - TCP_SND_BUF from 65536 to 4096 bytes, TCP_MSS from 1460 to 6000 bytes  (for 4k read test)
+    - TCP_WND from 1 << 15 to 1 << 16
+    - TCP_MSS from 1460 to 8960 bytes (to leverage jumbo frame capability for large write test)
    	
    Clone ReFlex4ARM source code (userspace branch) on client machine and follow steps 1 to 6 in the setup instructions in userspace branch README. Comment out `nvme_devices` in ix.conf. 
    

@@ -152,6 +152,7 @@ int eth_process_poll(void)
 				#endif
 				empty = false;
 				m = rx_pkts[i];
+				// printf("eth_process_poll: len %d\n", m->pkt_len);
 				rte_prefetch0(rte_pktmbuf_mtod(m, void *)); 
 				eth_input_process(rx_pkts[i], ret);
 			

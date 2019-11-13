@@ -66,7 +66,7 @@
 #include <string.h>
 
 
-#define BUF_SIZE	TCP_MSS * 4
+#define BUF_SIZE TCP_MSS * 1
 
 extern __thread struct mempool ixev_buf_pool;
 

@@ -165,22 +165,13 @@ volatile int uaccess_fault;
 
 static struct rte_eth_conf default_eth_conf = {
 	.rxmode = {
-		.max_rx_pkt_len = 9128, /**< use this for jumbo frame */
-		.split_hdr_size = 0,
-		#if (RTE_VER_YEAR <= 18) && (RTE_VER_MONTH < 8)
-		.header_split   = 0, /**< Header Split disabled */
-		.hw_ip_checksum = 0, /**< IP/UDP/TCP checksum offload enable. */
-		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		.jumbo_frame	= 1, /**< Jumbo Frame Support enabled */
-		// .hw_strip_crc   = 1, /**< CRC stripped by hardware */
-		#else
 		.offloads = DEV_RX_OFFLOAD_TIMESTAMP	|
 		#if (RTE_VER_YEAR <= 18) && (RTE_VER_MONTH < 11)
 					DEV_RX_OFFLOAD_CRC_STRIP	|
 		#endif
 					DEV_RX_OFFLOAD_CHECKSUM		|
+					DEV_RX_OFFLOAD_HEADER_SPLIT	|
 					DEV_RX_OFFLOAD_JUMBO_FRAME,
-		#endif
 		#ifdef RSS_ENABLE
 		.mq_mode		= ETH_MQ_RX_RSS, // multiple queue mode: RSS | DCB | VMDQ
 		#endif
@@ -276,8 +267,8 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 
 	memset(&dev_info, 0, sizeof(dev_info));
 	rte_eth_dev_info_get(port_id, &dev_info);
-	dev_conf->txmode.offloads &= dev_info.tx_offload_capa;
-	dev_conf->rxmode.offloads &= dev_info.rx_offload_capa;
+	// dev_conf->txmode.offloads &= dev_info.tx_offload_capa;
+	// dev_conf->rxmode.offloads &= dev_info.rx_offload_capa;
 
 	uint16_t mtu;
 
@@ -293,12 +284,6 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 		printf("WARNING: RX Timestamp offloading not supported\n");
 	}
 
-	// Already checked by underlying codes
-	// if (dev_conf->rxmode.jumbo_frame) {
-	// 	dev_conf->rxmode.max_rx_pkt_len = 9000 + ETHER_HDR_LEN + ETHER_CRC_LEN;
-	// }
-
-	// print_rss_conf(port_id);
 
 	printf("nb_tx_queues is %d\n", dev_info.nb_tx_queues);
 	printf("nb_rx_queues is %d\n", dev_info.nb_rx_queues);
@@ -322,6 +307,7 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 	} else {
 		rte_eth_dev_get_mtu(port_id, &mtu);
 		printf("Disable jumbo frames. MTU size is %d\n", mtu);
+		printf("dev_conf->rxmode.jumbo_frame is %d\n", dev_conf->rxmode.jumbo_frame);
 	}
 	
 	init_queues(port_id, &dev_info);
