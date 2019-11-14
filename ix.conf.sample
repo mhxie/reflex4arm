@@ -37,9 +37,11 @@ port=[1234, 1235, 1236, 1237, 1238, 1239, 1240, 1241]
 ##      Updates:
 ##      1. Now support Broadcom NICs (e.g. BCM58800 etc.)
 ##      2. Now support multiple NVMes SSDs
+##      3. Now support namespace size configuration (only at client-end)
 devices="0008:01:00.0"
 # nvme_devices="0000:01:00.0"
 nvme_devices=["0000:01:00.0", "0001:01:00.0", "0006:01:00.0", "0007:01:00.0"]
+# ns_size=["0xE8E0DB6000"]
 
 ###############################################################################
 # ReFlex I/O scheduler parameters
@@ -70,7 +72,21 @@ scheduler="on"
 ##      processing units on the same socket are interleaved.
 ##      Usually `lstopo` allows to see NUMA nodes topology
 ##      You can specify multiple entries, e.g. 'nodes=["X","Y","Z"]'
-cpu=0
+# cpu=[0, 1, 2, 3, 4, 5, 6, 7]
+# cpu=[0]
+# cpu=[3]
+cpu=[0, 1]
+# cpu=[0, 1, 2]
+# cpu=[0, 1, 2, 3]
+# cpu=[0, 1, 2, 3, 4]
+# cpu=[0, 1, 2, 3, 4, 5]
+# cpu=[0, 1, 2, 3, 4, 5, 6]
+# cpu=[0, 1, 2, 3, 4, 5, 6, 7]
+
+## mem_channel  : how many memory channels will be used
+##  Default: -1
+mem_channel=3
+
 
 ## batch : Specifies maximum batch size of received packets to process.
 ##      Default: 64.

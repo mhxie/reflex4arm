@@ -81,7 +81,7 @@ Client-end:
 
    ```
    cp ix.conf.sample ix.conf
-    # modify at least host_addr, gateway_addr, devices, flow director, and nvme_devices
+   # modify at least host_addr, gateway_addr, devices, flow director, and nvme_devices (ns_size at clients)
   
    sudo modprobe -r nvme
    sudo modprobe uio
@@ -101,8 +101,8 @@ Client-end:
 
    ```
    cp sample.devmodel nvme_devname.devmodel
-    # update request costs and token limits to match your SSD performance 
-    # see instructions in comments of file sample.devmodel
+   # update request costs and token limits to match your SSD performance 
+   # see instructions in comments of file sample.devmodel
 	# in ix.conf file, update nvme_device_model=nvme_devname.devmodel
    ```
    You may use any I/O load generation tool (e.g. [fio](https://github.com/axboe/fio)) for preconditioning and request calibration tests. Note that if you use a Linux-based tool, you will need to reload the nvme kernel module for these tests (remember to unload it before running the ReFlex server). 

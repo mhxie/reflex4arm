@@ -763,7 +763,7 @@ static void* receive_loop(void *arg)
 	int num_tests;
 	unsigned long ns_size = CFG.ns_sizes[0];
 
-	printf("ns_size is 0x%x\n", ns_size);
+	printf("ns_size is 0x%lx\n", ns_size);
 
 	tid = *(int *)arg;
 	conn_opened = 0;	

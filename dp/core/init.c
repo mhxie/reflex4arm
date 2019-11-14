@@ -165,6 +165,7 @@ volatile int uaccess_fault;
 
 static struct rte_eth_conf default_eth_conf = {
 	.rxmode = {
+		.max_rx_pkt_len = 9128,
 		.offloads = DEV_RX_OFFLOAD_TIMESTAMP	|
 		#if (RTE_VER_YEAR <= 18) && (RTE_VER_MONTH < 11)
 					DEV_RX_OFFLOAD_CRC_STRIP	|
@@ -267,9 +268,11 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 
 	memset(&dev_info, 0, sizeof(dev_info));
 	rte_eth_dev_info_get(port_id, &dev_info);
-	// dev_conf->txmode.offloads &= dev_info.tx_offload_capa;
-	// dev_conf->rxmode.offloads &= dev_info.rx_offload_capa;
-
+	#if (RTE_VER_RELEASE > 90)
+	dev_conf->txmode.offloads &= dev_info.tx_offload_capa;
+	dev_conf->rxmode.offloads &= dev_info.rx_offload_capa;
+	#endif
+	
 	uint16_t mtu;
 
 	if (dev_conf->txmode.offloads & DEV_TX_OFFLOAD_TCP_CKSUM) {
@@ -307,7 +310,6 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr)
 	} else {
 		rte_eth_dev_get_mtu(port_id, &mtu);
 		printf("Disable jumbo frames. MTU size is %d\n", mtu);
-		printf("dev_conf->rxmode.jumbo_frame is %d\n", dev_conf->rxmode.jumbo_frame);
 	}
 	
 	init_queues(port_id, &dev_info);

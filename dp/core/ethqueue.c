@@ -307,6 +307,21 @@ int eth_process_recv(void)
 
 
 RTE_DEFINE_PER_LCORE(struct rte_eth_dev_tx_buffer*, tx_buf);
+
+/*
+ * Tx buffer error callback
+ */
+static void
+flush_tx_error_callback(struct rte_mbuf **unsent, uint16_t count,
+        void *userdata) {
+    int i;
+    // uint16_t port_id = (uintptr_t)userdata;
+    // tx_stats->tx_drop[port_id] += count;
+	printf("TX flush error.\n");
+    /* free the mbufs which failed from transmit */
+    for (i = 0; i < count; i++)
+        rte_pktmbuf_free(unsent[i]);
+}
 /**
  * ethdev_init_cpu - initializes the core-local tx buffer 
  *
@@ -321,6 +336,7 @@ int ethdev_init_cpu(void)
 	tx_buffer = rte_zmalloc_socket("tx_buffer",
 			RTE_ETH_TX_BUFFER_SIZE(eth_rx_max_batch), 0,
 			rte_eth_dev_socket_id(active_eth_port));
+	printf("The size of RTE_ETH_TX_BUFFER_SIZE (eth_rx_max_batch) is %ld\n.", RTE_ETH_TX_BUFFER_SIZE(eth_rx_max_batch));
 	if (tx_buffer == NULL){
 		log_err("ERROR: cannot allocate buffer for tx \n");
 		exit(0);
@@ -332,14 +348,19 @@ int ethdev_init_cpu(void)
 		exit(0);
 	}
 	percpu_get(tx_buf) = tx_buffer;
+	printf("tx_buffer: size-%d, len-%d.\n", tx_buffer->size, tx_buffer->length);
 
+    ret = rte_eth_tx_buffer_set_err_callback(tx_buffer,
+            flush_tx_error_callback,
+            NULL);
+    if (ret < 0)
+        rte_exit(EXIT_FAILURE, "Cannot set error callback for tx buffer.\n");
 	// Assign each CPU the correct number of queues.
 	percpu_get(eth_num_queues) = rte_eth_dev_count();
 	// log_info("Now we have %d queues for this core.\n", percpu_get(eth_num_queues));
 
 	return 0;
 }
-
 
 
 /**
