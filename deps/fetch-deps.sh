@@ -114,7 +114,7 @@ trap Main__exitHandler EXIT
 git_clone_checkout()
 {
   git clone "$1" "$2" || echo "$0: warning: git clone failed."
-  git -C "$2" checkout "$3" || echo "$0: warning git chechout failed."
+  git -C "$2" checkout "$3" || echo "$0: warning git checkout failed."
 }
 
 Main__main()

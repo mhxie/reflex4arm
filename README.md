@@ -47,7 +47,7 @@ Client-end:
    git clone https://github.com/mhxie/reflex4arm.git
    cd reflex4arm
    git checkout userspace
-   ./deps/fetch-deps.sh
+   ./deps/fetch-deps.sh # on stingray, change the dpdk and spdk address in deps/DEPS
    ```
 
 2. Install library dependencies: 
@@ -59,7 +59,7 @@ Client-end:
 3. Build the dependecies:
 
    ```
-   # Build dpdk, may differ while using bcm/17.11-ubuntu-1804-build
+   # Build dpdk/spdk, may differ while using bcm/17.11-ubuntu-1804-build
    sudo chmod +r /boot/System.map-`uname -r`
    make -sj64 -C deps/dpdk config T=arm64-native-linuxapp-gcc
    make -sj64 -C deps/dpdk
@@ -111,6 +111,14 @@ Client-end:
 
 ## Running ReFlex4ARM
 
+### 0. Change some kernel settings (only at stingray):
+   ```
+   sudo vim /etc/security/limits.conf
+
+   *               hard    memlock         unlimited
+   *               soft    memlock         unlimited
+   ```
+
 ### 1. Run the ReFlex4ARM server:
 
    ```
@@ -134,7 +142,7 @@ There are several options for clients in the original ReFlex implementations, bu
     - TCP_WND from 1 << 15 to 1 << 16
     - TCP_MSS from 1460 to 8960 bytes (to leverage jumbo frame capability for large write test)
    	
-   Clone ReFlex4ARM source code (userspace branch) on client machine and follow steps 1 to 6 in the setup instructions in userspace branch README. Comment out `nvme_devices` in ix.conf. 
+   Clone ReFlex4ARM source code (userspace branch) on client machine and follow steps 1 to 6 in the setup instructions in userspace branch README. Change the target from `arm64-native-linuxapp-gcc` to `x86_64-native-linuxapp-gcc`. Comment out `nvme_devices` in ix.conf. 
    
    Single-thread test example: 
 

@@ -60,53 +60,50 @@
  * libdune.
  */
 
-#include <sys/socket.h>
-#include <rte_config.h>
-#include <rte_per_lcore.h>
-#include <rte_malloc.h>
-#include <ix/stddef.h>
 #include <ix/cfg.h>
-#include <ix/syscall.h>
-#include <ix/errno.h>
-#include <ix/timer.h>
-#include <ix/ethdev.h>
+#include <ix/control_plane.h>
 #include <ix/cpu.h>
+#include <ix/errno.h>
+#include <ix/ethdev.h>
+#include <ix/ethfg.h>
 #include <ix/kstats.h>
 #include <ix/log.h>
-#include <ix/control_plane.h>
-#include <ix/ethfg.h>
 #include <ix/nvmedev.h>
+#include <ix/stddef.h>
+#include <ix/syscall.h>
+#include <ix/timer.h>
 #include <ix/utimer.h>
+#include <rte_config.h>
+#include <rte_malloc.h>
+#include <rte_per_lcore.h>
+#include <sys/socket.h>
 
-
-#define UARR_MIN_CAPACITY	8192
+#define UARR_MIN_CAPACITY 8192
 
 RTE_DEFINE_PER_LCORE(struct bsys_arr *, usys_arr);
 RTE_DEFINE_PER_LCORE(void *, usys_iomap);
 RTE_DEFINE_PER_LCORE(unsigned long, syscall_cookie);
 RTE_DEFINE_PER_LCORE(unsigned long, idle_cycles);
 
-
 static bsysfn_t bsys_tbl[] = {
-	(bsysfn_t) bsys_udp_send,
-	(bsysfn_t) bsys_udp_sendv,
-	(bsysfn_t) bsys_udp_recv_done,
-	(bsysfn_t) bsys_tcp_connect,
-	(bsysfn_t) bsys_tcp_accept,
-	(bsysfn_t) bsys_tcp_reject,
-	(bsysfn_t) bsys_tcp_send,
-	(bsysfn_t) bsys_tcp_sendv,
-	(bsysfn_t) bsys_tcp_recv_done,
-	(bsysfn_t) bsys_tcp_close,
-	(bsysfn_t) bsys_nvme_write,
-	(bsysfn_t) bsys_nvme_read,
-	(bsysfn_t) bsys_nvme_writev,
-	(bsysfn_t) bsys_nvme_readv,
-	(bsysfn_t) bsys_nvme_open,
-	(bsysfn_t) bsys_nvme_close,
-	(bsysfn_t) bsys_nvme_register_flow,
-	(bsysfn_t) bsys_nvme_unregister_flow
-};
+    (bsysfn_t)bsys_udp_send,
+    (bsysfn_t)bsys_udp_sendv,
+    (bsysfn_t)bsys_udp_recv_done,
+    (bsysfn_t)bsys_tcp_connect,
+    (bsysfn_t)bsys_tcp_accept,
+    (bsysfn_t)bsys_tcp_reject,
+    (bsysfn_t)bsys_tcp_send,
+    (bsysfn_t)bsys_tcp_sendv,
+    (bsysfn_t)bsys_tcp_recv_done,
+    (bsysfn_t)bsys_tcp_close,
+    (bsysfn_t)bsys_nvme_write,
+    (bsysfn_t)bsys_nvme_read,
+    (bsysfn_t)bsys_nvme_writev,
+    (bsysfn_t)bsys_nvme_readv,
+    (bsysfn_t)bsys_nvme_open,
+    (bsysfn_t)bsys_nvme_close,
+    (bsysfn_t)bsys_nvme_register_flow,
+    (bsysfn_t)bsys_nvme_unregister_flow};
 
 //
 // TODO: Get rid of these eventually
@@ -114,73 +111,67 @@ static bsysfn_t bsys_tbl[] = {
 // Empty UDP functions to allow for compilation
 //
 long bsys_udp_send(void __user *addr, size_t len,
-			  struct ip_tuple __user *id,
-			  unsigned long cookie)
-{
-	return 0;
+                   struct ip_tuple __user *id,
+                   unsigned long cookie) {
+    return 0;
 }
 
 long bsys_udp_sendv(struct sg_entry __user *ents,
-			   unsigned int nrents,
-			   struct ip_tuple __user *id,
-			   unsigned long cookie)
-{
-	return -RET_NOSYS;
+                    unsigned int nrents,
+                    struct ip_tuple __user *id,
+                    unsigned long cookie) {
+    return -RET_NOSYS;
 }
 
-long bsys_udp_recv_done(void *iomap)
-{
-	return 0;
+long bsys_udp_recv_done(void *iomap) {
+    return 0;
 }
 
+static int bsys_dispatch_one(struct bsys_desc __user *d) {
+    uint64_t sysnr, arga, argb, argc, argd, arge, argf, ret;
 
-static int bsys_dispatch_one(struct bsys_desc __user *d)
-{
-	uint64_t sysnr, arga, argb, argc, argd, arge, argf, ret;
+    sysnr = d->sysnr;
+    arga = d->arga;
+    argb = d->argb;
+    argc = d->argc;
+    argd = d->argd;
+    arge = d->arge;
+    argf = d->argf;
 
-	sysnr = d->sysnr;
-	arga = d->arga;
-	argb = d->argb;
-	argc = d->argc;
-	argd = d->argd;
-	arge = d->arge;
-	argf = d->argf;
-	
-	if (unlikely(sysnr >= KSYS_NR)) {
-		ret = (uint64_t) - ENOSYS;
-		goto out;
-	}
-	// printf("calling bsys nr %i\n", sysnr);
-	ret = bsys_tbl[sysnr](arga, argb, argc, argd, arge, argf);
+    if (unlikely(sysnr >= KSYS_NR)) {
+        ret = (uint64_t)-ENOSYS;
+        goto out;
+    }
+    // printf("calling bsys nr %i\n", sysnr);
+    ret = bsys_tbl[sysnr](arga, argb, argc, argd, arge, argf);
 
 out:
-	arga = percpu_get(syscall_cookie);
-	d->arga = arga;
-	d->argb = ret;
+    arga = percpu_get(syscall_cookie);
+    d->arga = arga;
+    d->argb = ret;
 
-	return 0;
+    return 0;
 }
 
-static int bsys_dispatch(struct bsys_desc __user *d, unsigned int nr)
-{
-	unsigned long i;
-	int ret;
+static int bsys_dispatch(struct bsys_desc __user *d, unsigned int nr) {
+    unsigned long i;
+    int ret;
 #ifdef ENABLE_KSTATS
-	kstats_accumulate save;
+    kstats_accumulate save;
 #endif
 
-	if (!nr)
-		return 0;
+    if (!nr)
+        return 0;
 
-	for (i = 0; i < nr; i++) {
-		KSTATS_PUSH(bsys_dispatch_one, &save);
-		ret = bsys_dispatch_one(&d[i]);
-		KSTATS_POP(&save);
-		if (unlikely(ret))
-			return ret;
-	}
+    for (i = 0; i < nr; i++) {
+        KSTATS_PUSH(bsys_dispatch_one, &save);
+        ret = bsys_dispatch_one(&d[i]);
+        KSTATS_POP(&save);
+        if (unlikely(ret))
+            return ret;
+    }
 
-	return 0;
+    return 0;
 }
 
 /**
@@ -190,78 +181,76 @@ static int bsys_dispatch(struct bsys_desc __user *d, unsigned int nr)
  *
  * Returns 0 if successful, otherwise failure.
  */
-int sys_bpoll(struct bsys_desc *d, unsigned int nr)
-{
-	int ret, empty;
+int sys_bpoll(struct bsys_desc *d, unsigned int nr) {
+    int ret, empty;
 
-	usys_reset();
+    usys_reset();
 
-	//KSTATS_PUSH(tx_reclaim, NULL);
-	//eth_process_reclaim();
-	//KSTATS_POP(NULL);
+    //KSTATS_PUSH(tx_reclaim, NULL);
+    //eth_process_reclaim();
+    //KSTATS_POP(NULL);
 
-	KSTATS_PUSH(bsys, NULL);
-	ret = bsys_dispatch(d, nr);
-	KSTATS_POP(NULL);
+    KSTATS_PUSH(bsys, NULL);
+    ret = bsys_dispatch(d, nr);
+    KSTATS_POP(NULL);
 
-	if (ret)
-		return ret;
+    if (ret)
+        return ret;
 
-	percpu_get(received_nvme_completions) = 0;
+    percpu_get(received_nvme_completions) = 0;
 again:
-	switch (percpu_get(cp_cmd)->cmd_id) {
-	case CP_CMD_MIGRATE:
-		if (percpu_get(usys_arr)->len) {
-			/* If there are pending events and we have
+    switch (percpu_get(cp_cmd)->cmd_id) {
+        case CP_CMD_MIGRATE:
+            if (percpu_get(usys_arr)->len) {
+                /* If there are pending events and we have
 			 * received a migration command, return to user
 			 * space for the processing of the events. We
 			 * will delay the migration until we are in a
 			 * quiescent state. */
-			return 0;
-		}
-		//NOTE: not supporting migration now
-		//eth_fg_assign_to_cpu((bitmap_ptr) percpu_get(cp_cmd)->migrate.fg_bitmap, percpu_get(cp_cmd)->migrate.cpu);
-		//percpu_get(cp_cmd)->cmd_id = CP_CMD_NOP;
-		break;
-	case CP_CMD_IDLE:
-		if (percpu_get(usys_arr)->len)
-			return 0;
-		cp_idle();
-	case CP_CMD_NOP:
-		break;
-	}
+                return 0;
+            }
+            //NOTE: not supporting migration now
+            //eth_fg_assign_to_cpu((bitmap_ptr) percpu_get(cp_cmd)->migrate.fg_bitmap, percpu_get(cp_cmd)->migrate.cpu);
+            //percpu_get(cp_cmd)->cmd_id = CP_CMD_NOP;
+            break;
+        case CP_CMD_IDLE:
+            if (percpu_get(usys_arr)->len)
+                return 0;
+            cp_idle();
+        case CP_CMD_NOP:
+            break;
+    }
 
-	//schedule
-	if (nvme_sched_flag) {
-		nvme_sched();
-	}
-	
+    //schedule
+    if (nvme_sched_flag) {
+        nvme_sched();
+    }
 
-	KSTATS_PUSH(percpu_bookkeeping, NULL);
-	cpu_do_bookkeeping();
-	KSTATS_POP(NULL);
+    KSTATS_PUSH(percpu_bookkeeping, NULL);
+    cpu_do_bookkeeping();
+    KSTATS_POP(NULL);
 
-	// KSTATS_PUSH(timer, NULL);
-	// timer_run();
-	// unset_current_fg();
-	// KSTATS_POP(NULL);
+    // KSTATS_PUSH(timer, NULL);
+    // timer_run();
+    // unset_current_fg();
+    // KSTATS_POP(NULL);
 
-	KSTATS_PUSH(rx_poll, NULL);
-	eth_process_poll();
-	KSTATS_POP(NULL);
+    KSTATS_PUSH(rx_poll, NULL);
+    eth_process_poll();
+    KSTATS_POP(NULL);
 
-	//KSTATS_PUSH(rx_recv, NULL);
-	//empty = eth_process_recv();
-	//KSTATS_POP(NULL);
+    //KSTATS_PUSH(rx_recv, NULL);
+    //empty = eth_process_recv();
+    //KSTATS_POP(NULL);
 
-	// log_info("Enter NVME process completions:\n");
-	nvme_process_completions();
-	// log_info("Leave NVME process completions.");
+    // log_info("Enter NVME process completions:\n");
+    nvme_process_completions();
+    // log_info("Leave NVME process completions.");
 
-	KSTATS_PUSH(tx_send, NULL);
-	eth_process_send();
-	KSTATS_POP(NULL);
-	return 0;
+    KSTATS_PUSH(tx_send, NULL);
+    eth_process_send();
+    KSTATS_POP(NULL);
+    return 0;
 }
 
 /**
@@ -274,21 +263,21 @@ again:
 // static int sys_bcall(struct bsys_desc __user *d, unsigned int nr)
 int sys_bcall(struct bsys_desc *d, unsigned int nr)  //added Sparse support in the future
 {
-	int ret;
+    int ret;
 
-	KSTATS_PUSH(tx_reclaim, NULL);
-	eth_process_reclaim();
-	KSTATS_POP(NULL);
+    KSTATS_PUSH(tx_reclaim, NULL);
+    eth_process_reclaim();
+    KSTATS_POP(NULL);
 
-	KSTATS_PUSH(bsys, NULL);
-	ret = bsys_dispatch(d, nr);
-	KSTATS_POP(NULL);
+    KSTATS_PUSH(bsys, NULL);
+    ret = bsys_dispatch(d, nr);
+    KSTATS_POP(NULL);
 
-	KSTATS_PUSH(tx_send, NULL);
-	eth_process_send();
-	KSTATS_POP(NULL);
+    KSTATS_PUSH(tx_send, NULL);
+    eth_process_send();
+    KSTATS_POP(NULL);
 
-	return ret;
+    return ret;
 }
 
 /**
@@ -296,10 +285,9 @@ int sys_bcall(struct bsys_desc *d, unsigned int nr)  //added Sparse support in t
  *
  * Returns an IOMAP pointer.
  */
-void *sys_baddr(void)
-{
-	//return percpu_get(usys_iomap);
-	return percpu_get(usys_arr);
+void *sys_baddr(void) {
+    //return percpu_get(usys_iomap);
+    return percpu_get(usys_arr);
 }
 
 /**
@@ -311,9 +299,8 @@ void *sys_baddr(void)
  *
  * Returns 0 if successful, otherwise fail.
  */
-static int sys_mmap(void *addr, int nr, int size, int perm)
-{
-	log_err("sys_mmap not supported\n");
+static int sys_mmap(void *addr, int nr, int size, int perm) {
+    log_err("sys_mmap not supported\n");
 }
 
 /**
@@ -322,9 +309,8 @@ static int sys_mmap(void *addr, int nr, int size, int perm)
  * @nr: the number of pages
  * @size: the size of each page
  */
-static int sys_unmap(void *addr, int nr, int size)
-{
-	log_err("sys_unmap not supported\n");
+static int sys_unmap(void *addr, int nr, int size) {
+    log_err("sys_unmap not supported\n");
 }
 
 bool sys_spawn_cores;
@@ -338,18 +324,16 @@ bool sys_spawn_cores;
  * Returns 0.
  */
 // static int sys_spawnmode(bool spawn_cores)
-int sys_spawnmode(bool spawn_cores)
-{
-	sys_spawn_cores = spawn_cores;
-	return 0;
+int sys_spawnmode(bool spawn_cores) {
+    sys_spawn_cores = spawn_cores;
+    return 0;
 }
 
 /**
  * sys_nrcpus - returns the number of active CPUs
  */
-static int sys_nrcpus(void)
-{
-	return cpus_active;
+static int sys_nrcpus(void) {
+    return cpus_active;
 }
 
 /**
@@ -357,9 +341,8 @@ static int sys_nrcpus(void)
  *
  * Returns the timer id
  */
-static int sys_timer_init(void *addr)
-{
-	return utimer_init(&percpu_get(utimers), addr);
+int sys_timer_init(void *addr) {
+    return utimer_init(&percpu_get(utimers), addr);
 }
 
 /**
@@ -367,24 +350,23 @@ static int sys_timer_init(void *addr)
  *
  * Returns 0 or failure
  */
-static int sys_timer_ctl(int timer_id, uint64_t delay)
-{
-	return utimer_arm(&percpu_get(utimers), timer_id, delay);
+int sys_timer_ctl(int timer_id, uint64_t delay) {
+    return utimer_arm(&percpu_get(utimers), timer_id, delay);
 }
 
 typedef uint64_t (*sysfn_t)(uint64_t, uint64_t, uint64_t,
-			    uint64_t, uint64_t, uint64_t, uint64_t);
+                            uint64_t, uint64_t, uint64_t, uint64_t);
 
 static sysfn_t sys_tbl[] = {
-	(sysfn_t) sys_bpoll,
-	(sysfn_t) sys_bcall,
-	(sysfn_t) sys_baddr,
-	(sysfn_t) sys_mmap, 		//FIXME: don't need
-	(sysfn_t) sys_unmap,		//FIXME: don't need
-	(sysfn_t) sys_spawnmode,
-	(sysfn_t) sys_nrcpus,
-	(sysfn_t) sys_timer_init,
-	(sysfn_t) sys_timer_ctl,
+    (sysfn_t)sys_bpoll,
+    (sysfn_t)sys_bcall,
+    (sysfn_t)sys_baddr,
+    (sysfn_t)sys_mmap,   //FIXME: don't need
+    (sysfn_t)sys_unmap,  //FIXME: don't need
+    (sysfn_t)sys_spawnmode,
+    (sysfn_t)sys_nrcpus,
+    (sysfn_t)sys_timer_init,
+    (sysfn_t)sys_timer_ctl,
 };
 
 /**
@@ -412,17 +394,15 @@ void do_syscall(struct dune_tf *tf, uint64_t sysnr)
  *
  * Returns 0 if successful, otherwise fail.
  */
-int syscall_init_cpu(void)
-{
-	struct bsys_arr *arr;
-	void *iomap;
-	arr = (struct bsys_arr *) rte_malloc(NULL, sizeof(struct bsys_arr) + UARR_MIN_CAPACITY * sizeof(struct bsys_desc), 0);
-	if (!arr)
-	{
-		return -ENOMEM;
-	}
-	
-	/*
+int syscall_init_cpu(void) {
+    struct bsys_arr *arr;
+    void *iomap;
+    arr = (struct bsys_arr *)rte_malloc(NULL, sizeof(struct bsys_arr) + UARR_MIN_CAPACITY * sizeof(struct bsys_desc), 0);
+    if (!arr) {
+        return -ENOMEM;
+    }
+
+    /*
 	iomap = vm_map_to_user((void *) arr, usys_nr, PGSIZE_2MB, VM_PERM_R);
 	if (!iomap) {
 		page_free_contig((void *) arr, usys_nr);
@@ -430,18 +410,16 @@ int syscall_init_cpu(void)
 	}
 	*/
 
-	percpu_get(usys_arr) = arr;
-	log_info("syscall_init_cpu: usys_arr pts is %p @@@@@@@@@@@@@@@@@@\n", arr);
-	return 0;
+    percpu_get(usys_arr) = arr;
+    log_info("syscall_init_cpu: usys_arr pts is %p @@@@@@@@@@@@@@@@@@\n", arr);
+    return 0;
 }
 
 /**
  * syscall_exit_cpu - frees the user-mapped page for batched system calls
  */
-void syscall_exit_cpu(void)
-{
-	rte_free(percpu_get(usys_arr));
-	percpu_get(usys_arr) = NULL;
-	percpu_get(usys_iomap) = NULL;
+void syscall_exit_cpu(void) {
+    rte_free(percpu_get(usys_arr));
+    percpu_get(usys_arr) = NULL;
+    percpu_get(usys_iomap) = NULL;
 }
-
