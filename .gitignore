@@ -9,6 +9,7 @@ out.*
 *.svg
 .depend
 
+/cp/env
 /deps/dpdk
 /deps/spdk
 /deps/dune
