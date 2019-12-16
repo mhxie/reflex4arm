@@ -135,7 +135,9 @@ Client-end:
 
 ### 2. Run a ReFlex client:
 
-There are several options for clients in the original ReFlex implementations, but we have only tested an IX-based client that opens TCP connections to ReFlex and sends read/write requests to logical blocks.
+There are several options for clients in the original ReFlex implementations,
+
+#### 2.1 Run an IX-based client that opens TCP connections to ReFlex and sends read/write requests to logical blocks.
 
 	* In order to get best performance out of our 100Gbps server, you might also need to tune some networking parameters carefully at the client. Modify the inc/lwip/lwipopts:
     - TCP_SND_BUF from 65536 to 4096 bytes, TCP_MSS from 1460 to 6000 bytes  (for 4k read test)
@@ -187,6 +189,32 @@ There are several options for clients in the original ReFlex implementations, bu
    600000   599913  154     104     111     117     124     133     148     165       189     231     273     378     1578    193293
    ```
 
+#### 2.2 Run a legacy client application using the ReFlex remote block device driver.
+
+This client option is provided to support legacy applications. ReFlex exposes a standard Linux remote block device interface to the client (which appears to the client as a local block device). The client can mount a filesystem on the block device. With this approach, the client is subject to overheads in the Linux filesystem, block storage layer and network stack.
+On the client, change into the reflex_nbd directory and type make. Be sure that the remote ReFlex server is running and that it is ping-able from the client. Load the reflex.ko module, type dmesg to check whether the driver was successfully loaded. To reproduce the fio results from the paper do the following.
+
+*Caveat: This is only for bdev-based tests without file system*
+
+Before begining your tests, change the following parameters at reflex_nbd/reflex_nbd.c:
+* `dest_addr` to the destination ip
+* `REFLEX_SIZEBYTES` to the `ns_size`
+* `dest_cpunr` to the number of threads running at your server
+* `submit_queues` to the number of threads running at your client
+
+```
+cd reflex_nbd
+make
+
+sudo modprobe bnxt_en
+ # or try sudo python deps/dpdk/usertools/dpdk-devbind.py --bind=bnxt_en 01:00.0 && sudo rmmod igb_uio
+sudo modprobe nvme
+ # make sure you have started reflex_server on the server machine and can ping it
+
+sudo insmod reflex.ko
+sudo apt install fio
+for i in 1 2 4 8 16 32 ; do BLKSIZE=4k DEPTH=$i fio randread_remote.fio; done
+```
 
 ## Reference
 

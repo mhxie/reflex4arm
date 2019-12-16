@@ -53,7 +53,7 @@
 #define DEFAULT_TIMEOUT 10000
 
 #define REFLEX_MAJOR MISC_MAJOR
-#define REFLEX_SIZEBYTES 0x1749a956000
+#define REFLEX_SIZEBYTES 0xE8E0DB6000
 
 #ifdef NDEBUG
 #define dprintk(flags, fmt...)
@@ -74,9 +74,10 @@ static unsigned int debugflags;
 static unsigned int reflex_devs_max = 1;
 static struct reflex_device *reflex_dev;
 static int max_part = 15;
-static char *dest_addr = "10.79.6.130";
+static char *dest_addr = "10.10.66.3";
+static int dest_cpunr = 8;
 static int hw_queue_depth = 4096;
-static int submit_queues;
+static int submit_queues = 8;
 static int home_node = NUMA_NO_NODE;
 //FIXME: max cores/hw queues
 
@@ -433,7 +434,7 @@ static int reflex_init_hctx(struct blk_mq_hw_ctx *hctx, void *data,
     memset(&sockaddr, 0, sizeof(sockaddr));
     sockaddr.sin_family = AF_INET;
     sockaddr.sin_addr.s_addr = inet_addr(dest_addr);
-    sockaddr.sin_port = htons(1234);
+    sockaddr.sin_port = htons(1234 + index % dest_cpunr);
 
     printk(KERN_EMERG "Connecting to IP: %s\n", dest_addr);
 
@@ -493,7 +494,7 @@ static int __init reflex_init(void) {
     int ret;
     struct gendisk *disk;
 
-    submit_queues = 8;  //nr_online_nodes;
+    // submit_queues = 8;  //nr_online_nodes;
 
     if (max_part < 0) {
         printk(KERN_ERR "reflex: max_part must be >= 0\n");
