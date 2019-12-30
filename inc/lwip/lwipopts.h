@@ -92,7 +92,7 @@
 
 #define LWIP_WND_SCALE 1
 #define TCP_RCV_SCALE 7
-#define TCP_SND_BUF 65536 // FIXME: adjust this automatically to improve performance
+#define TCP_SND_BUF 65536*2 // FIXME: adjust this automatically to improve performance
 
 #define TCP_MSS 8960 /* Originally 1460, but now support jumbo frames */
 // #define TCP_MSS 1460

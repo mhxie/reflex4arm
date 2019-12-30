@@ -76,7 +76,7 @@
 
 #define BINARY_HEADER binary_header_blk_t
 
-#define NVME_ENABLE
+// #define NVME_ENABLE
 
 #define MAX_PAGES_PER_ACCESS 256 //64
 #define PAGE_SIZE 4096
@@ -109,7 +109,8 @@ static __thread long failed_header_sents_0 = 0;
 static __thread long failed_header_sents_1 = 0;
 static __thread long failed_payload_sents_0 = 0;
 static __thread long failed_payload_sents_1 = 0;
-static __thread long failed_other_sents = 0;
+static __thread long failed_other_sents_0 = 0;
+static __thread long failed_other_sents_1 = 0;
 // static __thread long successful_resend_attempts = 0;
 // static __thread long cycles_between_resend = 100000;
 // static __thread long cycles_between_resend = 50000;
@@ -130,9 +131,9 @@ struct nvme_req {
 
 struct pp_conn {
 	struct ixev_ctx ctx;
-	size_t rx_received; //the amount of data received/sent for the current ReFlex request
+	size_t rx_received; //bytes received for the current ReFlex request
 	size_t tx_sent;
-	bool rx_pending; 	//is there a ReFlex req currently being received/sent
+	bool rx_pending; 	//if a ReFlex req is currently being received
 	bool tx_pending;
 	int nvme_pending;
 	long in_flight_pkts;
@@ -188,11 +189,6 @@ static void send_completed_cb(struct ixev_ref *ref)
 	struct pp_conn *conn = req->conn;
 	int i, num4k;
 	unsigned long curr_sent_time = (rte_rdtsc() - req->timestamp) / cycles_per_us;
-	// if (3*curr_sent_time > 4*last_sent_time || 3*last_sent_time > 4*curr_sent_time) {
-	// 	printf("Abnormal latency: last-%lu, curr-%lu.\n", last_sent_time, curr_sent_time);
-	// 	printf("In flight requests: %lu sent req %lu . list len %lu \n", conn->in_flight_pkts, conn->sent_pkts, conn->list_len);
-	// } 
-	// last_sent_time = curr_sent_time;
 	send_avg += curr_sent_time;
 
 	num4k = (req->lba_count * ns_sector_size) / 4096;
@@ -235,18 +231,20 @@ int send_req(struct nvme_req *req)
 			if (ret == -ENOBUFS) {
 				failed_header_sents_0++;
 			}
-			if (ret == -EAGAIN) {
+			else if (ret == -EAGAIN) {
 				failed_header_sents_1++;
-				return -1;
+			}
+			else if (ret < 0) {
+				failed_other_sents_0++;
 			}
 			
 			if (ret < 0) {
-				failed_other_sents++;
 				if(!conn->nvme_pending) {
 					printf("ixev_send ret < 0, then ivev_close.\n");
 					ixev_close(&conn->ctx);
+					return -2;
 				}
-				return -2;
+				return -1;
 				ret = 0;
 			}
 			conn->tx_sent += ret;
@@ -267,17 +265,18 @@ int send_req(struct nvme_req *req)
 			if (ret < 0) {
 				if (ret == -ENOBUFS) {
 					failed_payload_sents_0++;
-					return -1;
 				}
-				if (ret == -EAGAIN) {
+				else if (ret == -EAGAIN) {
 					failed_payload_sents_1++;
-					return -1;
+				}
+				else if (ret < 0) {
+					failed_other_sents_1++;
 				}
 				if(!conn->nvme_pending) {
 					printf("Connection close 3\n");
 					ixev_close(&conn->ctx);
 				}
-				failed_other_sents++;
+				
 				return -2;
 			}
 			if(ret==0)
@@ -288,7 +287,7 @@ int send_req(struct nvme_req *req)
 				req->current_sgl_buf++;
 		}
 		assert(req->current_sgl_buf <= req->lba_count);
-		req->ref.cb = &send_completed_cb;  // FIXME: move out of the path
+		req->ref.cb = &send_completed_cb;
 		req->ref.send_pos = req->lba_count * ns_sector_size;
 		ixev_add_sent_cb(&conn->ctx, &req->ref);
 	}
@@ -302,6 +301,8 @@ int send_req(struct nvme_req *req)
 		}
 		mempool_free(&nvme_req_pool, req);
 		reqs_allocated--;
+		unsigned long curr_sent_time = (rte_rdtsc() - req->timestamp) / cycles_per_us;
+		send_avg += curr_sent_time;
 		//conn->sent_pkts--;
 	}
 	conn->list_len--;
@@ -500,9 +501,9 @@ static void receive_req(struct pp_conn *conn)
 					assert(0);
 				}
 				conn->current_req->buf[i] = req_buf_array[i];
-				//printf("req_buf_array[%d] is %p, expect next %x\n", i, req_buf_array[i], (uint64_t)(req_buf_array[i]) +4096); 
+				// printf("req_buf_array[%d] is %p, expect next %x\n", i, req_buf_array[i], (uint64_t)(req_buf_array[i])-4096); 
 			}
-			//printf("req buf is %p\n", conn->current_req->buf[0]);
+			// printf("req buf is %p\n", conn->current_req->buf[0]);
  
 			ixev_nvme_req_ctx_init(&conn->current_req->ctx);
 
@@ -624,22 +625,22 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason)
 	}
 	if(reason==IXEVHUP) {
 		ixev_nvme_unregister_flow(conn->nvme_fg_handle);
-		printf("Thread %d: IXEVHUP: Connection closed.\nAvg nvme latency was %luus, avg send latency was %luus, avg wait latency was %lu us.\n",
+		printf("Thread %d: IXEVHUP: Connection closed.\nAvg nvme latency was %luus, avg payload send latency was %luus, avg wait latency was %lu us.\n",
 			percpu_get(cpu_id),
 			local_avg / num_requests,
 			(send_avg - tem_avg) / num_requests,
 			(tem_avg - local_avg) / num_requests);
-		printf("Failed sent: header - %lu/%lu | payload - %lu/%lu | others - %lu\n",
+		printf("Failed sent: header - %lu/%lu | payload - %lu/%lu | others - %lu/%lu\n",
 			failed_header_sents_0, failed_header_sents_1,
 			failed_payload_sents_0, failed_payload_sents_1,
-			failed_other_sents);
+			failed_other_sents_0, failed_other_sents_1);
 		local_avg = 0;
 		send_avg = 0;
 		num_requests = 0;
 		tem_avg = 0;
 		failed_header_sents_0 = failed_header_sents_1 = 0;
 		failed_payload_sents_0 = failed_payload_sents_1 = 0;
-		failed_other_sents = 0;
+		failed_other_sents_0 = failed_header_sents_1 = 0;
 		// failed_resend_attempts = 0;
 		// successful_resend_attempts = 0;
 		ixev_close(&conn->ctx);

@@ -95,7 +95,11 @@ Client-end:
    
 6. Precondition the SSD and derive the request cost model:
 
-   It is necessary to precondition the SSD to acheive steady-state performance and reproducible results across runs. We recommend preconditioning the SSD with the following local Flash tests: write *sequentially* to the entire address space using 128KB requests, then write *randomly* to the device with 4KB requests until you see performance reach steady state. The random write test typically takes about 10 to 20 minutes, depending on the device model and capacity. 
+   It is necessary to precondition the SSD to acheive steady-state performance and reproducible results across runs. We recommend preconditioning the SSD with the following local Flash tests: write *sequentially* to the entire address space using 128KB requests, then write *randomly* to the device with 4KB requests until you see performance reach steady state. The time for the random write test depends on the capacity, use `./perf -h` to check how to configure. 
+   ```
+   cd deps/spdk/examples/nvme/perf
+   sudo ./perf -q 1 -s 131072 -w write -t 3600 -c 0x1 -r 'trtype:PCIe traddr:0001:01:00.0'
+   ```
    
    After preconditioning, you should derive the request cost model for your SSD:
 
@@ -139,7 +143,6 @@ There are several options for clients in the original ReFlex implementations,
 
 #### 2.1 Run an IX-based client that opens TCP connections to ReFlex and sends read/write requests to logical blocks.
 
-	* In order to get best performance out of our 100Gbps server, you might also need to tune some networking parameters carefully at the client. Modify the inc/lwip/lwipopts:
     - TCP_SND_BUF from 65536 to 4096 bytes, TCP_MSS from 1460 to 6000 bytes  (for 4k read test)
     - TCP_WND from 1 << 15 to 1 << 16
     - TCP_MSS from 1460 to 8960 bytes (to leverage jumbo frame capability for large write test)
