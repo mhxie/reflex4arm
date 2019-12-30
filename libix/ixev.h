@@ -59,11 +59,17 @@
 #pragma once
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "ix.h"
 
 /* FIXME: we won't need recv depth when i get a chance to fix the kernel */
 #define IXEV_RECV_DEPTH 1024 * 2  //*1 for client
 #define IXEV_SEND_DEPTH 16 * 1    //*1 for client
+
+#define CMD_BATCH_SIZE 4096
+
+/* FIXME: implement automatic TCP Buffer Tuning, Jeffrey Semke et. al. */
+#define IXEV_SEND_WIN_SIZE 65536 * 2
 
 struct ixev_ctx;
 struct ixev_nvme_ioq_ctx;

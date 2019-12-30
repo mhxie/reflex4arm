@@ -9,6 +9,7 @@ out.*
 *.svg
 .depend
 
+.vscode/
 /cp/env
 /deps/dpdk
 /deps/spdk
