@@ -142,10 +142,6 @@ Client-end:
 There are several options for clients in the original ReFlex implementations,
 
 #### 2.1 Run an IX-based client that opens TCP connections to ReFlex and sends read/write requests to logical blocks.
-
-    - TCP_SND_BUF from 65536 to 4096 bytes, TCP_MSS from 1460 to 6000 bytes  (for 4k read test)
-    - TCP_WND from 1 << 15 to 1 << 16
-    - TCP_MSS from 1460 to 8960 bytes (to leverage jumbo frame capability for large write test)
    	
    Clone ReFlex4ARM source code (userspace branch) on client machine and follow steps 1 to 6 in the setup instructions in userspace branch README. Change the target from `arm64-native-linuxapp-gcc` to `x86_64-native-linuxapp-gcc`. Comment out `nvme_devices` in ix.conf. 
    
@@ -219,6 +215,29 @@ sudo apt install fio
 for i in 1 2 4 8 16 32 ; do BLKSIZE=4k DEPTH=$i fio randread_remote.fio; done
 ```
 
+##  Networking Tuning Guide
+
+Depending on which workload you are using, we suggest the following changes to get the most of the performance out:
+
+### Read-heavy workloads with small request sizes (1k/4k)
+   1. For client:
+   - `inc/lwip/lwipopts.h`: TCP_SND_BUF = 4096; TCP_WND = 1 << 16;
+   - `libix/ixev.h`: IXEV_SEND_DEPTH = 16 * 2
+   2. For server:
+   - `inc/lwip/lwipopts.h`: TCP_SND_BUF = 65536 * 2; TCP_WND = 1 << 15;
+   - `libix/ixev.h`: IXEV_SEND_DEPTH = 16 * 1
+   
+### Read-heavy workloads with huge request sizes (64k/128k)
+   1. For client:
+   - `inc/lwip/lwipopts.h`: TCP_SND_BUF = 4096; TCP_WND = 1 << 16;
+   - `libix/ixev.h`: IXEV_SEND_DEPTH = 16 * 1
+   2. For server:
+   - `inc/lwip/lwipopts.h`: TCP_SND_BUF = (65536+24) * 8; TCP_WND = 1 << 15;
+   - `libix/ixev.h`: IXEV_SEND_DEPTH = 16 * 1
+
+Please also check the TCP tuning at [lwIP wiki](https://lwip.fandom.com/wiki/Tuning_TCP).
+
+
 ## Reference
 
 Please refer to the original [implementations](https://github.com/stanford-mast/reflex) of ReFlex and its [paper](https://web.stanford.edu/group/mast/cgi-bin/drupal/system/files/reflex_asplos17.pdf):
@@ -227,6 +246,10 @@ Ana Klimovic, Heiner Litz, Christos Kozyrakis
 ReFlex: Remote Flash == Local Flash
 in the 22nd International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS'22), 2017
 
+## TODO
+
+1. Update the lwIP to the latest version;
+2. Adaptive batching for 100GbE networking;
 
 ## Future work
 

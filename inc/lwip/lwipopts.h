@@ -91,12 +91,12 @@
 #define TCP_RCV_SCALE 7
 #define TCP_SND_BUF 65536*2 // FIXME: adjust this automatically to improve performance
 
-#define TCP_MSS 6000 /* Originally 1460, but now support jumbo frames */
+#define TCP_MSS 8960 /* Originally 1460, but now support jumbo frames */
 // #define TCP_MSS 1460
 
 //#define TCP_WND  (1024 * TCP_MSS) //Not sure what correct TCP_WND setting should be
 //#define TCP_WND  (2048 * 1460) //Not sure what correct TCP_WND setting should be
-#define TCP_WND 1 << 16
+#define TCP_WND 1 << 15
 
 #define CHECKSUM_CHECK_IP 0   //offloaded
 #define CHECKSUM_CHECK_TCP 0  //offloaded
