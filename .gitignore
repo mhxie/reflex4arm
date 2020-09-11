@@ -24,3 +24,5 @@ out.*
 /apps/reflex_ix_client
 /net_perf
 /ssd_perf
+
+/build

@@ -58,7 +58,7 @@
 
 #pragma once
 
-#include <asm/cpu.h>
+#include <arch/cpu.h>
 #include <stdbool.h>
 
 typedef unsigned char uint8_t;

@@ -52,93 +52,74 @@
  * THE SOFTWARE.
  */
 
-/*
- * byteorder.h - utilties for swapping bytes and converting endianness
- */
+/* For memmove and size_t */
+#include <string.h>
 
-#pragma once
+/* For optind */
+#include <unistd.h>
 
-#include <arch/cpu.h>
-#include <ix/compiler.h>
-#include <ix/stddef.h>
+/* For struct sockaddr */
+#include <sys/socket.h>
 
-static inline uint16_t __bswap16(uint16_t val) {
-#ifdef HAS_BUILTIN_BSWAP
-    return __builtin_bswap16(val);
-#else
-    return (((val & 0x00ffU) << 8) |
-            ((val & 0xff00U) >> 8));
-#endif
+/* Prevent inclusion of rte_memcpy.h */
+//#define _RTE_MEMCPY_X86_64_H_
+//inline void *rte_memcpy(void *dst, const void *src, size_t n);
+
+/* General DPDK includes */
+#include <rte_config.h>
+#include <rte_common.h>
+#include <rte_mempool.h>
+// #include <eal_internal_cfg.h>
+#include <rte_ethdev.h>
+#include <rte_mbuf.h>
+#include <rte_timer.h>
+
+/* IX includes */
+#include <ix/log.h>
+#include <ix/cfg.h>
+
+#include <ix/dpdk.h>
+#include <spdk/env.h>
+#include <math.h>
+
+struct rte_mempool *dpdk_pool;
+
+#define MEMPOOL_CACHE_SIZE 256
+#define DPDK_MBUF_LENGTH 9000 + RTE_PKTMBUF_HEADROOM
+
+int dpdk_init(void)
+{
+	struct spdk_env_opts opts;
+	int nb_ports, ret;
+	
+	spdk_env_opts_init(&opts);
+    opts.name = "reflex";
+	// opts->shm_id = SPDK_ENV_DPDK_DEFAULT_SHM_ID;
+	// opts->mem_size = SPDK_ENV_DPDK_DEFAULT_MEM_SIZE;
+	// opts->master_core = SPDK_ENV_DPDK_DEFAULT_MASTER_CORE;
+	opts.shm_id = -1;
+	opts.mem_size = -1;
+	opts.master_core = -1;
+
+	int core_num = pow(2, cores_active)-1; // from cfg
+	char mask[3];
+	sprintf(mask, "%x", core_num); 
+	opts.core_mask = mask;
+	// opts->mem_channel = SPDK_ENV_DPDK_DEFAULT_MEM_CHANNEL;
+	opts.mem_channel = dpdk_mem_channel; // from cfg
+
+    spdk_env_init(&opts);
+
+	// rte_timer_subsystem_init();
+	
+	/* pool_size sets an implicit limit on cores * NICs that DPDK allows */
+	const int pool_size = 32768;
+
+	//dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+	dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, DPDK_MBUF_LENGTH, rte_socket_id());
+	if (dpdk_pool == NULL)
+		panic("Cannot create DPDK pool\n");
+
+	return 0;
 }
 
-static inline uint32_t __bswap32(uint32_t val) {
-#ifdef HAS_BUILTIN_BSWAP
-    return __builtin_bswap32(val);
-#else
-    return (((val & 0x000000ffUL) << 24) |
-            ((val & 0x0000ff00UL) << 8) |
-            ((val & 0x00ff0000UL) >> 8) |
-            ((val & 0xff000000UL) >> 24));
-#endif
-}
-
-static inline uint64_t __bswap64(uint64_t val) {
-#ifdef HAS_BUILTIN_BSWAP
-    return __builtin_bswap64(val);
-#else
-    return (((val & 0x00000000000000ffULL) << 56) |
-            ((val & 0x000000000000ff00ULL) << 40) |
-            ((val & 0x0000000000ff0000ULL) << 24) |
-            ((val & 0x00000000ff000000ULL) << 8) |
-            ((val & 0x000000ff00000000ULL) >> 8) |
-            ((val & 0x0000ff0000000000ULL) >> 24) |
-            ((val & 0x00ff000000000000ULL) >> 40) |
-            ((val & 0xff00000000000000ULL) >> 56));
-#endif
-}
-
-#ifndef __BYTE_ORDER
-#error __BYTE_ORDER is undefined
-#endif
-
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-
-#define cpu_to_le16(x) (x)
-#define cpu_to_le32(x) (x)
-#define cpu_to_le64(x) (x)
-#define cpu_to_be16(x) (__bswap16(x))
-#define cpu_to_be32(x) (__bswap32(x))
-#define cpu_to_be64(x) (__bswap64(x))
-
-#define le16_to_cpu(x) (x)
-#define le32_to_cpu(x) (x)
-#define le64_to_cpu(x) (x)
-#define be16_to_cpu(x) (__bswap16(x))
-#define be32_to_cpu(x) (__bswap32(x))
-#define be64_to_cpu(x) (__bswap64(x))
-
-#else /* __BYTE_ORDER == __LITLE_ENDIAN */
-
-#define cpu_to_le16(x) (__bswap16(x))
-#define cpu_to_le32(x) (__bswap32(x))
-#define cpu_to_le64(x) (__bswap64(x))
-#define cpu_to_be16(x) (x)
-#define cpu_to_be32(x) (x)
-#define cpu_to_be64(x) (x)
-
-#define le16_to_cpu(x) (__bswap16(x))
-#define le32_to_cpu(x) (__bswap32(x))
-#define le64_to_cpu(x) (__bswap64(x))
-#define be16_to_cpu(x) (x)
-#define be32_to_cpu(x) (x)
-#define be64_to_cpu(x) (x)
-
-#endif /* __BYTE_ORDER == __LITTLE_ENDIAN */
-
-#define ntoh16(x) (be16_to_cpu(x))
-#define ntoh32(x) (be32_to_cpu(x))
-#define ntoh64(x) (be64_to_cpu(x))
-
-#define hton16(x) (cpu_to_be16(x))
-#define hton32(x) (cpu_to_be32(x))
-#define hton64(x) (cpu_to_be64(x))

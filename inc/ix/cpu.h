@@ -61,7 +61,7 @@
 #include <rte_per_lcore.h>
 
 #include <ix/stddef.h>
-#include <asm/cpu.h>
+#include <arch/cpu.h>
 #include <ix/log.h>
 
 

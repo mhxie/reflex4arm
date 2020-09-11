@@ -257,7 +257,7 @@ struct ip_pseudo {
 
 /* Protocols common to RFC 1700, POSIX, and X/Open. */
 #define	IPPROTO_IP		0		/* dummy for IP */
-#define	IPPROTO_ICMP		1		/* control message protocol */
+#define	IPPROTO_ICMP	1		/* control message protocol */
 #define	IPPROTO_TCP		6		/* tcp */
 #define	IPPROTO_UDP		17		/* user datagram protocol */
 
