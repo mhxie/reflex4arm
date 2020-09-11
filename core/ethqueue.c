@@ -356,7 +356,7 @@ int ethdev_init_cpu(void)
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Cannot set error callback for tx buffer.\n");
 	// Assign each CPU the correct number of queues.
-	percpu_get(eth_num_queues) = rte_eth_dev_count();
+	percpu_get(eth_num_queues) = rte_eth_dev_count_avail();
 	// log_info("Now we have %d queues for this core.\n", percpu_get(eth_num_queues));
 
 	return 0;

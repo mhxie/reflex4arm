@@ -492,9 +492,9 @@ static int init_ethdev(void)
 	// DPDK init for pci ethdev already done in dpdk_init()
 	uint8_t port_id;
 	uint8_t nb_ports;
-	struct ether_addr mac_addr;
+	struct rte_ether_addr mac_addr;
 
-	nb_ports = rte_eth_dev_count();
+	nb_ports = rte_eth_dev_count_avail();
 	if (nb_ports == 0) rte_exit(EXIT_FAILURE, "No Ethernet ports - exiting\n");
 	if (nb_ports > 1) printf("WARNING: only 1 ethernet port is used\n");
 	// if (nb_ports > RTE_MAX_ETHPORTS) nb_ports = RTE_MAX_ETHPORTS; // too many ports, comment for now

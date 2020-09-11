@@ -803,7 +803,7 @@ struct eth_fg *get_local_port_and_set_queue(struct ip_tuple *id)
 	//struct ix_rte_eth_dev *dev;
 	struct rte_eth_rss_conf rss_conf;
 
-	if (rte_eth_dev_count() > 1)
+	if (rte_eth_dev_count_avail() > 1)
 		printf("WARNING: only 1 ethernet port is used\n");
 		//panic("tcp_connect not implemented for bonded interfaces\n");
 

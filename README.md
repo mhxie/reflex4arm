@@ -53,21 +53,29 @@ Client-end:
 2. Install library dependencies: 
 
    ```
-   sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev
+   sudo apt-get update
+   sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3-pip
+   pip3 install meson ninja
+   export PATH="$HOME/.local/bin:$PATH"
    ```
 
 3. Build the dependecies:
 
    ```
-   # Build dpdk/spdk, may differ while using bcm/17.11-ubuntu-1804-build
-   sudo chmod +r /boot/System.map-`uname -r`
-   make -sj64 -C deps/dpdk config T=arm64-native-linuxapp-gcc
-   make -sj64 -C deps/dpdk
-   make -sj64 -C deps/dpdk install T=arm64-native-linuxapp-gcc DESTDIR=deps/dpdk/arm64-native-linuxapp-gcc
-   # Build spdk
-   export REFLEX_HOME=`pwd`
-   cd deps/spdk
-   ./configure --with-dpdk=$REFLEX_HOME/deps/dpdk/arm64-native-linuxapp-gcc
+   # Build DPDK
+   cd deps/dpdk
+   meson build
+   meson compile -C build
+   mkdir install
+   DESTDIR=`pwd`/install meson install -C build
+   # Patch DPDK build dir for SPDK
+   DPDK_INSTALL_LIB=`pwd`/install/usr/local/lib
+   mv $DPDK_INSTALL_LIB/x86_64-linux-gnu/* $DPDK_INSTALL_LIB
+   # Build SPDK
+   cd ../spdk
+   sudo ./scripts/pkgdep.sh
+   git submodule update --init
+   ./configure --with-dpdk=../dpdk/install/usr/local
    make
    cd ../.. 	
    ```
@@ -75,7 +83,15 @@ Client-end:
 4. Build ReFlex4ARM:
 
    ```
-   make -sj64
+   <!-- PKG_CONFIG_PATH=$DPDK_INSTALL_LIB/pkgconfig meson build -->
+   INSTALL_PATH=`pwd`
+   meson -Dprefix=$INSTALL_PATH build
+   meson compile -C build
+   meson install -C build
+
+   # if you want to clean the build
+   rm $INSTALL_PATH/dp
+   rm -r build
    ```
 5. Set up the environment:
 

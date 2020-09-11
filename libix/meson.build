@@ -6,6 +6,6 @@ ix_inc = include_directories('.')
 ix_lib = static_library('ix',
                     ix_sources,
                     c_args : ['-fno-omit-frame-pointer', '-O3', '-march=native'],
-                    include_directories : [inc, ix_inc],
-                    link_with : core_lib,
-                    dependencies : dpdk)
+                    include_directories : [inc, ix_inc, DPDK_INC],
+                    objects: DPDK_LIBS,
+                    link_with : core_lib)
