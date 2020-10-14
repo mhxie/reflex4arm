@@ -46,7 +46,7 @@ Client-end:
    ```
    git clone https://github.com/mhxie/reflex4arm.git
    cd reflex4arm
-   git checkout userspace
+   git checkout meson
    ./deps/fetch-deps.sh # on stingray, change the dpdk and spdk address in deps/DEPS
    ```
 
@@ -64,6 +64,7 @@ Client-end:
    ```
    # Build DPDK
    cd deps/dpdk
+   enable_kmods 'true' # enable igb_uio build option in meson_options.txt
    meson build
    meson compile -C build
    mkdir install
@@ -81,17 +82,18 @@ Client-end:
    ```
 
 4. Build ReFlex4ARM:
+   <!-- PKG_CONFIG_PATH=$DPDK_INSTALL_LIB/pkgconfig meson build -->
 
    ```
-   <!-- PKG_CONFIG_PATH=$DPDK_INSTALL_LIB/pkgconfig meson build -->
-   INSTALL_PATH=`pwd`
-   meson -Dprefix=$INSTALL_PATH build
+   // INSTALL_PATH=`pwd`
+   // meson -Dprefix=$INSTALL_PATH build
+   meson build
    meson compile -C build
-   meson install -C build
+   // meson install -C build
 
    # if you want to clean the build
-   rm $INSTALL_PATH/dp
-   rm -r build
+   rm -r $INSTALL_PATH/build
+   // rm -r $INSTALL_PATH/bin
    ```
 5. Set up the environment:
 
@@ -99,12 +101,14 @@ Client-end:
    cp ix.conf.sample ix.conf
    # modify at least host_addr, gateway_addr, devices, flow director, and nvme_devices (ns_size at clients)
   
-   sudo modprobe -r nvme
    sudo modprobe uio
-   sudo insmod deps/dpdk/build/kmod/igb_uio.ko
-   sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:06:00.0   # insert device PCI address here!!! 
+   IGB_UIO_PATH=deps/dpdk/build/kernel/linux/igb_uio/igb_uio.ko
+   sudo insmod $IGB_UIO_PATH wc_active=1 # spdk setup will do this for you also
+   grep PCI_SLOT_NAME /sys/class/net/*/device/uevent | awk -F '=' '{print $2}'
+   sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0 # insert device PCI address here!!! 
 
-   sudo deps/spdk/scripts/setup.sh
+   sudo modprobe -r nvme
+   sudo -E DRIVER_OVERRIDE=$IGB_UIO_PATH deps/spdk/scripts/setup.sh
    
    sudo sh -c 'for i in /sys/devices/system/node/node*/hugepages/hugepages-2048kB/nr_hugepages; do echo 4096 > $i; done'
    ```
@@ -129,6 +133,7 @@ Client-end:
   
    For your convenience, we provide an open-loop, local Flash load generator based on the SPDK perf example application [here](https://github.com/anakli/spdk_perf). We modified the SPDK perf example application to report read and write percentile latencies. We also made the load generator open-loop, so you can sweep throughput by specifying a target IOPS instead of queue depth. See setup instructions for ReFlex users in the repository's [README](https://github.com/anakli/spdk_perf/blob/master/README.md).
 
+
 ## Running ReFlex4ARM
 
 ### 0. Change some kernel settings (only at stingray):
@@ -142,7 +147,7 @@ Client-end:
 ### 1. Run the ReFlex4ARM server:
 
    ```
-   sudo ./ix
+   sudo ./build/apps/dp
    ```
 
    ReFlex runs one dataplane thread per CPU core. If you want to run multiple ReFlex threads (to support higher throughput), set the `cpu` list in ix.conf and add `fdir` rules to steer traffic identified by {dest IP, src IP, dest port} to a particular core.
@@ -253,6 +258,20 @@ Depending on which workload you are using, we suggest the following changes to g
 
 Please also check the TCP tuning at [lwIP wiki](https://lwip.fandom.com/wiki/Tuning_TCP).
 
+## Running ReFlex4arm in Docker
+
+
+
+### Built by yourself
+
+1. Finish the step 0 - step 4 in the [setup](#setup-instructions)
+2. Configure the ix.conf as you wish
+3. Precondition your current SSDs
+4. Run `docker build`
+
+### With kubernetes
+
+Replace the default image in the `image` field with `ami-xxxxxxxx`
 
 ## Reference
 

@@ -1,0 +1,1 @@
+cp ix.conf.sample ix.conf

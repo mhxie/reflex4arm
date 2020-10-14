@@ -73,11 +73,11 @@
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
 #include <rte_timer.h>
+#include <rte_errno.h>
 
 /* IX includes */
 #include <ix/log.h>
 #include <ix/cfg.h>
-
 #include <ix/dpdk.h>
 #include <spdk/env.h>
 #include <math.h>
@@ -113,12 +113,14 @@ int dpdk_init(void)
 	// rte_timer_subsystem_init();
 	
 	/* pool_size sets an implicit limit on cores * NICs that DPDK allows */
-	const int pool_size = 32768;
+	const int pool_size = 65535;
 
 	//dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+	// dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, DPDK_MBUF_LENGTH, rte_socket_id());
 	dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, DPDK_MBUF_LENGTH, rte_socket_id());
 	if (dpdk_pool == NULL)
-		panic("Cannot create DPDK pool\n");
+		rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
+		// panic("Cannot create DPDK pool\n");
 
 	return 0;
 }

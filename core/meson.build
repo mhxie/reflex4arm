@@ -1,4 +1,13 @@
-core_sources += ['cfg.c',
+# core_sources += ['cfg.c',
+#     'mbuf.c', 'mempool.c',
+#     'pci.c','cpu.c',
+#     'ethfg.c', 'ethqueue.c',
+#     'tailqueue.c',
+#     'utimer.c', 'timer.c',
+#     'control_plane.c', 'log.c',
+#     'dpdk.c', 'syscall.c'  
+# ]
+core_sources += files('cfg.c',
     'mbuf.c', 'mempool.c',
     'pci.c','cpu.c',
     'ethfg.c', 'ethqueue.c',
@@ -6,17 +15,19 @@ core_sources += ['cfg.c',
     'utimer.c', 'timer.c',
     'control_plane.c', 'log.c',
     'dpdk.c', 'syscall.c'  
-]
+)
 
 if get_option('ENABLE_KSTATS')
     core_sources += ['kstats.c']
 endif
 
 
-DPDK_ROOT = '../deps/dpdk/install/usr/local'
-DPDK_INC = include_directories(join_paths(DPDK_ROOT, 'include'))
+
+
 DPDK_LIB_NAMES = [
     # 'librte_pmd_bnxt.a',
+    # 'librte_pmd_ixgbe.a',
+    'librte_pmd_ena.a',
     'librte_mempool_ring.a', 'librte_mempool.a', 'librte_mbuf.a',
     'librte_ethdev.a', 'librte_hash.a', 'librte_ring.a', 'librte_eal.a', 'librte_timer.a', 'librte_telemetry.a',
     'librte_bus_pci.a', 'librte_pci.a', 'librte_kvargs.a'
@@ -43,8 +54,7 @@ DPDK_MACHINE_FLAGS = [
     '-DRTE_MACHINE_CPUFLAG_AVX2'
 ]
 
-SPDK_INC = include_directories(join_paths('../deps', 'spdk', 'include'))
-SPDK_ROOT = '../deps/spdk/build/lib'
+
 SPDK_ENV_ROOT = '../deps/dpdk/install/usr/local/lib/'
 SPDK_LIBS = [
     join_paths(SPDK_ROOT, 'libspdk_nvme.a'),
@@ -71,9 +81,9 @@ foreach LIB : LDLIBS
     core_deps += dep
 endforeach
 
-core_lib = library('core',
-            core_sources,
-            c_args : CFLAGS + SPDK_FLAGS,
-            include_directories : [inc, pci_dma_inc, DPDK_INC, SPDK_INC],
-            objects : [SPDK_LIBS, DPDK_LIBS], # must with this order
-            dependencies : core_deps)
+# core_lib = library('core',
+#             core_sources,
+#             c_args : CFLAGS + SPDK_FLAGS,
+#             include_directories : [inc, pci_dma_inc, DPDK_INC, SPDK_INC],
+#             objects : [SPDK_LIBS, DPDK_LIBS], # must with this order
+#             dependencies : core_deps)
