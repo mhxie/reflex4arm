@@ -254,10 +254,10 @@ attach_cb(void *cb_ctx, struct spdk_pci_device *dev, struct spdk_nvme_ctrlr *ctr
 	struct spdk_nvme_ns *ns = spdk_nvme_ctrlr_get_ns(ctrlr, 1);
 
 	/* FIXME: used for avoiding the default SSD */
-	if (spdk_nvme_ns_get_size(ns) == 0x35a800000) {
-		printf("Skipping this device.\n");
-		return;
-	}
+	// if (spdk_nvme_ns_get_size(ns) == 0x35a800000) {
+	// 	printf("Skipping this device.\n");
+	// 	return;
+	// }
 	
 	bitmap_init(ioq_bitmap, MAX_NUM_IO_QUEUES, 0);
 	if (active_nvme_devices < CFG_MAX_NVMEDEV) {
@@ -336,8 +336,19 @@ int init_nvmeqp_cpu(void)
 	opts.io_queue_size = 1024;
 	opts.io_queue_requests = 4096;
 
-	
-	percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd], &opts, sizeof(opts)); // FIXME: naive mapping from CPU to SSDs
+	while (opts.io_queue_size >= 1) {
+		percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(
+			nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd],
+			&opts,
+			sizeof(opts)); // FIXME: naive mapping from CPU to SSDs
+		if percpu_get(qpair) {
+			printf("Successfully allocate qpair with io_queue_size %d\n", opts.io_queue_size);
+			break;
+		}
+		opts.io_queue_size /= 2;
+	}
+	if (percpu_get(qpair) == NULL)
+		percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(nvme_ctrlr[percpu_get(cpu_id)/cpu_per_ssd], NULL, 0);
 	assert(percpu_get(qpair));
 	
 	return 0;

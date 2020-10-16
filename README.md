@@ -237,6 +237,11 @@ Depending on which workload you are using, we suggest the following changes to g
 
 Please also check the TCP tuning at [lwIP wiki](https://lwip.fandom.com/wiki/Tuning_TCP).
 
+## Dockerization
+
+docker build . -tag reflex4arm:0.1
+docker run -it --net=host --privileged -v /dev:/dev -v /lib/modules/`uname -r`:/lib/modules/`uname -r` reflex4arm:0.1
+
 
 ## Reference
 

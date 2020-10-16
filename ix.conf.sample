@@ -85,7 +85,7 @@ cpu=[0, 1]
 
 ## mem_channel  : how many memory channels will be used
 ##  Default: -1
-mem_channel=3
+mem_channel=1
 
 
 ## batch : Specifies maximum batch size of received packets to process.
