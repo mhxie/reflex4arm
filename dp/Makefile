@@ -28,10 +28,10 @@ SPDK    = ../deps/spdk
 uname_p := $(shell uname -p)
 
 ifeq ($(uname_p), x86_64)
-	BUILD = x86_64-native-linuxapp-gcc
+	BUILD = x86_64-native-linux-gcc
 endif
 ifeq ($(uname_p), aarch64)
-	BUILD = arm64-native-linuxapp-gcc
+	BUILD = arm64-native-linux-gcc
 endif
 DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common 
 SPDK_INC = -idirafter$(SPDK)/include
@@ -97,11 +97,11 @@ endif
 
 DPDK_LIBS=
 # DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/build/lib/librte_pmd_ixgbe.a
-DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/build/lib/librte_pmd_ena.a
+DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_pmd_ena.a
 # DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_pmd_bnxt.a # library for Broadcom NIC
 DPDK_LIBS+=-Wl,-whole-archive $(DPDK)/$(BUILD)/lib/librte_mempool_ring.a $(DPDK)/$(BUILD)/lib/librte_mempool.a
 DPDK_LIBS+=-Wl,-no-whole-archive $(DPDK)/$(BUILD)/lib/librte_mbuf.a $(DPDK)/$(BUILD)/lib/librte_ethdev.a $(DPDK)/$(BUILD)/lib/librte_hash.a $(DPDK)/$(BUILD)/lib/librte_ring.a $(DPDK)/$(BUILD)/lib/librte_eal.a $(DPDK)/$(BUILD)/lib/librte_timer.a
-DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_bus_pci.a $(DPDK)/$(BUILD)/lib/librte_pci.a $(DPDK)/build/lib/librte_kvargs.a# Additional support to Stingray
+DPDK_LIBS+=$(DPDK)/$(BUILD)/lib/librte_bus_pci.a $(DPDK)/$(BUILD)/lib/librte_pci.a $(DPDK)/$(BUILD)/lib/librte_kvargs.a# Additional support to Stingray
 
 SPDK_LIBS=$(SPDK)/build/lib/libspdk_nvme.a
 SPDK_LIBS+=$(SPDK)/build/lib/libspdk_util.a

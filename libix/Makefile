@@ -24,10 +24,10 @@ uname_p := $(shell uname -p)
 
 DPDK	= ../deps/dpdk
 ifeq ($(uname_p), x86_64)
-	BUILD = x86_64-native-linuxapp-gcc
+	BUILD = x86_64-native-linux-gcc
 endif
 ifeq ($(uname_p), aarch64)
-	BUILD = arm64-native-linuxapp-gcc
+	BUILD = arm64-native-linux-gcc
 endif
 DPDK_INC = -I$(DPDK)/$(BUILD)/include -I$(DPDK)/lib/librte_eal/common # -I$(DPDK)/drivers/net/ixgbe
 

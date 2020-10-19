@@ -53,7 +53,8 @@ Client-end:
 2. Install library dependencies: 
 
    ```
-   sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev
+   sudo apt-get update
+   sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3 python3-pip
    ```
 
 3. Build the dependecies:
@@ -61,13 +62,13 @@ Client-end:
    ```
    # Build dpdk/spdk, may differ while using bcm/17.11-ubuntu-1804-build
    sudo chmod +r /boot/System.map-`uname -r`
-   make -sj64 -C deps/dpdk config T=arm64-native-linuxapp-gcc
-   make -sj64 -C deps/dpdk
-   make -sj64 -C deps/dpdk install T=arm64-native-linuxapp-gcc DESTDIR=deps/dpdk/arm64-native-linuxapp-gcc
+   make -sj64 -C deps/dpdk config T=x86_64-native-linux-gcc
+   make -sj64 -C deps/dpdk install T=x86_64-native-linux-gcc DESTDIR=deps/dpdk/x86_64-native-linux-gcc
    # Build spdk
    export REFLEX_HOME=`pwd`
    cd deps/spdk
-   ./configure --with-dpdk=$REFLEX_HOME/deps/dpdk/arm64-native-linuxapp-gcc
+   sudo ./scripts/pkgdep.sh
+   ./configure --with-dpdk=$REFLEX_HOME/deps/dpdk/x86_64-native-linux-gcc --with-igb-uio-driver
    make
    cd ../.. 	
    ```
@@ -85,10 +86,13 @@ Client-end:
   
    sudo modprobe -r nvme
    sudo modprobe uio
-   sudo insmod deps/dpdk/build/kmod/igb_uio.ko
-   sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:06:00.0   # insert device PCI address here!!! 
+   
+   sudo deps/spdk/scripts/setup.sh # patch the script from the line 171
+   # 	driver_path="$DRIVER_OVERRIDE"
+	#	driver_name="${DRIVER_OVERRIDE##*/}"
+	#	driver_name=${driver_name%.ko}
 
-   sudo deps/spdk/scripts/setup.sh
+   sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0   # insert device PCI address here!!! 
    
    sudo sh -c 'for i in /sys/devices/system/node/node*/hugepages/hugepages-2048kB/nr_hugepages; do echo 4096 > $i; done'
    ```
@@ -239,9 +243,10 @@ Please also check the TCP tuning at [lwIP wiki](https://lwip.fandom.com/wiki/Tun
 
 ## Dockerization
 
-docker build . -tag reflex4arm:0.1
+```
+docker build . --tag reflex4arm:0.1
 docker run -it --net=host --privileged -v /dev:/dev -v /lib/modules/`uname -r`:/lib/modules/`uname -r` reflex4arm:0.1
-
+```
 
 ## Reference
 

@@ -1,4 +1,4 @@
-FROM ubuntu:18.04
+FROM ubuntu:16.04
 COPY . /root/reflex4arm
 
 WORKDIR /root/reflex4arm
