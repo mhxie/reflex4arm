@@ -257,8 +257,11 @@ docker run -it --net=host --privileged -v /dev:/dev -v /lib/modules/`uname -r`:/
 ```
 sudo su
 cp scripts/run_reflex_server.sh /etc/init.d/
-chmod ugo+x /etc/init.d
+chmod ugo+x /etc/init.d/run_reflex_server.sh
 update-rc.d run_reflex_server.sh defaults
+cp ix /etc/init.d/
+cp ix.conf /etc/init.d/
+cp sample-aws-ec2.devmodel /etc/init.d/
 ```
 
 ## Reference
