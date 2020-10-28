@@ -57,6 +57,13 @@ Client-end:
    sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3 python3-pip
    ```
 
+   ```
+   sudo yum update
+   sudo yum install libconfig-devel libpciaccess-devel python3 python3-pip
+   sed -i 's/redhat-release/yum/g' deps/spdk/script/pkgdep.sh
+   sudo ./deps/spdk/script/pkgdep.sh
+   ```
+
 3. Build the dependecies:
 
    ```
@@ -67,7 +74,6 @@ Client-end:
    # Build spdk
    export REFLEX_HOME=`pwd`
    cd deps/spdk
-   sudo ./scripts/pkgdep.sh
    ./configure --with-dpdk=$REFLEX_HOME/deps/dpdk/x86_64-native-linux-gcc --with-igb-uio-driver
    make
    cd ../.. 	
@@ -88,9 +94,8 @@ Client-end:
    sudo modprobe uio
    
    sudo deps/spdk/scripts/setup.sh # patch the script from the line 171
-   # 	driver_path="$DRIVER_OVERRIDE"
-	#	driver_name="${DRIVER_OVERRIDE##*/}"
-	#	driver_name=${driver_name%.ko}
+   # driver_path="$DRIVER_OVERRIDE"
+	# driver_name="igb_uio"
 
    sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0   # insert device PCI address here!!! 
    
@@ -246,6 +251,14 @@ Please also check the TCP tuning at [lwIP wiki](https://lwip.fandom.com/wiki/Tun
 ```
 docker build . --tag reflex4arm:0.1
 docker run -it --net=host --privileged -v /dev:/dev -v /lib/modules/`uname -r`:/lib/modules/`uname -r` reflex4arm:0.1
+```
+
+## Run ReFlex4ARM in boot time
+```
+sudo su
+cp scripts/run_reflex_server.sh /etc/init.d/
+chmod ugo+x /etc/init.d
+update-rc.d run_reflex_server.sh defaults
 ```
 
 ## Reference
