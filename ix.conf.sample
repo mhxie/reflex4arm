@@ -62,7 +62,7 @@ nvme_devices="0000:00:1e.0"
 # 					 "off" means I/O submitted directly to flash, 
 # 					     no SW queueing, no QoS scheduling 
 #                    turn off this in the client			 
-nvme_device_model="sample.devmodel" 
+nvme_device_model="sample-aws-ec2.devmodel 
 scheduler="on"
 
 ## cpu : Indicates which CPU process unit(s) (P) this IX instance

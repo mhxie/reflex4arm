@@ -46,29 +46,33 @@ Client-end:
    ```
    git clone https://github.com/mhxie/reflex4arm.git
    cd reflex4arm
-   git checkout userspace
+   git checkout aws-ec2
    ./deps/fetch-deps.sh # on stingray, change the dpdk and spdk address in deps/DEPS
    ```
 
 2. Install library dependencies: 
 
+   For regular Ubuntu image
    ```
    sudo apt-get update
    sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3 python3-pip
    ```
-
+   For amazon linux 2 image
    ```
    sudo yum update
    sudo yum install libconfig-devel libpciaccess-devel python3 python3-pip
-   sed -i 's/redhat-release/yum/g' deps/spdk/script/pkgdep.sh
-   sudo ./deps/spdk/script/pkgdep.sh
+   sudo yum install kernel-devel-$(uname -r)
+   sed -i 's/redhat-release/yum/g' deps/spdk/scripts/pkgdep.sh
+   sudo ./deps/spdk/scripts/pkgdep.sh
+   sudo deps/spdk/scripts/setup.sh # patch the script from the line 171
+
+   sed -i 's|DRIVER_OVERRIDE%/[*]|DRIVER_OVERRIDE|g' deps/spdk/scripts/setup.sh
+   sed -i 's|${DRIVER_OVERRIDE##[*]/}|igb_uio|g' deps/spdk/scripts/setup.sh
    ```
 
 3. Build the dependecies:
 
    ```
-   # Build dpdk/spdk, may differ while using bcm/17.11-ubuntu-1804-build
-   sudo chmod +r /boot/System.map-`uname -r`
    make -sj64 -C deps/dpdk config T=x86_64-native-linux-gcc
    make -sj64 -C deps/dpdk install T=x86_64-native-linux-gcc DESTDIR=deps/dpdk/x86_64-native-linux-gcc
    # Build spdk
@@ -76,7 +80,8 @@ Client-end:
    cd deps/spdk
    ./configure --with-dpdk=$REFLEX_HOME/deps/dpdk/x86_64-native-linux-gcc --with-igb-uio-driver
    make
-   cd ../.. 	
+   cd ../..
+   
    ```
 
 4. Build ReFlex4ARM:
@@ -92,10 +97,6 @@ Client-end:
   
    sudo modprobe -r nvme
    sudo modprobe uio
-   
-   sudo deps/spdk/scripts/setup.sh # patch the script from the line 171
-   # driver_path="$DRIVER_OVERRIDE"
-	# driver_name="igb_uio"
 
    sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0   # insert device PCI address here!!! 
    
@@ -255,13 +256,9 @@ docker run -it --net=host --privileged -v /dev:/dev -v /lib/modules/`uname -r`:/
 
 ## Run ReFlex4ARM in boot time
 ```
-sudo su
-cp scripts/run_reflex_server.sh /etc/init.d/
-chmod ugo+x /etc/init.d/run_reflex_server.sh
-update-rc.d run_reflex_server.sh defaults
-cp ix /etc/init.d/
-cp ix.conf /etc/init.d/
-cp sample-aws-ec2.devmodel /etc/init.d/
+sudo cp sample.service /etc/systemd/system/reflex4arm.service
+sudo chmod 644 /etc/systemd/system/reflex4arm.service
+sudo systemctl enable reflex4arm
 ```
 
 ## Reference
