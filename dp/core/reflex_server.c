@@ -500,21 +500,17 @@ static void receive_req(struct pp_conn *conn)
 				// FIXME: rewrite the flow id mapping from network to storage
 				ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
 
-				uint16_t reply = RESP_OK;
-				int reg_sent = 0;
-				while (reg_sent < (sizeof(reply))) {
-					ret = ixev_send(&conn->ctx, &reply, sizeof(reply) - reg_sent);
-					
-					if (ret < 0) {
-						if(!conn->nvme_pending) {
-							printf("ixev_send ret < 0, then ivev_close.\n");
-							ixev_close(&conn->ctx);
-							return -2;
-						}
-						return -1;
-						ret = 0;
+				uint8_t reply = RESP_OK;
+				ret = ixev_send(&conn->ctx, &reply, sizeof(reply));
+				
+				if (ret < 0) {
+					if(!conn->nvme_pending) {
+						printf("ixev_send ret < 0, then ivev_close.\n");
+						ixev_close(&conn->ctx);
+						return -2;
 					}
-					reg_sent += ret;
+					return -1;
+					ret = 0;
 				}
 				conn->rx_received = 0;
 				continue;
