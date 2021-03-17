@@ -37,6 +37,14 @@ Client-end:
 * Ubuntu 17.10 (kernel 5.0.7)
 * DPDK/SPDK: v19.05/v19.04
 
+## AWS EC2 Requirements:
+
+Server and Client:
+
+* Image: Amazon Linux 2 AMI (ami-00f9f4069d04c0c6e)
+* Instance: i3-large or i3-xlarge or i3-2xlarge
+* Network Interface: 2 * Elastic Network Adaptor (ENA)
+
 
 ## Setup Instructions
 
@@ -62,10 +70,10 @@ Client-end:
    sudo yum update
    sudo yum install libconfig-devel libpciaccess-devel python3 python3-pip
    sudo yum install kernel-devel-$(uname -r)
+   # patch the dependency script
    sed -i 's/redhat-release/yum/g' deps/spdk/scripts/pkgdep.sh
    sudo ./deps/spdk/scripts/pkgdep.sh
-   sudo deps/spdk/scripts/setup.sh # patch the script from the line 171
-
+   # patch the script from the line 171
    sed -i 's|DRIVER_OVERRIDE%/[*]|DRIVER_OVERRIDE|g' deps/spdk/scripts/setup.sh
    sed -i 's|${DRIVER_OVERRIDE##[*]/}|igb_uio|g' deps/spdk/scripts/setup.sh
    ```
@@ -73,15 +81,15 @@ Client-end:
 3. Build the dependecies:
 
    ```
+   # Build DPDK
    make -sj64 -C deps/dpdk config T=x86_64-native-linux-gcc
    make -sj64 -C deps/dpdk install T=x86_64-native-linux-gcc DESTDIR=deps/dpdk/x86_64-native-linux-gcc
-   # Build spdk
+   # Build SPDK
    export REFLEX_HOME=`pwd`
    cd deps/spdk
    ./configure --with-dpdk=$REFLEX_HOME/deps/dpdk/x86_64-native-linux-gcc --with-igb-uio-driver
    make
    cd ../..
-   
    ```
 
 4. Build ReFlex4ARM:
@@ -89,6 +97,7 @@ Client-end:
    ```
    make -sj64
    ```
+
 5. Set up the environment:
 
    ```
@@ -101,6 +110,13 @@ Client-end:
    sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0   # insert device PCI address here!!! 
    
    sudo sh -c 'for i in /sys/devices/system/node/node*/hugepages/hugepages-2048kB/nr_hugepages; do echo 4096 > $i; done'
+   ```
+   or simply run on your EC2 instance:
+   ```
+   # copy sample configurations and patch loader path
+   ./scripts/configure.sh
+   # rerun this after rebooting your instance
+   sudo ./scripts/run_reflex_server.sh
    ```
    
 6. Precondition the SSD and derive the request cost model:
