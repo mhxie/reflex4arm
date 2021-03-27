@@ -72,7 +72,7 @@
 // #include <eal_internal_cfg.h>
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
-#include <rte_timer.h>
+// #include <rte_timer.h>
 #include <rte_errno.h>
 
 /* IX includes */

@@ -64,7 +64,7 @@
 #include <ix/list.h>
 
 #include <rte_cycles.h>
-#include <rte_timer.h>
+// #include <rte_timer.h>
 
 #include <reflex.h>
 
@@ -103,7 +103,7 @@ static __thread unsigned long local_avg = 0; // warm-up needed
 static __thread unsigned long send_avg = 0; // warm-up needed
 static __thread unsigned long tem_avg = 0; // warm-up needed
 static __thread unsigned long num_requests = 0;
-static __thread struct rte_timer send_timer; // only for single connection per thread
+// static __thread struct rte_timer send_timer; // only for single connection per thread
 static __thread long cycles_between_resend = 100000;
 static __thread long failed_header_sents_0 = 0;
 static __thread long failed_header_sents_1 = 0;
@@ -157,31 +157,31 @@ static __thread unsigned long last_sent_time = 0;
 
 static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason);
 
-static void send_again_cb(__attribute__((unused)) struct rte_timer *tim, void *arg)
-{
-	struct pp_conn *conn = arg;
-	int sent_reqs = 0;
+// static void send_again_cb(__attribute__((unused)) struct rte_timer *tim, void *arg)
+// {
+// 	struct pp_conn *conn = arg;
+// 	int sent_reqs = 0;
 
-	// printf("Thread [%d]: Send again is called back at %lu, %d requests left.\n", rte_lcore_id(), rte_rdtsc(), conn->list_len);
-	while(!list_empty(&conn->pending_requests)) {
-		struct nvme_req *req = list_top(&conn->pending_requests, struct nvme_req, link);
-		int ret = send_req(req);
-		if(!ret) {
-			list_pop(&conn->pending_requests, struct nvme_req, link);
-			sent_reqs++;
-			printf("Got one packet resent.\n");
-		} else {
-			// printf("Send failed again, but sent %d this time.\n", sent_reqs);
-			// if (!sent_reqs) { // stop retrying if nothing more to be sent
-			// 	if (rte_timer_reset(tim, cycles_between_resend, SINGLE, rte_lcore_id(), send_again_cb, conn) != 0)
-			// 		rte_exit(EXIT_FAILURE, "Send_again_cb setup failure.\n");
-			// }
-			return;
-		}
-	}
-	// successful_resend_attempts++;
-	// printf("Send succeeded this time.\n");
-}
+// 	// printf("Thread [%d]: Send again is called back at %lu, %d requests left.\n", rte_lcore_id(), rte_rdtsc(), conn->list_len);
+// 	while(!list_empty(&conn->pending_requests)) {
+// 		struct nvme_req *req = list_top(&conn->pending_requests, struct nvme_req, link);
+// 		int ret = send_req(req);
+// 		if(!ret) {
+// 			list_pop(&conn->pending_requests, struct nvme_req, link);
+// 			sent_reqs++;
+// 			printf("Got one packet resent.\n");
+// 		} else {
+// 			// printf("Send failed again, but sent %d this time.\n", sent_reqs);
+// 			// if (!sent_reqs) { // stop retrying if nothing more to be sent
+// 			// 	if (rte_timer_reset(tim, cycles_between_resend, SINGLE, rte_lcore_id(), send_again_cb, conn) != 0)
+// 			// 		rte_exit(EXIT_FAILURE, "Send_again_cb setup failure.\n");
+// 			// }
+// 			return;
+// 		}
+// 	}
+// 	// successful_resend_attempts++;
+// 	// printf("Send succeeded this time.\n");
+// }
 
 static void send_completed_cb(struct ixev_ref *ref)
 {

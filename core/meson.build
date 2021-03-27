@@ -27,9 +27,11 @@ endif
 DPDK_LIB_NAMES = [
     # 'librte_pmd_bnxt.a',
     # 'librte_pmd_ixgbe.a',
-    'librte_pmd_ena.a',
+    # 'librte_pmd_ena.a',
     'librte_mempool_ring.a', 'librte_mempool.a', 'librte_mbuf.a',
-    'librte_ethdev.a', 'librte_hash.a', 'librte_ring.a', 'librte_eal.a', 'librte_timer.a', 'librte_telemetry.a',
+    'librte_ethdev.a', 'librte_hash.a', 'librte_ring.a', 'librte_eal.a',
+    # 'librte_timer.a',
+    'librte_telemetry.a',
     'librte_bus_pci.a', 'librte_pci.a', 'librte_kvargs.a'
 ]
 DPDK_LIBS = []
@@ -55,17 +57,17 @@ DPDK_MACHINE_FLAGS = [
 ]
 
 
-SPDK_ENV_ROOT = '../deps/dpdk/install/usr/local/lib/'
-SPDK_LIBS = [
-    join_paths(SPDK_ROOT, 'libspdk_nvme.a'),
-    join_paths(SPDK_ROOT, 'libspdk_util.a'),
-    join_paths(SPDK_ROOT, 'libspdk_env_dpdk.a'),
-    join_paths(SPDK_ROOT, 'libspdk_log.a'),
-    join_paths(SPDK_ROOT, 'libspdk_sock.a'),
-    # join_paths(SPDK_ENV_ROOT, 'librte_bus_pci.a'),
-    # join_paths(SPDK_ENV_ROOT, 'librte_pci.a'),
-    # join_paths(SPDK_ENV_ROOT, 'librte_kvargs.a')
+SPDK_LIB_NAMES = [
+    'libspdk_nvme.a',
+    'libspdk_util.a',
+    'libspdk_env_dpdk.a',
+    'libspdk_log.a',
+    'libspdk_sock.a',
 ]
+SPDK_LIBS = []
+foreach NAME : SPDK_LIB_NAMES
+    SPDK_LIBS += join_paths(SPDK_ROOT, 'lib', NAME)
+endforeach
 SPDK_FLAGS = ['-DSPDK_STRING_H']
 
 # core_deps = [dpdk]

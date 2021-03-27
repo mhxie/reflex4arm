@@ -4,13 +4,13 @@ add_global_arguments('-w', language : 'c') # ignore warning for now
 
 # dpdk = dependency('libdpdk')
 
-pci_dma_inc = include_directories('./deps/pcidma')
+pci_dma_inc = include_directories('./pcidma')
 
 inc = include_directories('inc')
-DPDK_ROOT = 'deps/dpdk/install/usr/local'
+DPDK_ROOT = 'spdk/dpdk/build'
 DPDK_INC = include_directories(join_paths(DPDK_ROOT, 'include'))
-SPDK_ROOT = 'deps/spdk/build/lib'
-SPDK_INC = include_directories(join_paths('deps', 'spdk', 'include'))
+SPDK_ROOT = 'spdk/build'
+SPDK_INC = include_directories(join_paths('spdk', 'include'))
 
 
 CFLAGS = ['-fno-dwarf2-cfi-asm', '-fno-asynchronous-unwind-tables', '-O3', '-mavx']

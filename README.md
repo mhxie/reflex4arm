@@ -57,52 +57,34 @@ ARM Server: TBD
    git clone https://github.com/mhxie/reflex4arm.git
    cd reflex4arm
    git checkout meson
-   ./deps/fetch-deps.sh # on stingray, change the dpdk and spdk address in deps/DEPS
+   git submodule update --init --recursive
    ```
 
 2. Install library dependencies: 
 
    ```
-   sudo apt-get update
-   sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3-pip net-tools
-   sudo pip3 install meson ninja
-   sudo ./deps/spdk/scripts/pkgdep.sh
+   sudo apt-get update && sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3-pip net-tools
+   sudo ./spdk/scripts/pkgdep.sh
    ```
 
 3. Build the dependecies:
 
    ```
-   # Build DPDK
-   cd deps/dpdk
-   enable_kmods 'true' # enable igb_uio build option in meson_options.txt
-   meson build
-   meson compile -C build
-   mkdir install
-   DESTDIR=`pwd`/install meson install -C build
-   # Patch DPDK build dir for SPDK
-   DPDK_INSTALL_LIB=`pwd`/install/usr/local/lib
-   mv $DPDK_INSTALL_LIB/x86_64-linux-gnu/* $DPDK_INSTALL_LIB
-   # Build SPDK
-   cd ../spdk
-   git submodule update --init
-   ./configure --with-dpdk=../dpdk/install/usr/local
+   # Build SPDK && Drivers
+   cd spdk
+   ./configure
    make
-   cd ../.. 	
    ```
 
 4. Build ReFlex4ARM:
-   <!-- PKG_CONFIG_PATH=$DPDK_INSTALL_LIB/pkgconfig meson build -->
 
    ```
-   // INSTALL_PATH=`pwd`
-   // meson -Dprefix=$INSTALL_PATH build
    meson build
    meson compile -C build
    // meson install -C build
 
    # if you want to clean the build
-   rm -r $INSTALL_PATH/build
-   // rm -r $INSTALL_PATH/bin
+   rm -r build
    ```
 
 5. Set up the environment:
@@ -112,10 +94,10 @@ ARM Server: TBD
    # modify at least host_addr, gateway_addr, devices, flow director, and nvme_devices (ns_size at clients)
   
    sudo modprobe uio
-   IGB_UIO_PATH=deps/dpdk/build/kernel/linux/igb_uio/igb_uio.ko
+   IGB_UIO_PATH=spdk/dpdk/build/kernel/linux/igb_uio/igb_uio.ko
    sudo insmod $IGB_UIO_PATH wc_active=1 # spdk setup will do this for you also
    grep PCI_SLOT_NAME /sys/class/net/*/device/uevent | awk -F '=' '{print $2}'
-   sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0 # insert device PCI address here!!! 
+   sudo spdk/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0 # insert device PCI address here!!! 
 
    sudo modprobe -r nvme
    sudo -E DRIVER_OVERRIDE=$IGB_UIO_PATH deps/spdk/scripts/setup.sh
@@ -127,7 +109,7 @@ ARM Server: TBD
 
    It is necessary to precondition the SSD to acheive steady-state performance and reproducible results across runs. We recommend preconditioning the SSD with the following local Flash tests: write *sequentially* to the entire address space using 128KB requests, then write *randomly* to the device with 4KB requests until you see performance reach steady state. The time for the random write test depends on the capacity, use `./perf -h` to check how to configure. 
    ```
-   cd deps/spdk/examples/nvme/perf
+   cd spdk/examples/nvme/perf
    sudo ./perf -q 1 -s 131072 -w write -t 3600 -c 0x1 -r 'trtype:PCIe traddr:0001:01:00.0'
    ```
    
@@ -237,7 +219,7 @@ cd reflex_nbd
 make
 
 sudo modprobe bnxt_en
- # or try sudo python deps/dpdk/usertools/dpdk-devbind.py --bind=bnxt_en 01:00.0 && sudo rmmod igb_uio
+ # or try sudo python spdk/dpdk/usertools/dpdk-devbind.py --bind=bnxt_en 01:00.0 && sudo rmmod igb_uio
 sudo modprobe nvme
  # make sure you have started reflex_server on the server machine and can ping it
 
