@@ -38,6 +38,16 @@ Client-end:
 * DPDK/SPDK: v19.05/v19.04
 
 
+## AWS EC2 Environments
+
+x86_64 Server:
+
+* Image: Ubuntu Server 20.04 LTS (ami-06e54d05255faf8f6)
+* Instance: i3-large or i3-xlarge or i3-2xlarge
+* Network Interface: 2 * Elastic Network Adaptor (ENA)
+
+ARM Server: TBD
+
 ## Setup Instructions
 
 
@@ -54,9 +64,9 @@ Client-end:
 
    ```
    sudo apt-get update
-   sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3-pip
-   pip3 install meson ninja
-   export PATH="$HOME/.local/bin:$PATH"
+   sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3-pip net-tools
+   sudo pip3 install meson ninja
+   sudo ./deps/spdk/scripts/pkgdep.sh
    ```
 
 3. Build the dependecies:
@@ -74,7 +84,6 @@ Client-end:
    mv $DPDK_INSTALL_LIB/x86_64-linux-gnu/* $DPDK_INSTALL_LIB
    # Build SPDK
    cd ../spdk
-   sudo ./scripts/pkgdep.sh
    git submodule update --init
    ./configure --with-dpdk=../dpdk/install/usr/local
    make
@@ -95,6 +104,7 @@ Client-end:
    rm -r $INSTALL_PATH/build
    // rm -r $INSTALL_PATH/bin
    ```
+
 5. Set up the environment:
 
    ```
@@ -147,7 +157,7 @@ Client-end:
 ### 1. Run the ReFlex4ARM server:
 
    ```
-   sudo ./build/apps/dp
+   sudo ./build/dp
    ```
 
    ReFlex runs one dataplane thread per CPU core. If you want to run multiple ReFlex threads (to support higher throughput), set the `cpu` list in ix.conf and add `fdir` rules to steer traffic identified by {dest IP, src IP, dest port} to a particular core.
@@ -169,17 +179,17 @@ There are several options for clients in the original ReFlex implementations,
    Single-thread test example: 
 
    ```
-   # example: sudo ./ix -s 10.10.66.3 -p 1234 -w rand -T 1 -i 100000 -r 100 -S 0 -R 4096 -P 0 
+   # example: sudo ./build/dp -s 10.10.66.3 -p 1234 -w rand -T 1 -i 100000 -r 100 -S 0 -R 4096 -P 0 
    ```
 
    Multiple-thread test example:
    ```
-   # example: sudo ./ix -s 10.10.66.3 -p 1234 -w rand -T 4 -i 400000 -r 100 -S 0 -R 4096 -P 0
+   # example: sudo ./build/dp -s 10.10.66.3 -p 1234 -w rand -T 4 -i 400000 -r 100 -S 0 -R 4096 -P 0
    ```
    
    More descriptions for the command line options can be found by running
    ```
-   sudo ./ix -h
+   sudo ./build/dp -h
    
    Usage: 
    sudo ./ix
@@ -209,7 +219,7 @@ There are several options for clients in the original ReFlex implementations,
    600000   599913  154     104     111     117     124     133     148     165       189     231     273     378     1578    193293
    ```
 
-#### 2.2 Run a legacy client application using the ReFlex remote block device driver.
+#### 2.2 Run a legacy client application using the ReFlex remote block device driver [WIP].
 
 This client option is provided to support legacy applications. ReFlex exposes a standard Linux remote block device interface to the client (which appears to the client as a local block device). The client can mount a filesystem on the block device. With this approach, the client is subject to overheads in the Linux filesystem, block storage layer and network stack.
 On the client, change into the reflex_nbd directory and type make. Be sure that the remote ReFlex server is running and that it is ping-able from the client. Load the reflex.ko module, type dmesg to check whether the driver was successfully loaded. To reproduce the fio results from the paper do the following.
@@ -258,20 +268,6 @@ Depending on which workload you are using, we suggest the following changes to g
 
 Please also check the TCP tuning at [lwIP wiki](https://lwip.fandom.com/wiki/Tuning_TCP).
 
-## Running ReFlex4arm in Docker
-
-
-
-### Built by yourself
-
-1. Finish the step 0 - step 4 in the [setup](#setup-instructions)
-2. Configure the ix.conf as you wish
-3. Precondition your current SSDs
-4. Run `docker build`
-
-### With kubernetes
-
-Replace the default image in the `image` field with `ami-xxxxxxxx`
 
 ## Reference
 
