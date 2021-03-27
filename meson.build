@@ -8,6 +8,7 @@ pci_dma_inc = include_directories('./pcidma')
 
 inc = include_directories('inc')
 DPDK_ROOT = 'spdk/dpdk/build'
+DPDK_LIB_DIR = join_paths(DPDK_ROOT, 'lib')
 DPDK_INC = include_directories(join_paths(DPDK_ROOT, 'include'))
 SPDK_ROOT = 'spdk/build'
 SPDK_INC = include_directories(join_paths('spdk', 'include'))
@@ -39,7 +40,17 @@ subdir('core')
 subdir('libix')
 subdir('apps')
 
+# dep = declare_dependency(link_args : 
+#     [ '-Wl,--whole-archive'
+#     , get_option('prefix')/'lib/libedit.a'
+#     , '-Wl,--no-whole-archive'
+#     ],
+#     dependencies : [libedit_deps]
+# )
 
+# libdpdk = dependency('libdpdk', method : 'pkg-config')
+CFLAGS += DPDK_MACHINE_FLAGS
+CFLAGS += SPDK_FLAGS
 
 executable('dp',
             app_sources+core_sources,
@@ -47,5 +58,5 @@ executable('dp',
             include_directories : [inc, pci_dma_inc, ix_inc, SPDK_INC, DPDK_INC],
             link_with: [ix_lib],
             objects: [SPDK_LIBS, DPDK_LIBS],
-            dependencies : [core_deps],
+            dependencies : [core_deps, whole_deps],
             install : true)

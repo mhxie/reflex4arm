@@ -28,9 +28,9 @@ DPDK_LIB_NAMES = [
     # 'librte_pmd_bnxt.a',
     # 'librte_pmd_ixgbe.a',
     # 'librte_pmd_ena.a',
-    'librte_mempool_ring.a', 'librte_mempool.a', 'librte_mbuf.a',
+    # 'librte_mempool_ring.a', 'librte_mempool.a',
+    'librte_mbuf.a',
     'librte_ethdev.a', 'librte_hash.a', 'librte_ring.a', 'librte_eal.a',
-    # 'librte_timer.a',
     'librte_telemetry.a',
     'librte_bus_pci.a', 'librte_pci.a', 'librte_kvargs.a'
 ]
@@ -39,6 +39,16 @@ foreach NAME : DPDK_LIB_NAMES
     DPDK_LIBS += join_paths(DPDK_ROOT, 'lib', NAME)
 endforeach
 
+dpdk_whole_libs = ['librte_mempool_ring.a', 'librte_mempool.a']
+whole_deps = []
+foreach NAME : dpdk_whole_libs
+    DPDK_WHOLE_LIB = join_paths('..', DPDK_ROOT, 'lib', NAME)
+    whole_deps += declare_dependency(link_args : 
+                [ '-Wl,--whole-archive'
+                , DPDK_WHOLE_LIB
+                , '-Wl,--no-whole-archive'
+                ])
+endforeach
 
 DPDK_MACHINE_FLAGS = [
     '-DRTE_MACHINE_CPUFLAG_SSE',
@@ -55,7 +65,6 @@ DPDK_MACHINE_FLAGS = [
     '-DRTE_MACHINE_CPUFLAG_F16C',
     '-DRTE_MACHINE_CPUFLAG_AVX2'
 ]
-
 
 SPDK_LIB_NAMES = [
     'libspdk_nvme.a',
