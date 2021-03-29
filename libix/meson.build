@@ -11,4 +11,3 @@ ix_lib = static_library('ix',
                     c_args : ['-fno-omit-frame-pointer', '-O3', '-march=native'],
                     include_directories : [inc, ix_inc, EAL_INC],
                     objects: EAL_LIBS,)
-                    # link_with : core_lib)
