@@ -56,6 +56,7 @@ static int cpu_per_ssd = 1;
 #define MAX_OPEN_BATCH 32
 #define NUM_NVME_REQUESTS (4096 * 256)  //4096 * 64 //1024
 #define SGL_PAGE_SIZE 4096              //should match PAGE_SIZE defined in dp/core/reflex_server.c
+#define DEFAULT_IO_QUEUE_SIZE 256
 
 RTE_DEFINE_PER_LCORE(int, open_ev[MAX_OPEN_BATCH]);
 RTE_DEFINE_PER_LCORE(int, open_ev_ptr);
@@ -240,11 +241,11 @@ attach_cb(void *cb_ctx, struct spdk_pci_device *dev, struct spdk_nvme_ctrlr *ctr
     const struct spdk_nvme_ctrlr_data *cdata;
     struct spdk_nvme_ns *ns = spdk_nvme_ctrlr_get_ns(ctrlr, 1);
 
-    /* FIXME: used for avoiding the default SSD */
-    if (spdk_nvme_ns_get_size(ns) == 0x35a800000) {
-        printf("Skipping this device.\n");
-        return;
-    }
+    // /* FIXME: used for avoiding the default SSD */
+    // if (spdk_nvme_ns_get_size(ns) == 0x35a800000) {
+    //     printf("Skipping this device.\n");
+    //     return;
+    // }
 
     bitmap_init(ioq_bitmap, MAX_NUM_IO_QUEUES, 0);
     if (active_nvme_devices < CFG_MAX_NVMEDEV) {
@@ -312,14 +313,26 @@ int init_nvmeqp_cpu(void) {
     if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0)
         return 0;
     assert(nvme_ctrlr);
-
+    struct spdk_nvme_ctrlr *ctrlr = nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd];
     struct spdk_nvme_io_qpair_opts opts;
-    opts.qprio = 0;
-    opts.io_queue_size = 1024;
-    opts.io_queue_requests = 4096;
 
-    // FIXME: naive mapping from CPU to SSDs
-    percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd], &opts, sizeof(opts));
+    // spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
+    // printf("Deafult io qpair opts: %d, %d, %d\n", opts.qprio, opts.io_queue_size, opts.io_queue_requests);
+    opts.qprio = 0;
+    opts.io_queue_size = DEFAULT_IO_QUEUE_SIZE * 4;
+    opts.io_queue_requests = DEFAULT_IO_QUEUE_SIZE * 8;
+
+    while (opts.io_queue_size >= 1) {
+        // FIXME: naive mapping from CPU to SSDs
+        percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
+        if percpu_get (qpair) {
+            printf("Successfully allocate qpair with io_queue_size %d\n", opts.io_queue_size);
+            break;
+        }
+        opts.io_queue_size /= 2;
+    }
+    if (percpu_get(qpair) == NULL)
+        percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, NULL, 0);
     assert(percpu_get(qpair));
 
     return 0;
