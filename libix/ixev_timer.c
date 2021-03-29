@@ -30,6 +30,7 @@
  */
 
 #include "ixev_timer.h"
+
 #include <ix/syscall.h>
 
 int ixev_timer_init(struct ixev_timer *t, ixev_timer_handler_t h, void *arg) {

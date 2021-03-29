@@ -29,36 +29,56 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
+#include <ix/syscall.h>
+#include <ix/timer.h>
+#include <rte_per_lcore.h>
 
-int main() {
-    char my_write_str[] = "1234567890";
-    char my_read_str[100];
-    char my_filename[] = "/mnt/reflex/flush_test.txt";
-    int my_file_descriptor, close_err;
+/* max number of supported user level timers */
+#define UTIMER_COUNT 32
 
-    /* Open the file.  Clobber it if it exists. */
-    my_file_descriptor = open(my_filename, O_RDWR | O_CREAT | O_TRUNC);
+struct utimer {
+    struct timer t;
+    void *cookie;
+};
 
-    /* Write 10 bytes of data and make sure it's written */
-    write(my_file_descriptor, (void *)my_write_str, 10);
-    printf("Do fsync()\n");
-    fsync(my_file_descriptor);
-    printf("fsync done\n");
-    /* Seek the beginning of the file */
-    lseek(my_file_descriptor, 0, SEEK_SET);
+struct utimer_list {
+    struct utimer arr[UTIMER_COUNT];
+};
 
-    /* Read 10 bytes of data */
-    read(my_file_descriptor, (void *)my_read_str, 10);
+RTE_DEFINE_PER_LCORE(struct utimer_list, utimers);
 
-    /* Terminate the data we've read with a null character */
-    my_read_str[10] = '\0';
+void generic_handler(struct timer *t, struct eth_fg *unused) {
+    struct utimer *ut;
+    ut = container_of(t, struct utimer, t);
+    usys_timer((unsigned long)ut->cookie);
+}
 
-    printf("String read = %s.\n", my_read_str);
+static int find_available(struct utimer_list *tl) {
+    static int next;
 
-    close(my_file_descriptor);
+    if (next >= UTIMER_COUNT)
+        return -1;
 
-    return 0;
+    return next++;
+}
+
+int utimer_init(struct utimer_list *tl, void *udata) {
+    struct utimer *ut;
+    int index;
+
+    index = find_available(tl);
+    if (index < 0)
+        return -1;
+
+    ut = &tl->arr[index];
+    ut->cookie = udata;
+    timer_init_entry(&ut->t, generic_handler);
+
+    return index;
+}
+
+int utimer_arm(struct utimer_list *tl, int timer_id, uint64_t delay) {
+    struct timer *t;
+    t = &tl->arr[timer_id].t;
+    return timer_add(t, NULL, delay);
 }

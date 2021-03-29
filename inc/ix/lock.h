@@ -58,7 +58,7 @@
 
 #pragma once
 
-#include <asm/cpu.h>
+#include <arch/cpu.h>
 #include <ix/types.h>
 
 #define SPINLOCK_INITIALIZER {.locked = 0}

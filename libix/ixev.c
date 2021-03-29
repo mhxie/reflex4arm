@@ -57,13 +57,14 @@
  */
 
 #include "ixev.h"
-#include "buf.h"
-#include "ixev_timer.h"
 
 #include <errno.h>
 #include <ix/mempool.h>
 #include <ix/stddef.h>
 #include <stdio.h>
+
+#include "buf.h"
+#include "ixev_timer.h"
 
 static __thread uint64_t ixev_generation;
 static struct ixev_conn_ops ixev_global_ops;

@@ -38,6 +38,16 @@ Client-end:
 * DPDK/SPDK: v19.05/v19.04
 
 
+## AWS EC2 Environments
+
+x86_64 Server:
+
+* Image: Ubuntu Server 20.04 LTS (ami-06e54d05255faf8f6)
+* Instance: i3-large or i3-xlarge or i3-2xlarge
+* Network Interface: 2 * Elastic Network Adaptor (ENA)
+
+ARM Server: TBD
+
 ## Setup Instructions
 
 
@@ -46,49 +56,54 @@ Client-end:
    ```
    git clone https://github.com/mhxie/reflex4arm.git
    cd reflex4arm
-   git checkout userspace
-   ./deps/fetch-deps.sh # on stingray, change the dpdk and spdk address in deps/DEPS
+   git checkout meson
+   git submodule update --init --recursive
    ```
 
 2. Install library dependencies: 
 
    ```
-   sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev
+   sudo apt-get update && sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3-pip net-tools
+   sudo ./spdk/scripts/pkgdep.sh
    ```
 
 3. Build the dependecies:
 
    ```
-   # Build dpdk/spdk, may differ while using bcm/17.11-ubuntu-1804-build
-   sudo chmod +r /boot/System.map-`uname -r`
-   make -sj64 -C deps/dpdk config T=arm64-native-linuxapp-gcc
-   make -sj64 -C deps/dpdk
-   make -sj64 -C deps/dpdk install T=arm64-native-linuxapp-gcc DESTDIR=deps/dpdk/arm64-native-linuxapp-gcc
-   # Build spdk
-   export REFLEX_HOME=`pwd`
-   cd deps/spdk
-   ./configure --with-dpdk=$REFLEX_HOME/deps/dpdk/arm64-native-linuxapp-gcc
-   make
-   cd ../.. 	
+   # Build SPDK && Drivers
+   cd spdk
+   ```
+   Patch the `spdk/dpdk` with:
+   * In `dpdkbuild/Makefile`, append `net/ena` after `DPDK_DRIVERS = bus bus/pci bus/vdev mempool/ring`
+   * In `lib/librte_net/meson.build`, append `rte_ether.h` & `rte_ether.c`
+   * In `lib/librte_timer/meson.build`, enable `build` as `true`
+
+   ```
+   ./configure --with-igb-uio-driver
+   sudo make
    ```
 
 4. Build ReFlex4ARM:
 
    ```
-   make -sj64
+   meson build
+   meson compile -C build
+   // meson install -C build
+
+   # if you want to clean the build
+   rm -r build
    ```
+
 5. Set up the environment:
 
    ```
    cp ix.conf.sample ix.conf
    # modify at least host_addr, gateway_addr, devices, flow director, and nvme_devices (ns_size at clients)
-  
-   sudo modprobe -r nvme
-   sudo modprobe uio
-   sudo insmod deps/dpdk/build/kmod/igb_uio.ko
-   sudo deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:06:00.0   # insert device PCI address here!!! 
 
-   sudo deps/spdk/scripts/setup.sh
+   # sudo modprobe uio
+   sudo DRIVER_OVERRIDE=spdk/dpdk/build-tmp/kernel/linux/igb_uio/igb_uio.ko ./spdk/scripts/setup.sh
+   grep PCI_SLOT_NAME /sys/class/net/*/device/uevent | awk -F '=' '{print $2}'
+   sudo spdk/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0 # insert device PCI address here!!! 
    
    sudo sh -c 'for i in /sys/devices/system/node/node*/hugepages/hugepages-2048kB/nr_hugepages; do echo 4096 > $i; done'
    ```
@@ -97,7 +112,7 @@ Client-end:
 
    It is necessary to precondition the SSD to acheive steady-state performance and reproducible results across runs. We recommend preconditioning the SSD with the following local Flash tests: write *sequentially* to the entire address space using 128KB requests, then write *randomly* to the device with 4KB requests until you see performance reach steady state. The time for the random write test depends on the capacity, use `./perf -h` to check how to configure. 
    ```
-   cd deps/spdk/examples/nvme/perf
+   cd spdk/examples/nvme/perf
    sudo ./perf -q 1 -s 131072 -w write -t 3600 -c 0x1 -r 'trtype:PCIe traddr:0001:01:00.0'
    ```
    
@@ -113,6 +128,7 @@ Client-end:
   
    For your convenience, we provide an open-loop, local Flash load generator based on the SPDK perf example application [here](https://github.com/anakli/spdk_perf). We modified the SPDK perf example application to report read and write percentile latencies. We also made the load generator open-loop, so you can sweep throughput by specifying a target IOPS instead of queue depth. See setup instructions for ReFlex users in the repository's [README](https://github.com/anakli/spdk_perf/blob/master/README.md).
 
+
 ## Running ReFlex4ARM
 
 ### 0. Change some kernel settings (only at stingray):
@@ -126,7 +142,7 @@ Client-end:
 ### 1. Run the ReFlex4ARM server:
 
    ```
-   sudo ./ix
+   sudo ./build/dp
    ```
 
    ReFlex runs one dataplane thread per CPU core. If you want to run multiple ReFlex threads (to support higher throughput), set the `cpu` list in ix.conf and add `fdir` rules to steer traffic identified by {dest IP, src IP, dest port} to a particular core.
@@ -148,17 +164,17 @@ There are several options for clients in the original ReFlex implementations,
    Single-thread test example: 
 
    ```
-   # example: sudo ./ix -s 10.10.66.3 -p 1234 -w rand -T 1 -i 100000 -r 100 -S 0 -R 4096 -P 0 
+   # example: sudo ./build/dp -s 10.10.66.3 -p 1234 -w rand -T 1 -i 100000 -r 100 -S 0 -R 4096 -P 0 
    ```
 
    Multiple-thread test example:
    ```
-   # example: sudo ./ix -s 10.10.66.3 -p 1234 -w rand -T 4 -i 400000 -r 100 -S 0 -R 4096 -P 0
+   # example: sudo ./build/dp -s 10.10.66.3 -p 1234 -w rand -T 4 -i 400000 -r 100 -S 0 -R 4096 -P 0
    ```
    
    More descriptions for the command line options can be found by running
    ```
-   sudo ./ix -h
+   sudo ./build/dp -h
    
    Usage: 
    sudo ./ix
@@ -188,7 +204,7 @@ There are several options for clients in the original ReFlex implementations,
    600000   599913  154     104     111     117     124     133     148     165       189     231     273     378     1578    193293
    ```
 
-#### 2.2 Run a legacy client application using the ReFlex remote block device driver.
+#### 2.2 Run a legacy client application using the ReFlex remote block device driver [WIP].
 
 This client option is provided to support legacy applications. ReFlex exposes a standard Linux remote block device interface to the client (which appears to the client as a local block device). The client can mount a filesystem on the block device. With this approach, the client is subject to overheads in the Linux filesystem, block storage layer and network stack.
 On the client, change into the reflex_nbd directory and type make. Be sure that the remote ReFlex server is running and that it is ping-able from the client. Load the reflex.ko module, type dmesg to check whether the driver was successfully loaded. To reproduce the fio results from the paper do the following.
@@ -206,7 +222,7 @@ cd reflex_nbd
 make
 
 sudo modprobe bnxt_en
- # or try sudo python deps/dpdk/usertools/dpdk-devbind.py --bind=bnxt_en 01:00.0 && sudo rmmod igb_uio
+ # or try sudo python spdk/dpdk/usertools/dpdk-devbind.py --bind=bnxt_en 01:00.0 && sudo rmmod igb_uio
 sudo modprobe nvme
  # make sure you have started reflex_server on the server machine and can ping it
 

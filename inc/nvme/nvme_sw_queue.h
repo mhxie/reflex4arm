@@ -29,36 +29,38 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
+/* 
+ * Data structure for Flash SW queue scheduling
+ * Lock-free and works for single producer, single consumer 
+ *
+*/
 
-int main() {
-    char my_write_str[] = "1234567890";
-    char my_read_str[100];
-    char my_filename[] = "/mnt/reflex/flush_test.txt";
-    int my_file_descriptor, close_err;
+#include <nvme/nvmedev.h>
+#include <ix/list.h>
+#define NVME_SW_QUEUE_SIZE (256*8)  
 
-    /* Open the file.  Clobber it if it exists. */
-    my_file_descriptor = open(my_filename, O_RDWR | O_CREAT | O_TRUNC);
+struct nvme_sw_queue
+{
+    struct nvme_ctx* buf[NVME_SW_QUEUE_SIZE]; 
+	int count;				  // number of elements current in queue
+    unsigned int head;       // head index (insert here)
+    unsigned int tail;       // tail index (remove from here)
+	unsigned long total_token_demand;
+	unsigned long saved_tokens;
+    long fg_handle;
+	long token_credit;
+	struct list_node list;
+};
 
-    /* Write 10 bytes of data and make sure it's written */
-    write(my_file_descriptor, (void *)my_write_str, 10);
-    printf("Do fsync()\n");
-    fsync(my_file_descriptor);
-    printf("fsync done\n");
-    /* Seek the beginning of the file */
-    lseek(my_file_descriptor, 0, SEEK_SET);
 
-    /* Read 10 bytes of data */
-    read(my_file_descriptor, (void *)my_read_str, 10);
 
-    /* Terminate the data we've read with a null character */
-    my_read_str[10] = '\0';
+void nvme_sw_queue_init(struct nvme_sw_queue *q, long fg_handle);
+int nvme_sw_queue_push_back(struct nvme_sw_queue *q, struct nvme_ctx *ctx);
+int nvme_sw_queue_pop_front(struct nvme_sw_queue *q, struct nvme_ctx **ctx);
+int nvme_sw_queue_isempty(struct nvme_sw_queue *q);
+int nvme_sw_queue_peak_head_cost(struct nvme_sw_queue *q);
+unsigned long nvme_sw_queue_save_tokens(struct nvme_sw_queue *q, unsigned long tokens);
+unsigned long nvme_sw_queue_take_saved_tokens(struct nvme_sw_queue *q);
 
-    printf("String read = %s.\n", my_read_str);
-
-    close(my_file_descriptor);
-
-    return 0;
-}
+double nvme_sw_queue_save_tokens_fraction(struct nvme_sw_queue *q, double tokens);
+double nvme_sw_queue_take_saved_tokens_fraction(struct nvme_sw_queue *q);

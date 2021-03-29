@@ -198,7 +198,7 @@ struct ip_hdr {
 /*
  * Time stamp option structure.
  */
-struct	ip_timestamp {
+struct	ix_ip_timestamp {
 	uint8_t code;			/* IPOPT_TS */
 	uint8_t len;			/* size of structure (variable) */
 	uint8_t ptr;			/* index of current entry */
@@ -247,7 +247,7 @@ struct	ip_timestamp {
  * checksums. For the Internet checksum, struct ipovly can be used instead.
  * For stronger checksums, the real thing must be used.
  */
-struct ip_pseudo {
+struct ix_ip_pseudo {
 	struct	ip_addr	src;		/* source internet address */
 	struct	ip_addr	dst;		/* destination internet address */
 	uint8_t		pad;		/* pad, must be zero */
@@ -257,7 +257,7 @@ struct ip_pseudo {
 
 /* Protocols common to RFC 1700, POSIX, and X/Open. */
 #define	IPPROTO_IP		0		/* dummy for IP */
-#define	IPPROTO_ICMP		1		/* control message protocol */
+#define	IPPROTO_ICMP	1		/* control message protocol */
 #define	IPPROTO_TCP		6		/* tcp */
 #define	IPPROTO_UDP		17		/* user datagram protocol */
 

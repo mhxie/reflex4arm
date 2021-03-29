@@ -38,16 +38,15 @@
  *  
  */
 
-#include <linux/major.h>
+#include "reflex_nbd.h"
 
 #include <linux/blk-mq.h>
 #include <linux/blkdev.h>
 #include <linux/errno.h>
 #include <linux/kthread.h>
+#include <linux/major.h>
 #include <linux/mutex.h>
 #include <net/sock.h>
-
-#include "reflex_nbd.h"
 
 #define REFLEX_MAGIC 0x68797548
 #define DEFAULT_TIMEOUT 10000

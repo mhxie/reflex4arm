@@ -29,36 +29,44 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
+enum msg_type {
+    PUT,
+    GET,
+    PUT_ACK,
+    GET_RESP,
+};
 
-int main() {
-    char my_write_str[] = "1234567890";
-    char my_read_str[100];
-    char my_filename[] = "/mnt/reflex/flush_test.txt";
-    int my_file_descriptor, close_err;
+struct msg_header {
+    void *addr;
+    int cmd;
+    size_t len;
+    int tag;
+};
 
-    /* Open the file.  Clobber it if it exists. */
-    my_file_descriptor = open(my_filename, O_RDWR | O_CREAT | O_TRUNC);
+/*
+ * ReFlex protocol support 
+ */
 
-    /* Write 10 bytes of data and make sure it's written */
-    write(my_file_descriptor, (void *)my_write_str, 10);
-    printf("Do fsync()\n");
-    fsync(my_file_descriptor);
-    printf("fsync done\n");
-    /* Seek the beginning of the file */
-    lseek(my_file_descriptor, 0, SEEK_SET);
+#define CMD_GET 0x00
+#define CMD_SET 0x01
+#define CMD_SET_NO_ACK 0x02
+#define CMD_REG 0x03
 
-    /* Read 10 bytes of data */
-    read(my_file_descriptor, (void *)my_read_str, 10);
+#define RESP_OK 0x00
+#define RESP_EINVAL 0x04
 
-    /* Terminate the data we've read with a null character */
-    my_read_str[10] = '\0';
+#define REQ_PKT 0x80
+#define RESP_PKT 0x81
+#define MAX_EXTRA_LEN 8
+#define MAX_KEY_LEN 8
 
-    printf("String read = %s.\n", my_read_str);
+typedef struct __attribute__((__packed__)) {
+    uint16_t magic;
+    uint16_t opcode;
+    void *req_handle;
+    unsigned long lba;       // IOPS_SLO
+    unsigned int lba_count;  // 0xffffff00: latency_SLO; 0x000000ff: rd_wr_ratio_SLO
 
-    close(my_file_descriptor);
+} binary_header_blk_t;
 
-    return 0;
-}
+void *pp_main(void *arg);

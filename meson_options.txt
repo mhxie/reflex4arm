@@ -1,0 +1,4 @@
+option('DEBUG', type: 'boolean', value: false)
+option('MQ_DEBUG', type: 'boolean', value: false)
+option('CLI_DEBUG', type: 'boolean', value: false)
+option('ENABLE_KSTATS', type: 'boolean', value: false)

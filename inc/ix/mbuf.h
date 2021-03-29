@@ -176,12 +176,13 @@ struct mbuf {
  * @type: the type to cast
  */
 // Replaced with rte_mbuf function
-/*
+// Replaced back for dpdk APIs changes
+
 #define mbuf_mtod(mbuf, type) \
 	((type) ((uintptr_t) (mbuf) + MBUF_HEADER_LEN))
-*/
-#define mbuf_mtod(m, type) \
-	((type)((char *)(m)->buf_addr + (m)->data_off + (0)))
+
+// #define mbuf_mtod(m, type) \
+// 	((type)((char *)(m)->buf_addr + (m)->data_off + (0)))
 
 /**
  * mbuf_nextd_off - advance a data pointer by an offset

@@ -3,7 +3,7 @@
 *.d
 *.o
 *.swp
-perf.*
+perf.data*
 out.*
 *.out
 *.svg
@@ -24,3 +24,6 @@ out.*
 /apps/reflex_ix_client
 /net_perf
 /ssd_perf
+
+/build
+/bin

@@ -52,25 +52,49 @@
  * THE SOFTWARE.
  */
 
-#pragma once
+/*
+ * log.c - the logging system
+ *
+ * FIXME: Should we direct logs to a file?
+ */
 
-#include <ix/types.h>
+#include <ix/cpu.h>
+#include <ix/log.h>
+#include <ix/stddef.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
 
-#define MIN_NINES 1 /* 90% */
-#define MAX_NINES 5 /* 99.999 */
+#define MAX_LOG_LEN 1024
 
-const char *tailqueue_nines[] = {"", "90%", "99%", "99.9%", "99.99%", "99.999"};
+__thread bool log_is_early_boot = true;
 
-struct tailqueue;
+int max_loglevel = LOG_DEBUG;
 
-struct taildistr {
-    uint64_t count, min, max;
-    uint64_t nines[MAX_NINES + 1]; /* nb: nines[0] is unused */
-};
+void logk(int level, const char *fmt, ...) {
+    va_list ptr;
+    char buf[MAX_LOG_LEN];
+    time_t ts;
+    off_t off = 0;
 
-extern void tailqueue_addsample(struct tailqueue *tq,
-                                uint64_t t_us);
+    if (level > max_loglevel)
+        return;
 
-extern void tailqueue_calcnines(struct tailqueue *tq,
-                                struct taildistr *td,
-                                int reset);
+    if (!log_is_early_boot) {
+        snprintf(buf, 9, "CPU %02d| ", percpu_get(cpu_id));
+        off = strlen(buf);
+    }
+
+    time(&ts);
+    off += strftime(buf + off, 32, "%H:%M:%S ", localtime(&ts));
+
+    snprintf(buf + off, 6, "<%d>: ", level);
+    off = strlen(buf);
+
+    va_start(ptr, fmt);
+    vsnprintf(buf + off, MAX_LOG_LEN - off, fmt, ptr);
+    va_end(ptr);
+
+    printf("%s", buf);  // what's this
+}
