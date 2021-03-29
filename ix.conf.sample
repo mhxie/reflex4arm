@@ -39,8 +39,8 @@ port=[1234, 1235, 1236, 1237, 1238, 1239, 1240, 1241]
 ##      2. Now support multiple NVMes SSDs
 ##      3. Now support namespace size configuration (only at client-end)
 devices="0008:01:00.0"
-# nvme_devices="0000:01:00.0"
-nvme_devices=["0000:01:00.0", "0001:01:00.0", "0006:01:00.0", "0007:01:00.0"]
+nvme_devices="0000:01:00.0"
+# nvme_devices=["0000:01:00.0", "0001:01:00.0", "0006:01:00.0", "0007:01:00.0"]
 # ns_size=["0xE8E0DB6000"]
 
 ###############################################################################
@@ -62,7 +62,7 @@ nvme_devices=["0000:01:00.0", "0001:01:00.0", "0006:01:00.0", "0007:01:00.0"]
 # 					 "off" means I/O submitted directly to flash, 
 # 					     no SW queueing, no QoS scheduling 
 #                    turn off this in the client			 
-nvme_device_model="sample.devmodel" 
+nvme_device_model="nvme_devname.devmodel" 
 scheduler="on"
 
 ## cpu : Indicates which CPU process unit(s) (P) this IX instance
@@ -85,7 +85,7 @@ cpu=[0, 1]
 
 ## mem_channel  : how many memory channels will be used
 ##  Default: -1
-mem_channel=3
+mem_channel=1
 
 
 ## batch : Specifies maximum batch size of received packets to process.
@@ -94,8 +94,8 @@ batch=64
 
 ## loader_path : kernel loader to use with IX module:
 ##
-# loader_path="/lib64/ld-linux-x86-64.so.2"
-loader_path="/lib/ld-linux-aarch64.so.1"
+loader_path="/lib64/ld-linux-x86-64.so.2"
+# loader_path="/lib/ld-linux-aarch64.so.1"
 
 ###############################################################################
 # Optional parameters

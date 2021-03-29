@@ -1,0 +1,10 @@
+[Unit]
+Description=ReFlex4ARM systemd service.
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/reflex4arm
+ExecStart=/bin/bash /home/ubuntu/reflex4arm/scripts/run_reflex_server.sh
+
+[Install]
+WantedBy=multi-user.target

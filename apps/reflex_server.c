@@ -62,9 +62,9 @@
 #include <ix/list.h>
 #include <ix/mempool.h>
 #include <rte_cycles.h>
-// #include <rte_timer.h>
+#include <rte_timer.h>
 
-#include <reflex.h>
+#include "reflex.h"
 
 #define ROUND_UP(num, multiple) ((((num) + (multiple)-1) / (multiple)) * (multiple))
 #define BATCH_DEPTH 512
@@ -101,7 +101,7 @@ static __thread unsigned long local_avg = 0;  // warm-up needed
 static __thread unsigned long send_avg = 0;   // warm-up needed
 static __thread unsigned long tem_avg = 0;    // warm-up needed
 static __thread unsigned long num_requests = 0;
-// static __thread struct rte_timer send_timer; // only for single connection per thread
+static __thread struct rte_timer send_timer;  // only for single connection per thread
 static __thread long cycles_between_resend = 100000;
 static __thread long failed_header_sents_0 = 0;
 static __thread long failed_header_sents_1 = 0;
@@ -154,31 +154,30 @@ static __thread unsigned long last_sent_time = 0;
 
 static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason);
 
-// static void send_again_cb(__attribute__((unused)) struct rte_timer *tim, void *arg)
-// {
-// 	struct pp_conn *conn = arg;
-// 	int sent_reqs = 0;
+static void send_again_cb(__attribute__((unused)) struct rte_timer *tim, void *arg) {
+    struct pp_conn *conn = arg;
+    int sent_reqs = 0;
 
-// 	// printf("Thread [%d]: Send again is called back at %lu, %d requests left.\n", rte_lcore_id(), rte_rdtsc(), conn->list_len);
-// 	while(!list_empty(&conn->pending_requests)) {
-// 		struct nvme_req *req = list_top(&conn->pending_requests, struct nvme_req, link);
-// 		int ret = send_req(req);
-// 		if(!ret) {
-// 			list_pop(&conn->pending_requests, struct nvme_req, link);
-// 			sent_reqs++;
-// 			printf("Got one packet resent.\n");
-// 		} else {
-// 			// printf("Send failed again, but sent %d this time.\n", sent_reqs);
-// 			// if (!sent_reqs) { // stop retrying if nothing more to be sent
-// 			// 	if (rte_timer_reset(tim, cycles_between_resend, SINGLE, rte_lcore_id(), send_again_cb, conn) != 0)
-// 			// 		rte_exit(EXIT_FAILURE, "Send_again_cb setup failure.\n");
-// 			// }
-// 			return;
-// 		}
-// 	}
-// 	// successful_resend_attempts++;
-// 	// printf("Send succeeded this time.\n");
-// }
+    // printf("Thread [%d]: Send again is called back at %lu, %d requests left.\n", rte_lcore_id(), rte_rdtsc(), conn->list_len);
+    while (!list_empty(&conn->pending_requests)) {
+        struct nvme_req *req = list_top(&conn->pending_requests, struct nvme_req, link);
+        int ret = send_req(req);
+        if (!ret) {
+            list_pop(&conn->pending_requests, struct nvme_req, link);
+            sent_reqs++;
+            printf("Got one packet resent.\n");
+        } else {
+            // printf("Send failed again, but sent %d this time.\n", sent_reqs);
+            // if (!sent_reqs) { // stop retrying if nothing more to be sent
+            // 	if (rte_timer_reset(tim, cycles_between_resend, SINGLE, rte_lcore_id(), send_again_cb, conn) != 0)
+            // 		rte_exit(EXIT_FAILURE, "Send_again_cb setup failure.\n");
+            // }
+            return;
+        }
+    }
+    // successful_resend_attempts++;
+    // printf("Send succeeded this time.\n");
+}
 
 static void send_completed_cb(struct ixev_ref *ref) {
     struct nvme_req *req = container_of(ref, struct nvme_req, ref);
@@ -208,15 +207,16 @@ int send_req(struct nvme_req *req) {
 
     if (!conn->tx_pending) {
         //setup header
+        // printf("Now req->opcode is %d\n", req->opcode);
         header = (BINARY_HEADER *)&conn->data_send[0];
         header->magic = sizeof(BINARY_HEADER);  //RESP_PKT;
         header->opcode = req->opcode;
         header->lba = req->lba;
 
-        if (req->opcode == CMD_SET)
-            header->lba_count = 0;
-        else
+        if (req->opcode == CMD_GET)
             header->lba_count = req->lba_count;
+        else  // CMD_SET
+            header->lba_count = RESP_OK;
         header->req_handle = req->remote_req_handle;
 
         assert(header->req_handle);
@@ -247,7 +247,9 @@ int send_req(struct nvme_req *req) {
         conn->tx_sent = 0;
     }
     ret = 0;
+    // printf("break point: opcode is %d\n", req->opcode);
     if (req->opcode == CMD_GET) {
+        // printf("Sending GET payloads of %d bytes\n", req->lba_count * ns_sector_size);
         while (conn->tx_sent < req->lba_count * ns_sector_size) {
             int to_send = min(PAGE_SIZE - (conn->tx_sent % PAGE_SIZE),             // for more than one page left
                               (req->lba_count * ns_sector_size) - conn->tx_sent);  // for less than one page left
@@ -338,7 +340,6 @@ static void nvme_written_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason) 
 	int num_4kbufs = num_bytes /4096 + 1;
 	printf("\n***WRITTEN: num_bytes %d, lba_count %u \n", num_bytes, req->lba_count);
     int i, j;
-
 	for (i =0; i < num_4kbufs; i++){
 		for (j=0; j < 4096; j++){
 			if (num_bytes > i*4096 + j) {
@@ -368,7 +369,6 @@ static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason)
 	int num_4kbufs = num_bytes /4096 + 1;
 	printf("\n****READ: num_bytes %d, lba_count %u \n", num_bytes, req->lba_count);
     int i, j;
-
 	for (i =0; i < num_4kbufs; i++){
 		for (j=0; j < 4096; j++){
 			if (num_bytes > i*4096 + j) {
@@ -467,6 +467,31 @@ static void receive_req(struct pp_conn *conn) {
             }
             assert(header->magic == sizeof(BINARY_HEADER));
 
+            if (header->opcode == CMD_REG) {  // if reregister at runtime, may mislead the scheduler
+                unsigned long cookie = (unsigned long)&conn->ctx;
+                unsigned long IOPS_SLO = header->lba;
+                unsigned int latency_us_SLO = (header->lba_count & 0xffffff00) >> 8;
+                int rd_wr_ratio_SLO = header->lba_count & 0x000000ff;
+                printf("Received reg header: IOPS_SLO-%ld, latency_SLO-%d, rw_SLO-%d\n", IOPS_SLO, latency_us_SLO, rd_wr_ratio_SLO);
+                // FIXME: rewrite the flow id mapping from network to storage
+                ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
+
+                uint8_t reply = RESP_OK;
+                ret = ixev_send(&conn->ctx, &reply, sizeof(reply));
+
+                if (ret < 0) {
+                    if (!conn->nvme_pending) {
+                        printf("ixev_send ret < 0, then ivev_close.\n");
+                        ixev_close(&conn->ctx);
+                        return -2;
+                    }
+                    return -1;
+                    ret = 0;
+                }
+                conn->rx_received = 0;
+                continue;
+            }
+
             num4k = (header->lba_count * ns_sector_size) / 4096;
             assert(num4k <= MAX_PAGES_PER_ACCESS);
             if (((header->lba_count * ns_sector_size) % 4096) != 0)
@@ -525,13 +550,6 @@ static void receive_req(struct pp_conn *conn) {
             assert(req->current_sgl_buf <= header->lba_count * 8);
 
         } else if (header->opcode == CMD_GET) {
-        } else if (header->opcode == CMD_REG) {  // if reregister at runtime, may mislead the scheduler
-            unsigned long cookie = (unsigned long)&conn->ctx;
-            unsigned long IOPS_SLO = header->lba;
-            unsigned int latency_us_SLO = header->lba_count & 0xffffff00;
-            int rd_wr_ratio_SLO = header->lba_count & 0x000000ff;
-            // FIXME: rewrite the flow id mapping from network to storage
-            ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
         } else {
             printf("Received unsupported command, closing connection\n");
             ixev_close(&conn->ctx);
@@ -582,8 +600,10 @@ static void receive_req(struct pp_conn *conn) {
 #endif
                 conn->nvme_pending++;
                 break;
+            case CMD_REG:
+                break;
             default:
-                printf("Received illegal msg - dropping msg\n");
+                printf("Received illegal msg (opcode-%d) - dropping msg\n", header->opcode);
                 mempool_free(&nvme_req_pool, req);
                 reqs_allocated--;
         }
@@ -601,15 +621,18 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
     }
     if (reason == IXEVHUP) {
         ixev_nvme_unregister_flow(conn->nvme_fg_handle);
-        printf("Thread %d: IXEVHUP: Connection closed.\nAvg nvme latency was %luus, avg payload send latency was %luus, avg wait latency was %lu us.\n",
-               percpu_get(cpu_id),
-               local_avg / num_requests,
-               (send_avg - tem_avg) / num_requests,
-               (tem_avg - local_avg) / num_requests);
-        printf("Failed sent: header - %lu/%lu | payload - %lu/%lu | others - %lu/%lu\n",
-               failed_header_sents_0, failed_header_sents_1,
-               failed_payload_sents_0, failed_payload_sents_1,
-               failed_other_sents_0, failed_other_sents_1);
+        if (num_requests > 0) {
+            printf("Thread %d: IXEVHUP: Connection closed.\nAvg nvme latency was %luus, avg payload send latency was %luus, avg wait latency was %lu us.\n",
+                   percpu_get(cpu_id),
+                   local_avg / num_requests,
+                   (send_avg - tem_avg) / num_requests,
+                   (tem_avg - local_avg) / num_requests);
+            printf("Failed sent: header - %lu/%lu | payload - %lu/%lu | others - %lu/%lu\n",
+                   failed_header_sents_0, failed_header_sents_1,
+                   failed_payload_sents_0, failed_payload_sents_1,
+                   failed_other_sents_0, failed_other_sents_1);
+        }
+
         local_avg = 0;
         send_avg = 0;
         num_requests = 0;
@@ -654,7 +677,7 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
     cookie = (unsigned long)&conn->ctx;
 
     printf("The id->dst_port is %d, id->src_port is %d.\n", id->dst_port, id->src_port);
-    ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
+    // ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
 
     return &conn->ctx;
 }
