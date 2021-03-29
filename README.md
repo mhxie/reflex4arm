@@ -1,5 +1,7 @@
 # ReFlex4ARM
 
+[![CI](https://github.com/mhxie/reflex4arm/actions/workflows/ci.yml/badge.svg)](https://github.com/mhxie/reflex4arm/actions/workflows/ci.yml)
+
 ReFlex4ARM is a variant of ReFlex(https://github.com/stanford-mast/reflex). ReFlex uses Intel [DPDK](http://dpdk.org) for fast packet processing and Intel [SPDK](http://www.spdk.io) for high performance access to NVMe Flash. This is an improved implementation of ReFlex, as presented in the [paper](https://web.stanford.edu/group/mast/cgi-bin/drupal/system/files/reflex_asplos17.pdf) published at ASPLOS'17.
 
 ReFlex is a software-based system that provides remote access to Flash with performance nearly identical to local Flash access. ReFlex closely integrates network and storage processing in a dataplane kernel to achieve low latency and high throughput at low resource requirements. ReFlex uses a novel I/O scheduler to enforce tail latency and throughput service-level objectives (SLOs) for multiple clients sharing a remote Flash device.
