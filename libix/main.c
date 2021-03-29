@@ -52,80 +52,74 @@
  * THE SOFTWARE.
  */
 
-#include <stddef.h>
 #include <errno.h>
-#include <stdlib.h>
+#include <ix/syscall.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#include <ix/syscall.h>
 #include "ix.h"
 
 static __thread bsysfn_t usys_tbl[USYS_NR];
-static __thread struct bsys_arr *uarr; // user-space batched system call array
+static __thread struct bsys_arr *uarr;  // user-space batched system call array
 
-__thread struct bsys_arr *karr; // kernel-space batched system call array
+__thread struct bsys_arr *karr;  // kernel-space batched system call array
 
 /**
  * ix_poll - flush pending commands and check for new commands
  *
  * Returns the number of new commands received.
  */
-int ix_poll(void)
-{
-	
-	int ret;
-	// if (karr->len) {
-	// 	// printf("I will make syscall soon: ");
-	// 	printf("%d\n", karr->descs);
-	// }
-	ret = sys_bpoll(karr->descs, karr->len);
-	
-	if (ret) {
-		printf("libix: encountered a fatal memory fault\n");
-		exit(-1);
-	}
-	return uarr->len;
+int ix_poll(void) {
+    int ret;
+    // if (karr->len) {
+    // 	// printf("I will make syscall soon: ");
+    // 	printf("%d\n", karr->descs);
+    // }
+    ret = sys_bpoll(karr->descs, karr->len);
+
+    if (ret) {
+        printf("libix: encountered a fatal memory fault\n");
+        exit(-1);
+    }
+    return uarr->len;
 }
 
-void ix_handle_events(void)
-{
-	int i;
-	
-	for (i = 0; i < uarr->len; i++) {
-		struct bsys_desc d = uarr->descs[i];
-		// printf("I am handling %dth user syscalls: %d event.\n", i, d.sysnr);
-		usys_tbl[d.sysnr](d.arga, d.argb, d.argc, d.argd, d.arge, d.argf);
-	}
+void ix_handle_events(void) {
+    int i;
+
+    for (i = 0; i < uarr->len; i++) {
+        struct bsys_desc d = uarr->descs[i];
+        // printf("I am handling %dth user syscalls: %d event.\n", i, d.sysnr);
+        usys_tbl[d.sysnr](d.arga, d.argb, d.argc, d.argd, d.arge, d.argf);
+    }
 }
 
 /**
  * ix_flush - send pending commands
  */
-void ix_flush(void)
-{
-	int ret;
+void ix_flush(void) {
+    int ret;
 
-	printf("ix_flush is functioning.\n");
-	ret = sys_bcall(karr->descs, karr->len);
-	if (ret) {
-		printf("libix: encountered a fatal memory fault\n");
-		exit(-1);
-	}
+    printf("ix_flush is functioning.\n");
+    ret = sys_bcall(karr->descs, karr->len);
+    if (ret) {
+        printf("libix: encountered a fatal memory fault\n");
+        exit(-1);
+    }
 
-	karr->len = 0;
+    karr->len = 0;
 }
 
 static void
-ix_default_udp_recv(void *addr, size_t len, struct ip_tuple *id)
-{
-	ix_udp_recv_done(addr);
+ix_default_udp_recv(void *addr, size_t len, struct ip_tuple *id) {
+    ix_udp_recv_done(addr);
 }
 
 static void
-ix_default_tcp_knock(int handle, struct ip_tuple *id)
-{
-	ix_tcp_reject(handle);
+ix_default_tcp_knock(int handle, struct ip_tuple *id) {
+    ix_tcp_reject(handle);
 }
 
 /**
@@ -135,50 +129,48 @@ ix_default_tcp_knock(int handle, struct ip_tuple *id)
  *
  * Returns 0 if successful, otherwise fail.
  */
-int ix_init(struct ix_ops *ops, int batch_depth)
-{
-	if (!ops)
-		return -EINVAL;
+int ix_init(struct ix_ops *ops, int batch_depth) {
+    if (!ops)
+        return -EINVAL;
 
-	/* unpack the ops into a more efficient representation */
-	usys_tbl[USYS_UDP_RECV]		       = (bsysfn_t) ops->udp_recv;
-	usys_tbl[USYS_UDP_SENT]		       = (bsysfn_t) ops->udp_sent;
-	usys_tbl[USYS_TCP_CONNECTED]	       = (bsysfn_t) ops->tcp_connected;
-	usys_tbl[USYS_TCP_KNOCK]	       = (bsysfn_t) ops->tcp_knock;
-	usys_tbl[USYS_TCP_RECV]		       = (bsysfn_t) ops->tcp_recv;
-	usys_tbl[USYS_TCP_SENT]		       = (bsysfn_t) ops->tcp_sent;
-	usys_tbl[USYS_TCP_DEAD]		       = (bsysfn_t) ops->tcp_dead;
-	usys_tbl[USYS_NVME_WRITTEN]            = (bsysfn_t) ops->nvme_written;
-	usys_tbl[USYS_NVME_RESPONSE]           = (bsysfn_t) ops->nvme_response;
-	usys_tbl[USYS_NVME_OPENED]             = (bsysfn_t) ops->nvme_opened;
-	usys_tbl[USYS_NVME_REGISTERED_FLOW]    = (bsysfn_t) ops->nvme_registered_flow;
-	usys_tbl[USYS_NVME_UNREGISTERED_FLOW]  = (bsysfn_t) ops->nvme_unregistered_flow;
-	usys_tbl[USYS_TIMER]    	       = (bsysfn_t) ops->timer_event;
+    /* unpack the ops into a more efficient representation */
+    usys_tbl[USYS_UDP_RECV] = (bsysfn_t)ops->udp_recv;
+    usys_tbl[USYS_UDP_SENT] = (bsysfn_t)ops->udp_sent;
+    usys_tbl[USYS_TCP_CONNECTED] = (bsysfn_t)ops->tcp_connected;
+    usys_tbl[USYS_TCP_KNOCK] = (bsysfn_t)ops->tcp_knock;
+    usys_tbl[USYS_TCP_RECV] = (bsysfn_t)ops->tcp_recv;
+    usys_tbl[USYS_TCP_SENT] = (bsysfn_t)ops->tcp_sent;
+    usys_tbl[USYS_TCP_DEAD] = (bsysfn_t)ops->tcp_dead;
+    usys_tbl[USYS_NVME_WRITTEN] = (bsysfn_t)ops->nvme_written;
+    usys_tbl[USYS_NVME_RESPONSE] = (bsysfn_t)ops->nvme_response;
+    usys_tbl[USYS_NVME_OPENED] = (bsysfn_t)ops->nvme_opened;
+    usys_tbl[USYS_NVME_REGISTERED_FLOW] = (bsysfn_t)ops->nvme_registered_flow;
+    usys_tbl[USYS_NVME_UNREGISTERED_FLOW] = (bsysfn_t)ops->nvme_unregistered_flow;
+    usys_tbl[USYS_TIMER] = (bsysfn_t)ops->timer_event;
 
-	/* provide sane defaults so we don't leak memory */
-	if (!ops->udp_recv)
-		usys_tbl[USYS_UDP_RECV] = (bsysfn_t) ix_default_udp_recv;
-	if (!ops->tcp_knock)
-		usys_tbl[USYS_TCP_KNOCK] = (bsysfn_t) ix_default_tcp_knock;
+    /* provide sane defaults so we don't leak memory */
+    if (!ops->udp_recv)
+        usys_tbl[USYS_UDP_RECV] = (bsysfn_t)ix_default_udp_recv;
+    if (!ops->tcp_knock)
+        usys_tbl[USYS_TCP_KNOCK] = (bsysfn_t)ix_default_tcp_knock;
 
-	uarr = sys_baddr();
-	printf("on CPU %d, uarr in ix_init is %p\n", percpu_get(cpu_nr), uarr);
+    uarr = sys_baddr();
+    printf("on CPU %d, uarr in ix_init is %p\n", percpu_get(cpu_nr), uarr);
 
-	if (!uarr){
-		printf("bad uarr\n");
-		return -EFAULT;
-	}
-	//karr = uarr;
-	karr = malloc(sizeof(struct bsys_arr) +
-		      sizeof(struct bsys_desc) * batch_depth);
-	if (!karr){
-		printf("can't karr malloc\n");
-		return -ENOMEM;
-	}
+    if (!uarr) {
+        printf("bad uarr\n");
+        return -EFAULT;
+    }
+    //karr = uarr;
+    karr = malloc(sizeof(struct bsys_arr) +
+                  sizeof(struct bsys_desc) * batch_depth);
+    if (!karr) {
+        printf("can't karr malloc\n");
+        return -ENOMEM;
+    }
 
-	karr->len = 0;
-	karr->max_len = batch_depth;
+    karr->len = 0;
+    karr->max_len = batch_depth;
 
-	return 0;
+    return 0;
 }
-

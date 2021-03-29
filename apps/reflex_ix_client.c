@@ -54,25 +54,21 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <pthread.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <fcntl.h>
-#include <sys/time.h>
-#include <time.h>
-#include <unistd.h>
-
 #include <ix/cfg.h>
 #include <ix/list.h>
 #include <ix/mempool.h>
 #include <ix/timer.h>
 #include <ixev.h>
-
-#include <reflex.h>
-
 #include <netinet/in.h>
+#include <pthread.h>
+#include <reflex.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <time.h>
+#include <unistd.h>
 
 #define BINARY_HEADER binary_header_blk_t
 

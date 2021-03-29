@@ -58,24 +58,20 @@
 
 #define _GNU_SOURCE
 
-#include <sys/socket.h>
-#include <rte_config.h>
-#include <rte_memzone.h>
-#include <rte_malloc.h>
-#include <rte_lcore.h>
-#include <rte_per_lcore.h>
-#include <rte_malloc.h>
-
-#include <unistd.h>
-#include <sched.h>
-#include <sys/syscall.h>
-
-#include <ix/stddef.h>
-#include <ix/errno.h>
-#include <ix/log.h>
-
-#include <ix/lock.h>
 #include <ix/cpu.h>
+#include <ix/errno.h>
+#include <ix/lock.h>
+#include <ix/log.h>
+#include <ix/stddef.h>
+#include <rte_config.h>
+#include <rte_lcore.h>
+#include <rte_malloc.h>
+#include <rte_memzone.h>
+#include <rte_per_lcore.h>
+#include <sched.h>
+#include <sys/socket.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 int cpu_count;
 int cpus_active;
@@ -89,17 +85,17 @@ void *percpu_offsets[NCPU];
 extern const char __percpu_start[];
 extern const char __percpu_end[];
 
-#define PERCPU_DUNE_LEN	512
+#define PERCPU_DUNE_LEN 512
 
 struct cpu_runner {
-	struct cpu_runner *next;
-	cpu_func_t func;
-	void *data;
+    struct cpu_runner *next;
+    cpu_func_t func;
+    void *data;
 };
 
 struct cpu_runlist {
-	spinlock_t lock;
-	struct cpu_runner *next_runner;
+    spinlock_t lock;
+    struct cpu_runner *next_runner;
 } __aligned(CACHE_LINE_SIZE);
 
 #define MAX_LCORES 128
@@ -113,55 +109,52 @@ static struct cpu_runlist global_runlists[MAX_LCORES];
  *
  * Returns 0 if successful, otherwise fail.
  */
-int cpu_run_on_one(cpu_func_t func, void *data, unsigned int cpu)
-{
-	struct cpu_runner *runner;
-	struct cpu_runlist *rlist;
+int cpu_run_on_one(cpu_func_t func, void *data, unsigned int cpu) {
+    struct cpu_runner *runner;
+    struct cpu_runlist *rlist;
 
-	if (cpu >= cpu_count)
-		return -EINVAL;
+    if (cpu >= cpu_count)
+        return -EINVAL;
 
-	runner = malloc(sizeof(*runner));
-	if (!runner)
-		return -ENOMEM;
+    runner = malloc(sizeof(*runner));
+    if (!runner)
+        return -ENOMEM;
 
-	runner->func = func;
-	runner->data = data;
-	runner->next = NULL;
+    runner->func = func;
+    runner->data = data;
+    runner->next = NULL;
 
-	rlist = &global_runlists[cpu];
+    rlist = &global_runlists[cpu];
 
-	spin_lock(&rlist->lock);
-	runner->next = rlist->next_runner;
-	rlist->next_runner = runner;
-	spin_unlock(&rlist->lock);
+    spin_lock(&rlist->lock);
+    runner->next = rlist->next_runner;
+    rlist->next_runner = runner;
+    spin_unlock(&rlist->lock);
 
-	return 0;
+    return 0;
 }
 
 /**
  * cpu_do_bookkepping - runs periodic per-cpu tasks
  */
-void cpu_do_bookkeeping(void)
-{
-	struct cpu_runlist *rlist = &global_runlists[percpu_get(cpu_id)];
-	struct cpu_runner *runner;
+void cpu_do_bookkeeping(void) {
+    struct cpu_runlist *rlist = &global_runlists[percpu_get(cpu_id)];
+    struct cpu_runner *runner;
 
-	if (rlist->next_runner) {
-		spin_lock(&rlist->lock);
-		runner = rlist->next_runner;
-		rlist->next_runner = NULL;
-		spin_unlock(&rlist->lock);
+    if (rlist->next_runner) {
+        spin_lock(&rlist->lock);
+        runner = rlist->next_runner;
+        rlist->next_runner = NULL;
+        spin_unlock(&rlist->lock);
 
-		do {
-			struct cpu_runner *last = runner;
-			runner->func(runner->data);
-			runner = runner->next;
-			free(last);
-		} while (runner);
-	}
+        do {
+            struct cpu_runner *last = runner;
+            runner->func(runner->data);
+            runner = runner->next;
+            free(last);
+        } while (runner);
+    }
 }
-
 
 /**
  * cpu_init_one - initializes a CPU core
@@ -174,45 +167,44 @@ void cpu_do_bookkeeping(void)
  *
  * Returns 0 if successful, otherwise fail.
  */
-int cpu_init_one(unsigned int cpu)
-{
-	int ret;
-	cpu_set_t mask;
-	unsigned int tmp, numa_node;
-	void *pcpu;
+int cpu_init_one(unsigned int cpu) {
+    int ret;
+    cpu_set_t mask;
+    unsigned int tmp, numa_node;
+    void *pcpu;
 
-	if (cpu >= cpu_count)
-		return -EINVAL;
+    if (cpu >= cpu_count)
+        return -EINVAL;
 
-	CPU_ZERO(&mask);
-	CPU_SET(cpu, &mask);
-	ret = sched_setaffinity(0, sizeof(mask), &mask);
-	if (ret)
-		return -EPERM;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu, &mask);
+    ret = sched_setaffinity(0, sizeof(mask), &mask);
+    if (ret)
+        return -EPERM;
 
-	ret = syscall(SYS_getcpu, &tmp, &numa_node, NULL);
-	if (ret)
-		return -ENOSYS;
+    ret = syscall(SYS_getcpu, &tmp, &numa_node, NULL);
+    if (ret)
+        return -ENOSYS;
 
-	if (cpu != tmp) {
-		log_err("cpu: couldn't migrate to the correct core\n");
-		return -EINVAL;
-	}
-/*
+    if (cpu != tmp) {
+        log_err("cpu: couldn't migrate to the correct core\n");
+        return -EINVAL;
+    }
+    /*
 	pcpu = cpu_init_percpu(cpu, numa_node);
 
 	if (!pcpu)
 		return -ENOMEM;
 */
 
-	RTE_PER_LCORE(cpu_id) = cpu;
+    RTE_PER_LCORE(cpu_id) = cpu;
 
-	RTE_PER_LCORE(cpu_numa_node) = numa_node;
-	log_is_early_boot = false;
+    RTE_PER_LCORE(cpu_numa_node) = numa_node;
+    log_is_early_boot = false;
 
-	log_info("cpu: started core %d, numa node %d\n", cpu, numa_node);
+    log_info("cpu: started core %d, numa node %d\n", cpu, numa_node);
 
-	return 0;
+    return 0;
 }
 
 /**
@@ -220,15 +212,13 @@ int cpu_init_one(unsigned int cpu)
  *
  * Returns zero if successful, otherwise fail.
  */
-int cpu_init(void)
-{
-	cpu_count = sysconf(_SC_NPROCESSORS_CONF);
+int cpu_init(void) {
+    cpu_count = sysconf(_SC_NPROCESSORS_CONF);
 
-	if (cpu_count <= 0 || cpu_count > NCPU)
-		return -EINVAL;
+    if (cpu_count <= 0 || cpu_count > NCPU)
+        return -EINVAL;
 
-	log_info("cpu: detected %d cores\n", cpu_count);
+    log_info("cpu: detected %d cores\n", cpu_count);
 
-	return 0;
+    return 0;
 }
-

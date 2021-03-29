@@ -29,30 +29,29 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
 enum msg_type {
-	PUT,
-	GET,
-	PUT_ACK,
-	GET_RESP,
+    PUT,
+    GET,
+    PUT_ACK,
+    GET_RESP,
 };
 
 struct msg_header {
-	void* addr;
-	int cmd;
-	size_t len;
-	int tag;
+    void *addr;
+    int cmd;
+    size_t len;
+    int tag;
 };
 
 /*
  * ReFlex protocol support 
  */
 
-#define CMD_GET  0x00
-#define CMD_SET  0x01
-#define CMD_SET_NO_ACK  0x02
-#define CMD_REG  0x03
- 
+#define CMD_GET 0x00
+#define CMD_SET 0x01
+#define CMD_SET_NO_ACK 0x02
+#define CMD_REG 0x03
+
 #define RESP_OK 0x00
 #define RESP_EINVAL 0x04
 
@@ -61,18 +60,13 @@ struct msg_header {
 #define MAX_EXTRA_LEN 8
 #define MAX_KEY_LEN 8
 
-typedef struct __attribute__ ((__packed__)) {
-  uint16_t magic;
-  uint16_t opcode;
-  void *req_handle;
-  unsigned long lba; // IOPS_SLO
-  unsigned int lba_count;  // 0xffffff00: latency_SLO; 0x000000ff: rd_wr_ratio_SLO
-  
+typedef struct __attribute__((__packed__)) {
+    uint16_t magic;
+    uint16_t opcode;
+    void *req_handle;
+    unsigned long lba;       // IOPS_SLO
+    unsigned int lba_count;  // 0xffffff00: latency_SLO; 0x000000ff: rd_wr_ratio_SLO
+
 } binary_header_blk_t;
 
-
 void *pp_main(void *arg);
-
-
-
-

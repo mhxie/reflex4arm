@@ -59,22 +59,19 @@
  *        assume that flow_group id == cpu_id
  */
 
-
-#include <sys/socket.h>
-#include <rte_config.h>
-#include <rte_memzone.h>
-#include <rte_malloc.h>
-#include <rte_lcore.h>
-#include <rte_per_lcore.h>
-
-
-#include <ix/stddef.h>
-#include <ix/ethfg.h>
+#include <ix/cfg.h>
+#include <ix/control_plane.h>
+#include <ix/cpu.h>
 #include <ix/errno.h>
 #include <ix/ethdev.h>
-#include <ix/control_plane.h>
-#include <ix/cfg.h>
-#include <ix/cpu.h>
+#include <ix/ethfg.h>
+#include <ix/stddef.h>
+#include <rte_config.h>
+#include <rte_lcore.h>
+#include <rte_malloc.h>
+#include <rte_memzone.h>
+#include <rte_per_lcore.h>
+#include <sys/socket.h>
 
 #define TRANSITION_TIMEOUT (1 * ONE_MS)
 
@@ -87,17 +84,16 @@ int nr_flow_groups;
 
 struct eth_fg *fgs[ETH_MAX_TOTAL_FG + NCPU];
 
-
 struct queue {
-	struct mbuf *head;
-	struct mbuf *tail;
+    struct mbuf *head;
+    struct mbuf *tail;
 };
 
 struct migration_info {
-	struct timer transition_timeout;
-	unsigned int prev_cpu;
-	unsigned int target_cpu;
-	DEFINE_BITMAP(fg_bitmap, ETH_MAX_TOTAL_FG);
+    struct timer transition_timeout;
+    unsigned int prev_cpu;
+    unsigned int target_cpu;
+    DEFINE_BITMAP(fg_bitmap, ETH_MAX_TOTAL_FG);
 };
 
 RTE_DECLARE_PER_LCORE(struct migration_info, migration_info);
@@ -114,12 +110,11 @@ static void migrate_timers_to_remote(int fg_id);
 static void migrate_timers_from_remote(void);
 static void enqueue(struct queue *q, struct mbuf *pkt);
 
-int init_migration_cpu(void)
-{
-	timer_init_entry(&percpu_get(migration_info).transition_timeout, transition_handler_prev);
-	percpu_get(migration_info).prev_cpu = -1;
+int init_migration_cpu(void) {
+    timer_init_entry(&percpu_get(migration_info).transition_timeout, transition_handler_prev);
+    percpu_get(migration_info).prev_cpu = -1;
 
-	return 0;
+    return 0;
 }
 
 /**
@@ -127,13 +122,12 @@ int init_migration_cpu(void)
  * @fg: the flow group
  * @idx: the index number of the flow group
  */
-void eth_fg_init(struct eth_fg *fg, unsigned int idx)
-{
-	fg->perfg = NULL;
-	fg->idx = idx;
-	fg->cur_cpu = -1;
-	fg->in_transition = false;
-	spin_lock_init(&fg->lock);
+void eth_fg_init(struct eth_fg *fg, unsigned int idx) {
+    fg->perfg = NULL;
+    fg->idx = idx;
+    fg->cur_cpu = -1;
+    fg->in_transition = false;
+    spin_lock_init(&fg->lock);
 }
 
 /**
@@ -142,111 +136,107 @@ void eth_fg_init(struct eth_fg *fg, unsigned int idx)
  *
  * Returns 0 if successful, otherwise fail.
  */
-int eth_fg_init_cpu(struct eth_fg *fg)
-{
-	size_t len = 1; //__perfg_end - __perfg_start; // FIXME
-	char *addr;
-	addr = rte_zmalloc(NULL, len, 0);
-	if (!addr)
-		return -ENOMEM;
+int eth_fg_init_cpu(struct eth_fg *fg) {
+    size_t len = 1;  //__perfg_end - __perfg_start; // FIXME
+    char *addr;
+    addr = rte_zmalloc(NULL, len, 0);
+    if (!addr)
+        return -ENOMEM;
 
-	fg->perfg = addr;
+    fg->perfg = addr;
 
-	return 0;
+    return 0;
 }
 
 /**
  * eth_fg_free - frees all memory used by a flow group
  * @fg: the flow group
  */
-void eth_fg_free(struct eth_fg *fg)
-{
-	// size_t len = __perfg_end - __perfg_start; // FIXME
+void eth_fg_free(struct eth_fg *fg) {
+    // size_t len = __perfg_end - __perfg_start; // FIXME
 
-	if (fg->perfg)
-		rte_free(fg->perfg);
+    if (fg->perfg)
+        rte_free(fg->perfg);
 }
 
-static int eth_fg_assign_single_to_cpu(int fg_id, int cpu, struct rte_eth_rss_reta *rss_reta, struct ix_rte_eth_dev **eth)
-{
-	struct eth_fg *fg = fgs[fg_id];
-	int ret;
+static int eth_fg_assign_single_to_cpu(int fg_id, int cpu, struct rte_eth_rss_reta *rss_reta, struct ix_rte_eth_dev **eth) {
+    struct eth_fg *fg = fgs[fg_id];
+    int ret;
 
-	assert(!fg->in_transition);
+    assert(!fg->in_transition);
 
-	if (fg->cur_cpu == CFG.cpu[cpu]) {
-		return 0;
-	} else if (fg->cur_cpu == -1) {
-		fg->cur_cpu = CFG.cpu[cpu];
-		ret = 0;
-	} else {
-		assert(fg->cur_cpu == RTE_PER_LCORE(cpu_id));
-		fg->in_transition = true;
-		fg->prev_cpu = fg->cur_cpu;
-		fg->cur_cpu = -1;
-		fg->target_cpu = CFG.cpu[cpu];
-		migrate_pkts_to_remote(fg);
-		migrate_timers_to_remote(fg_id);
-		ret = 1;
-	}
+    if (fg->cur_cpu == CFG.cpu[cpu]) {
+        return 0;
+    } else if (fg->cur_cpu == -1) {
+        fg->cur_cpu = CFG.cpu[cpu];
+        ret = 0;
+    } else {
+        assert(fg->cur_cpu == RTE_PER_LCORE(cpu_id));
+        fg->in_transition = true;
+        fg->prev_cpu = fg->cur_cpu;
+        fg->cur_cpu = -1;
+        fg->target_cpu = CFG.cpu[cpu];
+        migrate_pkts_to_remote(fg);
+        migrate_timers_to_remote(fg_id);
+        ret = 1;
+    }
 
-	if (fg->idx >= 64)
-		rss_reta->mask_hi |= ((uint64_t) 1) << (fg->idx - 64);
-	else
-		rss_reta->mask_lo |= ((uint64_t) 1) << fg->idx;
+    if (fg->idx >= 64)
+        rss_reta->mask_hi |= ((uint64_t)1) << (fg->idx - 64);
+    else
+        rss_reta->mask_lo |= ((uint64_t)1) << fg->idx;
 
-	rss_reta->reta[fg->idx] = cpu;
-	cp_shmem->flow_group[fg_id].cpu = cpu;
-	*eth = fg->eth;
+    rss_reta->reta[fg->idx] = cpu;
+    cp_shmem->flow_group[fg_id].cpu = cpu;
+    *eth = fg->eth;
 
-	return ret;
+    return ret;
 }
 
 #include <lwip/tcp.h>
 #include <lwip/tcp_impl.h>
 
 static void migrate_fdir(struct ix_rte_eth_dev *dev, struct eth_fg *cur_fg,
-			 int cpu)
-{
-	int ret;
-	int idx;
-	struct tcp_hash_entry *he;
-	struct hlist_node *cur, *n, *tmp;
-	struct tcp_pcb *pcb;
-	struct rte_fdir_filter fdir_ftr;
+                         int cpu) {
+    int ret;
+    int idx;
+    struct tcp_hash_entry *he;
+    struct hlist_node *cur, *n, *tmp;
+    struct tcp_pcb *pcb;
+    struct rte_fdir_filter fdir_ftr;
 
-	assert(cur_fg->cur_cpu == RTE_PER_LCORE(cpu_id));
-	cur_fg->target_cpu = CFG.cpu[cpu];
-	/* FIXME: implement */
-	/* migrate_pkts_to_remote(cur_fg); */
-	/* migrate_timers_to_remote(outbound_fg_idx()); */
+    assert(cur_fg->cur_cpu == RTE_PER_LCORE(cpu_id));
+    cur_fg->target_cpu = CFG.cpu[cpu];
+    /* FIXME: implement */
+    /* migrate_pkts_to_remote(cur_fg); */
+    /* migrate_timers_to_remote(outbound_fg_idx()); */
 
-	fdir_ftr.iptype = RTE_FDIR_IPTYPE_IPV4;
-	fdir_ftr.l4type = RTE_FDIR_L4TYPE_TCP;
+    fdir_ftr.iptype = RTE_FDIR_IPTYPE_IPV4;
+    fdir_ftr.l4type = RTE_FDIR_L4TYPE_TCP;
 
-	hlist_for_each(&cur_fg->active_buckets, cur) {
-		he = hlist_entry(cur, struct tcp_hash_entry, hash_link);
-		hlist_for_each_safe(&he->pcbs, n, tmp) {
-			pcb = hlist_entry(n, struct tcp_pcb, link);
+    hlist_for_each(&cur_fg->active_buckets, cur) {
+        he = hlist_entry(cur, struct tcp_hash_entry, hash_link);
+        hlist_for_each_safe(&he->pcbs, n, tmp) {
+            pcb = hlist_entry(n, struct tcp_pcb, link);
 
-			fdir_ftr.ip_src.ipv4_addr = ntoh32(pcb->remote_ip.addr);
-			fdir_ftr.ip_dst.ipv4_addr = ntoh32(pcb->local_ip.addr);
-			fdir_ftr.port_src = pcb->remote_port;
-			fdir_ftr.port_dst = pcb->local_port;
+            fdir_ftr.ip_src.ipv4_addr = ntoh32(pcb->remote_ip.addr);
+            fdir_ftr.ip_dst.ipv4_addr = ntoh32(pcb->local_ip.addr);
+            fdir_ftr.port_src = pcb->remote_port;
+            fdir_ftr.port_dst = pcb->local_port;
 
-			ret = dev->dev_ops->fdir_remove_perfect_filter(dev, &fdir_ftr, 0);
-			assert(ret >= 0);
+            ret = dev->dev_ops->fdir_remove_perfect_filter(dev, &fdir_ftr, 0);
+            assert(ret >= 0);
 
-			ret = dev->dev_ops->fdir_add_perfect_filter(dev, &fdir_ftr, 0, cpu, 0);
-			assert(ret >= 0);
+            ret = dev->dev_ops->fdir_add_perfect_filter(dev, &fdir_ftr, 0, cpu, 0);
+            assert(ret >= 0);
 
-			idx = tcp_to_idx(&pcb->local_ip, &pcb->remote_ip, pcb->local_port, pcb->remote_port);
-			TCP_RMV_ACTIVE(pcb);
-			TCP_REG_ACTIVE(pcb, idx, outbound_fg_remote(cur_fg->target_cpu));
-		}
-	}
+            idx = tcp_to_idx(&pcb->local_ip, &pcb->remote_ip, pcb->local_port, pcb->remote_port);
+            TCP_RMV_ACTIVE(pcb);
+            TCP_REG_ACTIVE(pcb, idx, outbound_fg_remote(cur_fg->target_cpu));
+        }
+    }
 
-	cur_fg->cur_cpu = CFG.cpu[cpu];
+    cur_fg->cur_cpu = CFG.cpu[cpu];
 }
 
 /**
@@ -254,10 +244,9 @@ static void migrate_fdir(struct ix_rte_eth_dev *dev, struct eth_fg *cur_fg,
  * @fg_id: the flow group (global name; across devices)
  * @cpu: the cpu sequence number
  */
-void eth_fg_assign_to_cpu(bitmap_ptr fg_bitmap, int cpu)
-{
-	printf("WARNING: eth_fg_assign_to_cpu not supported!!\n");
-	/*
+void eth_fg_assign_to_cpu(bitmap_ptr fg_bitmap, int cpu) {
+    printf("WARNING: eth_fg_assign_to_cpu not supported!!\n");
+    /*
 	int i, j;
 	struct rte_eth_rss_reta rss_reta[NETHDEV];
 	struct ix_rte_eth_dev *eth[NETHDEV], *first_eth;
@@ -299,8 +288,8 @@ void eth_fg_assign_to_cpu(bitmap_ptr fg_bitmap, int cpu)
 
 	count = 0;
 	*/
-	//FIXME: percpu_remote stuff
-	/*
+    //FIXME: percpu_remote stuff
+    /*
 	struct mbuf *pkt = percpu_get_remote(per_lcore_remote_mbuf_queue, CFG.cpu[cpu]).head;
 	while (pkt) {
 		pkt = pkt->next;
@@ -317,8 +306,8 @@ void eth_fg_assign_to_cpu(bitmap_ptr fg_bitmap, int cpu)
 		percpu_get_remote(per_lcore_migration_info, CFG.cpu[cpu]) = percpu_get(migration_info);
 	}
 	*/
-	
-	/*
+
+    /*
 	for (i = 0; i < NETHDEV; i++) {
 		if (eth[i])
 			eth[i]->dev_ops->reta_update(eth[i], &rss_reta[i]);
@@ -330,8 +319,8 @@ void eth_fg_assign_to_cpu(bitmap_ptr fg_bitmap, int cpu)
 		if (fgs[i] && fgs[i]->cur_cpu == RTE_PER_LCORE(cpu_id))
 			break;
 	*/
-	//FIXME: percpu remote stuff	
-	/*
+    //FIXME: percpu remote stuff
+    /*
 	// If the current core has no FG assigned, then migrate flow director
 	// FGs to the destination core.
 	if (i == ETH_MAX_TOTAL_FG) {
@@ -360,233 +349,221 @@ void eth_fg_assign_to_cpu(bitmap_ptr fg_bitmap, int cpu)
 	*/
 }
 
-static void transition_handler_prev(struct timer *t, struct eth_fg *cur_fg)
-{
-	struct migration_info *info = container_of(t, struct migration_info, transition_timeout);
-	assert(cur_fg == 0);
-	if (!SCRATCHPAD->ts_first_pkt_at_target)
-		SCRATCHPAD->ts_first_pkt_at_target = rdtsc();
-	SCRATCHPAD->timer_fired = 1;
-	cpu_run_on_one(transition_handler_target, info, info->target_cpu);
+static void transition_handler_prev(struct timer *t, struct eth_fg *cur_fg) {
+    struct migration_info *info = container_of(t, struct migration_info, transition_timeout);
+    assert(cur_fg == 0);
+    if (!SCRATCHPAD->ts_first_pkt_at_target)
+        SCRATCHPAD->ts_first_pkt_at_target = rdtsc();
+    SCRATCHPAD->timer_fired = 1;
+    cpu_run_on_one(transition_handler_target, info, info->target_cpu);
 }
 
-static void early_transition_handler_prev(void *unused)
-{
-	struct migration_info *info = &percpu_get(migration_info);
+static void early_transition_handler_prev(void *unused) {
+    struct migration_info *info = &percpu_get(migration_info);
 
-	if (!timer_pending(&info->transition_timeout))
-		return;
+    if (!timer_pending(&info->transition_timeout))
+        return;
 
-	timer_del(&info->transition_timeout);
+    timer_del(&info->transition_timeout);
 
-	/* A packet of a migrated flow group has arrived to the target cpu. This
+    /* A packet of a migrated flow group has arrived to the target cpu. This
 	 * means that the migration has been completed in hardware. Read all the
 	 * remaining packets from the previous cpu queue. */
-	eth_process_poll();
+    eth_process_poll();
 
-	cpu_run_on_one(transition_handler_target, info, info->target_cpu);
+    cpu_run_on_one(transition_handler_target, info, info->target_cpu);
 }
 
-static struct eth_rx_queue *queue_from_fg(struct eth_fg *fg)
-{
-	int i;
-	struct eth_rx_queue *rxq;
+static struct eth_rx_queue *queue_from_fg(struct eth_fg *fg) {
+    int i;
+    struct eth_rx_queue *rxq;
 
-	for (i = 0; i < percpu_get(eth_num_queues); i++) {
-		rxq = percpu_get(eth_rxqs[i]);
-		if (fg->eth == rxq->dev)
-			return rxq;
-	}
+    for (i = 0; i < percpu_get(eth_num_queues); i++) {
+        rxq = percpu_get(eth_rxqs[i]);
+        if (fg->eth == rxq->dev)
+            return rxq;
+    }
 
-	assert(false);
+    assert(false);
 }
 
-static void transition_handler_target(void *info_)
-{
-	struct mbuf *pkt, *next;
-	struct queue *q;
-	struct migration_info *info = (struct migration_info *) info_;
-	struct eth_fg *fg;
-	int prev_cpu = info->prev_cpu;
-	int i;
-	int count;
+static void transition_handler_target(void *info_) {
+    struct mbuf *pkt, *next;
+    struct queue *q;
+    struct migration_info *info = (struct migration_info *)info_;
+    struct eth_fg *fg;
+    int prev_cpu = info->prev_cpu;
+    int i;
+    int count;
 
-	SCRATCHPAD->ts_before_backlog = rdtsc();
+    SCRATCHPAD->ts_before_backlog = rdtsc();
 
-	for (i = 0; i < ETH_MAX_TOTAL_FG; i++) {
-		if (!bitmap_test(info->fg_bitmap, i))
-			continue;
-		fg = fgs[i];
-		fg->in_transition = false;
-		fg->cur_cpu = fg->target_cpu;
-		fg->target_cpu = -1;
-		fg->prev_cpu = -1;
-	}
+    for (i = 0; i < ETH_MAX_TOTAL_FG; i++) {
+        if (!bitmap_test(info->fg_bitmap, i))
+            continue;
+        fg = fgs[i];
+        fg->in_transition = false;
+        fg->cur_cpu = fg->target_cpu;
+        fg->target_cpu = -1;
+        fg->prev_cpu = -1;
+    }
 
-	count = 0;
-	q = &percpu_get(remote_mbuf_queue);
-	pkt = q->head;
-	while (pkt) {
-		next = pkt->next;
-		/* FIXME: Hard to get queue at this point. Nevertheless, it is
+    count = 0;
+    q = &percpu_get(remote_mbuf_queue);
+    pkt = q->head;
+    while (pkt) {
+        next = pkt->next;
+        /* FIXME: Hard to get queue at this point. Nevertheless, it is
 		 * not used in eth_input */
-		eth_input(NULL, pkt);
-		pkt = next;
-		count++;
-	}
-	q->head = NULL;
-	q->tail = NULL;
+        eth_input(NULL, pkt);
+        pkt = next;
+        count++;
+    }
+    q->head = NULL;
+    q->tail = NULL;
 
-	SCRATCHPAD->remote_queue_pkts_end = count;
+    SCRATCHPAD->remote_queue_pkts_end = count;
 
-	count = 0;
-	q = &percpu_get(local_mbuf_queue);
-	pkt = q->head;
-	while (pkt) {
-		next = pkt->next;
-		/* FIXME: see previous */
-		eth_input(NULL, pkt);
-		pkt = next;
-		count++;
-	}
-	q->head = NULL;
-	q->tail = NULL;
+    count = 0;
+    q = &percpu_get(local_mbuf_queue);
+    pkt = q->head;
+    while (pkt) {
+        next = pkt->next;
+        /* FIXME: see previous */
+        eth_input(NULL, pkt);
+        pkt = next;
+        count++;
+    }
+    q->head = NULL;
+    q->tail = NULL;
 
-	SCRATCHPAD->local_queue_pkts = count;
+    SCRATCHPAD->local_queue_pkts = count;
 
-	SCRATCHPAD->ts_after_backlog = rdtsc();
+    SCRATCHPAD->ts_after_backlog = rdtsc();
 
-	migrate_timers_from_remote();
+    migrate_timers_from_remote();
 
-	SCRATCHPAD->ts_migration_end = rdtsc();
+    SCRATCHPAD->ts_migration_end = rdtsc();
 
-	count = 0;
-	for (i = 0; i < percpu_get(eth_num_queues); i++)
-		count += percpu_get(eth_rxqs[i])->len;
-	SCRATCHPAD->backlog_after = count;
-	SCRATCHPAD_NEXT;
+    count = 0;
+    for (i = 0; i < percpu_get(eth_num_queues); i++)
+        count += percpu_get(eth_rxqs[i])->len;
+    SCRATCHPAD->backlog_after = count;
+    SCRATCHPAD_NEXT;
 
-	percpu_get(migration_info).prev_cpu = -1;
-	info->prev_cpu = -1;
-	printf("WARNING: percpu_get_remote not supported\n");
-	percpu_get_remote(per_lcore_cp_cmd, prev_cpu)->status = CP_STATUS_READY;
+    percpu_get(migration_info).prev_cpu = -1;
+    info->prev_cpu = -1;
+    printf("WARNING: percpu_get_remote not supported\n");
+    percpu_get_remote(per_lcore_cp_cmd, prev_cpu)->status = CP_STATUS_READY;
 }
 
-static void migrate_pkts_to_remote(struct eth_fg *fg)
-{
-	struct eth_rx_queue *rxq = queue_from_fg(fg);
-	struct mbuf *pkt = rxq->head;
-	struct mbuf **prv = &rxq->head;
-	printf("WARNING: percpu_get_remote not supported\n");
-	struct queue *q = &percpu_get_remote(per_lcore_remote_mbuf_queue, fg->target_cpu);
+static void migrate_pkts_to_remote(struct eth_fg *fg) {
+    struct eth_rx_queue *rxq = queue_from_fg(fg);
+    struct mbuf *pkt = rxq->head;
+    struct mbuf **prv = &rxq->head;
+    printf("WARNING: percpu_get_remote not supported\n");
+    struct queue *q = &percpu_get_remote(per_lcore_remote_mbuf_queue, fg->target_cpu);
 
-	while (pkt) {
-		if (fg->fg_id == pkt->fg_id) {
-			*prv = pkt->next;
-			enqueue(q, pkt);
-			pkt = *prv;
-			rxq->len--;
-		} else {
-			prv = &pkt->next;
-			pkt = pkt->next;
-		}
-	}
-	rxq->tail = container_of(prv, struct mbuf, next);
+    while (pkt) {
+        if (fg->fg_id == pkt->fg_id) {
+            *prv = pkt->next;
+            enqueue(q, pkt);
+            pkt = *prv;
+            rxq->len--;
+        } else {
+            prv = &pkt->next;
+            pkt = pkt->next;
+        }
+    }
+    rxq->tail = container_of(prv, struct mbuf, next);
 }
 
-static void enqueue(struct queue *q, struct mbuf *pkt)
-{
-	pkt->next = NULL;
-	if (!q->head) {
-		q->head = pkt;
-		q->tail = pkt;
-	} else {
-		q->tail->next = pkt;
-		q->tail = pkt;
-	}
+static void enqueue(struct queue *q, struct mbuf *pkt) {
+    pkt->next = NULL;
+    if (!q->head) {
+        q->head = pkt;
+        q->tail = pkt;
+    } else {
+        q->tail->next = pkt;
+        q->tail = pkt;
+    }
 }
 
-void eth_recv_at_prev(struct eth_rx_queue *rx_queue, struct mbuf *pkt)
-{
-	if (SCRATCHPAD->ts_last_pkt_at_prev == 0) {
-		SCRATCHPAD->ts_last_pkt_at_prev = rdtsc();
-		SCRATCHPAD->ts_first_pkt_at_prev = SCRATCHPAD->ts_last_pkt_at_prev;
-	} else {
-		SCRATCHPAD->ts_last_pkt_at_prev = rdtsc();
-	}
+void eth_recv_at_prev(struct eth_rx_queue *rx_queue, struct mbuf *pkt) {
+    if (SCRATCHPAD->ts_last_pkt_at_prev == 0) {
+        SCRATCHPAD->ts_last_pkt_at_prev = rdtsc();
+        SCRATCHPAD->ts_first_pkt_at_prev = SCRATCHPAD->ts_last_pkt_at_prev;
+    } else {
+        SCRATCHPAD->ts_last_pkt_at_prev = rdtsc();
+    }
 
-	struct eth_fg *fg = fgs[pkt->fg_id];
+    struct eth_fg *fg = fgs[pkt->fg_id];
 
-	printf("WARNING: percpu_get_remote not supported\n");
-	struct queue *q = &percpu_get_remote(per_lcore_remote_mbuf_queue, fg->target_cpu);
-	enqueue(q, pkt);
+    printf("WARNING: percpu_get_remote not supported\n");
+    struct queue *q = &percpu_get_remote(per_lcore_remote_mbuf_queue, fg->target_cpu);
+    enqueue(q, pkt);
 }
 
-void eth_recv_at_target(struct eth_rx_queue *rx_queue, struct mbuf *pkt)
-{
-	if (SCRATCHPAD->ts_last_pkt_at_target == 0) {
-		SCRATCHPAD->ts_last_pkt_at_target = rdtsc();
-		SCRATCHPAD->ts_first_pkt_at_target = SCRATCHPAD->ts_last_pkt_at_target;
-	} else {
-		SCRATCHPAD->ts_last_pkt_at_target = rdtsc();
-	}
+void eth_recv_at_target(struct eth_rx_queue *rx_queue, struct mbuf *pkt) {
+    if (SCRATCHPAD->ts_last_pkt_at_target == 0) {
+        SCRATCHPAD->ts_last_pkt_at_target = rdtsc();
+        SCRATCHPAD->ts_first_pkt_at_target = SCRATCHPAD->ts_last_pkt_at_target;
+    } else {
+        SCRATCHPAD->ts_last_pkt_at_target = rdtsc();
+    }
 
-	struct queue *q = &percpu_get(local_mbuf_queue);
-	if (!q->head) {
-		/*
+    struct queue *q = &percpu_get(local_mbuf_queue);
+    if (!q->head) {
+        /*
 		 * When we receive the first packet on the target CPU, we cause
 		 * an early transition and we don't wait for the timeout to
 		 * expire.
 		 */
-		struct migration_info *info = &percpu_get(migration_info);
-		cpu_run_on_one(early_transition_handler_prev, NULL, info->prev_cpu);
-	}
-	enqueue(q, pkt);
+        struct migration_info *info = &percpu_get(migration_info);
+        cpu_run_on_one(early_transition_handler_prev, NULL, info->prev_cpu);
+    }
+    enqueue(q, pkt);
 }
 
-int eth_recv_handle_fg_transition(struct eth_rx_queue *rx_queue, struct mbuf *pkt)
-{
-	if (pkt->fg_id == MBUF_INVALID_FG_ID)
-		pkt->fg_id = outbound_fg_idx();
-	struct eth_fg *fg = fgs[pkt->fg_id];
+int eth_recv_handle_fg_transition(struct eth_rx_queue *rx_queue, struct mbuf *pkt) {
+    if (pkt->fg_id == MBUF_INVALID_FG_ID)
+        pkt->fg_id = outbound_fg_idx();
+    struct eth_fg *fg = fgs[pkt->fg_id];
 
-	// TODO: Get rid of this when fg->curr_cpu init is figured out
-	fg->in_transition = false;
-	fg->cur_cpu = percpu_get(cpu_id);
+    // TODO: Get rid of this when fg->curr_cpu init is figured out
+    fg->in_transition = false;
+    fg->cur_cpu = percpu_get(cpu_id);
 
-
-	if (!fg->in_transition && fg->cur_cpu == RTE_PER_LCORE(cpu_id)) {
-		/* continue processing */
-		return 0;
-	} else if (fg->in_transition && fg->prev_cpu == RTE_PER_LCORE(cpu_id)) {
-		eth_recv_at_prev(rx_queue, pkt);
-		return 1;
-	} else if (fg->in_transition && fg->target_cpu == RTE_PER_LCORE(cpu_id)) {
-		eth_recv_at_target(rx_queue, pkt);
-		return 1;
-	} else {
-		/* FIXME: somebody must mbuf_free(pkt) but we cannot do it here
+    if (!fg->in_transition && fg->cur_cpu == RTE_PER_LCORE(cpu_id)) {
+        /* continue processing */
+        return 0;
+    } else if (fg->in_transition && fg->prev_cpu == RTE_PER_LCORE(cpu_id)) {
+        eth_recv_at_prev(rx_queue, pkt);
+        return 1;
+    } else if (fg->in_transition && fg->target_cpu == RTE_PER_LCORE(cpu_id)) {
+        eth_recv_at_target(rx_queue, pkt);
+        return 1;
+    } else {
+        /* FIXME: somebody must mbuf_free(pkt) but we cannot do it here
 		   because we don't own the memory pool */
-		log_warn("dropping packet: flow group %d of device %d should be handled by cpu %d\n", fg->idx, fg->dev_idx, fg->cur_cpu);
-		return 1;
-	}
+        log_warn("dropping packet: flow group %d of device %d should be handled by cpu %d\n", fg->idx, fg->dev_idx, fg->cur_cpu);
+        return 1;
+    }
 }
 
-static void migrate_timers_to_remote(int fg_id)
-{
-	struct eth_fg *fg = fgs[fg_id];
+static void migrate_timers_to_remote(int fg_id) {
+    struct eth_fg *fg = fgs[fg_id];
 
-	printf("WARNING: percpu_get_remote not supported\n");
-	struct hlist_head *timers_list = &percpu_get_remote(per_lcore_remote_timers_list, fg->target_cpu);
-	uint64_t *timer_pos = &percpu_get_remote(per_lcore_remote_timer_pos, fg->target_cpu);
-	uint8_t fg_vector[ETH_MAX_TOTAL_FG] = {0};
+    printf("WARNING: percpu_get_remote not supported\n");
+    struct hlist_head *timers_list = &percpu_get_remote(per_lcore_remote_timers_list, fg->target_cpu);
+    uint64_t *timer_pos = &percpu_get_remote(per_lcore_remote_timer_pos, fg->target_cpu);
+    uint8_t fg_vector[ETH_MAX_TOTAL_FG] = {0};
 
-	fg_vector[fg_id] = 1;
-	hlist_init_head(timers_list);
-	SCRATCHPAD->timers = timer_collect_fgs(fg_vector, timers_list, timer_pos);
+    fg_vector[fg_id] = 1;
+    hlist_init_head(timers_list);
+    SCRATCHPAD->timers = timer_collect_fgs(fg_vector, timers_list, timer_pos);
 }
 
-static void migrate_timers_from_remote(void)
-{
-	timer_reinject_fgs(&percpu_get(remote_timers_list), percpu_get(remote_timer_pos));
+static void migrate_timers_from_remote(void) {
+    timer_reinject_fgs(&percpu_get(remote_timers_list), percpu_get(remote_timer_pos));
 }

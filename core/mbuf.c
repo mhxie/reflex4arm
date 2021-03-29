@@ -58,27 +58,26 @@
  * TODO: add support for mapping into user-level address space...
  */
 
-#include <sys/socket.h>
-#include <rte_config.h>
-#include <rte_per_lcore.h>
-#include <rte_eal.h>
-#include <rte_mempool.h>
-#include <rte_mbuf.h>
-#include <ix/stddef.h>
-#include <ix/mempool.h>
-#include <ix/mbuf.h>
 #include <ix/cpu.h>
+#include <ix/mbuf.h>
+#include <ix/mempool.h>
+#include <ix/stddef.h>
+#include <rte_config.h>
+#include <rte_eal.h>
+#include <rte_mbuf.h>
+#include <rte_mempool.h>
+#include <rte_per_lcore.h>
+#include <sys/socket.h>
 
 /* Capacity should be at least RX queues per CPU * ETH_DEV_RX_QUEUE_SZ */
-#define MBUF_CAPACITY	20480 /* Originally set to (768*1024), but decrease # of mbufs allocated and use memory to create larger mbufs for jumbo frames */
+#define MBUF_CAPACITY 20480 /* Originally set to (768*1024), but decrease # of mbufs allocated and use memory to create larger mbufs for jumbo frames */
 
 static struct mempool_datastore mbuf_datastore;
 
 RTE_DEFINE_PER_LCORE(struct mempool, mbuf_mempool __attribute__((aligned(64))));
 
-void mbuf_default_done(struct mbuf *m)
-{
-	mbuf_free(m);
+void mbuf_default_done(struct mbuf *m) {
+    mbuf_free(m);
 }
 
 /**
@@ -87,41 +86,37 @@ void mbuf_default_done(struct mbuf *m)
  * Returns 0 if successful, otherwise failure.
  */
 
-int mbuf_init_cpu(void)
-{
-	struct mempool *m = &percpu_get(mbuf_mempool);
-	return mempool_create(m, &mbuf_datastore, MEMPOOL_SANITY_PERCPU, percpu_get(cpu_id));
+int mbuf_init_cpu(void) {
+    struct mempool *m = &percpu_get(mbuf_mempool);
+    return mempool_create(m, &mbuf_datastore, MEMPOOL_SANITY_PERCPU, percpu_get(cpu_id));
 }
 
 /**
  * mbuf_init - allocate global mbuf
  */
 
-int mbuf_init(void)
-{
-	int ret;
-	struct mempool_datastore *m = &mbuf_datastore;
-	ret = mempool_create_mbuf_datastore(m, MBUF_CAPACITY, DPDK_MBUF_SIZE, "mbuf");
-	if (ret) {
-		assert(0);
-		return ret;
-	}
-	//ret = mempool_pagemem_map_to_user(m);
-	if (ret) {
-		assert(0);
-		//mempool_pagemem_destroy(m);
-		mempool_destroy_datastore(m);
-		return ret;
-	}
-	
-	return 0;
+int mbuf_init(void) {
+    int ret;
+    struct mempool_datastore *m = &mbuf_datastore;
+    ret = mempool_create_mbuf_datastore(m, MBUF_CAPACITY, DPDK_MBUF_SIZE, "mbuf");
+    if (ret) {
+        assert(0);
+        return ret;
+    }
+    //ret = mempool_pagemem_map_to_user(m);
+    if (ret) {
+        assert(0);
+        //mempool_pagemem_destroy(m);
+        mempool_destroy_datastore(m);
+        return ret;
+    }
+
+    return 0;
 }
 
 /**
  * mbuf_exit_cpu - frees the core-local mbuf region
  */
-void mbuf_exit_cpu(void)
-{
-	mempool_destroy_datastore(&mbuf_datastore);
+void mbuf_exit_cpu(void) {
+    mempool_destroy_datastore(&mbuf_datastore);
 }
-

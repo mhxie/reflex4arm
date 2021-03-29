@@ -66,8 +66,8 @@
 //inline void *rte_memcpy(void *dst, const void *src, size_t n);
 
 /* General DPDK includes */
-#include <rte_config.h>
 #include <rte_common.h>
+#include <rte_config.h>
 #include <rte_mempool.h>
 // #include <eal_internal_cfg.h>
 #include <rte_ethdev.h>
@@ -76,52 +76,50 @@
 #include <rte_errno.h>
 
 /* IX includes */
-#include <ix/log.h>
 #include <ix/cfg.h>
 #include <ix/dpdk.h>
-#include <spdk/env.h>
+#include <ix/log.h>
 #include <math.h>
+#include <spdk/env.h>
 
 struct rte_mempool *dpdk_pool;
 
 #define MEMPOOL_CACHE_SIZE 256
 #define DPDK_MBUF_LENGTH 9000 + RTE_PKTMBUF_HEADROOM
 
-int dpdk_init(void)
-{
-	struct spdk_env_opts opts;
-	int nb_ports, ret;
-	
-	spdk_env_opts_init(&opts);
-    opts.name = "reflex";
-	// opts->shm_id = SPDK_ENV_DPDK_DEFAULT_SHM_ID;
-	// opts->mem_size = SPDK_ENV_DPDK_DEFAULT_MEM_SIZE;
-	// opts->master_core = SPDK_ENV_DPDK_DEFAULT_MASTER_CORE;
-	opts.shm_id = -1;
-	opts.mem_size = -1;
-	opts.master_core = -1;
+int dpdk_init(void) {
+    struct spdk_env_opts opts;
+    int nb_ports, ret;
 
-	int core_num = pow(2, cores_active)-1; // from cfg
-	char mask[3];
-	sprintf(mask, "%x", core_num); 
-	opts.core_mask = mask;
-	// opts->mem_channel = SPDK_ENV_DPDK_DEFAULT_MEM_CHANNEL;
-	opts.mem_channel = dpdk_mem_channel; // from cfg
+    spdk_env_opts_init(&opts);
+    opts.name = "reflex";
+    // opts->shm_id = SPDK_ENV_DPDK_DEFAULT_SHM_ID;
+    // opts->mem_size = SPDK_ENV_DPDK_DEFAULT_MEM_SIZE;
+    // opts->master_core = SPDK_ENV_DPDK_DEFAULT_MASTER_CORE;
+    opts.shm_id = -1;
+    opts.mem_size = -1;
+    opts.master_core = -1;
+
+    int core_num = pow(2, cores_active) - 1;  // from cfg
+    char mask[3];
+    sprintf(mask, "%x", core_num);
+    opts.core_mask = mask;
+    // opts->mem_channel = SPDK_ENV_DPDK_DEFAULT_MEM_CHANNEL;
+    opts.mem_channel = dpdk_mem_channel;  // from cfg
 
     spdk_env_init(&opts);
 
-	// rte_timer_subsystem_init();
-	
-	/* pool_size sets an implicit limit on cores * NICs that DPDK allows */
-	const int pool_size = 65535;
+    // rte_timer_subsystem_init();
 
-	//dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
-	// dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, DPDK_MBUF_LENGTH, rte_socket_id());
-	dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, DPDK_MBUF_LENGTH, rte_socket_id());
-	if (dpdk_pool == NULL)
-		rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
-		// panic("Cannot create DPDK pool\n");
+    /* pool_size sets an implicit limit on cores * NICs that DPDK allows */
+    const int pool_size = 65535;
 
-	return 0;
+    //dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+    // dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, DPDK_MBUF_LENGTH, rte_socket_id());
+    dpdk_pool = rte_pktmbuf_pool_create("mempool", pool_size, MEMPOOL_CACHE_SIZE, 0, DPDK_MBUF_LENGTH, rte_socket_id());
+    if (dpdk_pool == NULL)
+        rte_exit(EXIT_FAILURE, "%s\n", rte_strerror(rte_errno));
+    // panic("Cannot create DPDK pool\n");
+
+    return 0;
 }
-

@@ -29,60 +29,56 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <rte_per_lcore.h>
 #include <ix/syscall.h>
 #include <ix/timer.h>
+#include <rte_per_lcore.h>
 
 /* max number of supported user level timers */
 #define UTIMER_COUNT 32
 
 struct utimer {
-	struct timer t;
-	void *cookie;
+    struct timer t;
+    void *cookie;
 };
 
 struct utimer_list {
-	struct utimer arr[UTIMER_COUNT];
+    struct utimer arr[UTIMER_COUNT];
 };
 
 RTE_DEFINE_PER_LCORE(struct utimer_list, utimers);
 
-void generic_handler(struct timer *t, struct eth_fg *unused)
-{
-	struct utimer *ut;
-	ut = container_of(t, struct utimer, t);
-	usys_timer((unsigned long) ut->cookie);
+void generic_handler(struct timer *t, struct eth_fg *unused) {
+    struct utimer *ut;
+    ut = container_of(t, struct utimer, t);
+    usys_timer((unsigned long)ut->cookie);
 }
 
-static int find_available(struct utimer_list *tl)
-{
-	static int next;
+static int find_available(struct utimer_list *tl) {
+    static int next;
 
-	if (next >= UTIMER_COUNT)
-		return -1;
+    if (next >= UTIMER_COUNT)
+        return -1;
 
-	return next++;
+    return next++;
 }
 
-int utimer_init(struct utimer_list *tl, void *udata)
-{
-	struct utimer *ut;
-	int index;
+int utimer_init(struct utimer_list *tl, void *udata) {
+    struct utimer *ut;
+    int index;
 
-	index = find_available(tl);
-	if (index < 0)
-		return -1;
+    index = find_available(tl);
+    if (index < 0)
+        return -1;
 
-	ut = &tl->arr[index];
-	ut->cookie = udata;
-	timer_init_entry(&ut->t, generic_handler);
+    ut = &tl->arr[index];
+    ut->cookie = udata;
+    timer_init_entry(&ut->t, generic_handler);
 
-	return index;
+    return index;
 }
 
-int utimer_arm(struct utimer_list *tl, int timer_id, uint64_t delay)
-{
-	struct timer *t;
-	t = &tl->arr[timer_id].t;
-	return timer_add(t, NULL, delay);
+int utimer_arm(struct utimer_list *tl, int timer_id, uint64_t delay) {
+    struct timer *t;
+    t = &tl->arr[timer_id].t;
+    return timer_add(t, NULL, delay);
 }

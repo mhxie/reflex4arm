@@ -69,15 +69,14 @@
 #include <ix/kstats.h>
 #include <ix/log.h>
 #include <ix/stddef.h>
+#include <ix/syscall.h>
 #include <ix/timer.h>
 #include <ix/utimer.h>
-
+#include <nvme/nvmedev.h>
 #include <rte_config.h>
 #include <rte_malloc.h>
 #include <rte_per_lcore.h>
 #include <sys/socket.h>
-#include <nvme/nvmedev.h>
-#include <ix/syscall.h>
 
 #define UARR_MIN_CAPACITY 8192
 
