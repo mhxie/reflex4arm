@@ -42,11 +42,13 @@ subdir('apps')
 CFLAGS += DPDK_MACHINE_FLAGS
 CFLAGS += SPDK_FLAGS
 
+
 executable('dp',
             app_sources+core_sources,
             c_args : CFLAGS,
+            # link_args : LDFLAGS,
             include_directories : [inc, pci_dma_inc, ix_inc, SPDK_INC, DPDK_INC],
             link_with: [ix_lib],
             objects: [SPDK_LIBS, DPDK_LIBS],
-            dependencies : [core_deps, dpdk_deps],
+            dependencies : [core_deps, spdk_deps, dpdk_deps, isal_dep],
             install : true)

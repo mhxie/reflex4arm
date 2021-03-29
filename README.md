@@ -72,8 +72,15 @@ ARM Server: TBD
    ```
    # Build SPDK && Drivers
    cd spdk
-   ./configure
-   make
+   ```
+   Patch the `spdk/dpdk` with:
+   * In `dpdkbuild/Makefile`, append `net/ena` after `DPDK_DRIVERS = bus bus/pci bus/vdev mempool/ring`
+   * In `lib/librte_net/meson.build`, append `rte_ether.h` & `rte_ether.c`
+   * In `lib/librte_timer/meson.build`, enable `build` as `true`
+
+   ```
+   ./configure --with-igb-uio-driver
+   sudo make
    ```
 
 4. Build ReFlex4ARM:
@@ -92,15 +99,11 @@ ARM Server: TBD
    ```
    cp ix.conf.sample ix.conf
    # modify at least host_addr, gateway_addr, devices, flow director, and nvme_devices (ns_size at clients)
-  
-   sudo modprobe uio
-   IGB_UIO_PATH=spdk/dpdk/build/kernel/linux/igb_uio/igb_uio.ko
-   sudo insmod $IGB_UIO_PATH wc_active=1 # spdk setup will do this for you also
+
+   # sudo modprobe uio
+   sudo DRIVER_OVERRIDE=spdk/dpdk/build-tmp/kernel/linux/igb_uio/igb_uio.ko ./spdk/scripts/setup.sh
    grep PCI_SLOT_NAME /sys/class/net/*/device/uevent | awk -F '=' '{print $2}'
    sudo spdk/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0 # insert device PCI address here!!! 
-
-   sudo modprobe -r nvme
-   sudo -E DRIVER_OVERRIDE=$IGB_UIO_PATH deps/spdk/scripts/setup.sh
    
    sudo sh -c 'for i in /sys/devices/system/node/node*/hugepages/hugepages-2048kB/nr_hugepages; do echo 4096 > $i; done'
    ```

@@ -19,9 +19,7 @@ DPDK_LIB_NAMES = [
     # 'librte_eal.a',
     # 'librte_telemetry.a',
     'librte_hash.a',
-    'librte_ring.a',
     'librte_bus_pci.a',
-    'librte_pci.a',
     'librte_kvargs.a'
 ]
 DPDK_LIBS = []
@@ -32,16 +30,19 @@ endforeach
 DPDK_WHOLE_LIB_NAMES = [
     'librte_mempool_ring.a',
     'librte_mempool.a',
-    'librte_pmd_e1000.a',
+    # 'librte_pmd_e1000.a',
     'librte_pmd_ena.a',
     # needed by librte_pmd_e1000.a
-    'librte_ethdev.a',
     'librte_net.a',
+    'librte_ethdev.a',
     'librte_mbuf.a',
     'librte_eal.a',
     'librte_telemetry.a',
     # needed by ena librte_pmd_ena.a 
     'librte_timer.a',
+    # needed by SPDK
+    'librte_ring.a',
+    'librte_pci.a',
 ]
 
 dpdk_deps = []
@@ -71,16 +72,38 @@ DPDK_MACHINE_FLAGS = [
 ]
 
 SPDK_LIB_NAMES = [
-    'libspdk_nvme.a',
-    'libspdk_util.a',
     'libspdk_env_dpdk.a',
-    'libspdk_log.a',
-    'libspdk_sock.a',
+    # 'libspdk_nvme.a',
+    # 'libspdk_util.a',
+    # 'libspdk_log.a',
+    # 'libspdk_sock.a',
+    # 'libspdk_json.a',
 ]
 SPDK_LIBS = []
 foreach NAME : SPDK_LIB_NAMES
     SPDK_LIBS += join_paths(SPDK_ROOT, 'lib', NAME)
 endforeach
+
+SPDK_WHOLE_LIB_NAMES = [
+    'libspdk_nvme.a',
+    'libspdk_log.a',
+    'libspdk_sock.a',
+    'libspdk_json.a',
+    'libspdk_jsonrpc.a',
+    'libspdk_rpc.a',
+    'libspdk_util.a',
+#     'libspdk_env_dpdk.a',
+]
+spdk_deps = []
+foreach NAME : SPDK_WHOLE_LIB_NAMES
+    SPDK_WHOLE_LIB = join_paths('..', SPDK_ROOT, 'lib', NAME)
+    spdk_deps += declare_dependency(link_args : 
+                    [   '-Wl,--whole-archive',
+                        SPDK_WHOLE_LIB,
+                        '-Wl,--no-whole-archive'])
+endforeach
+
+
 SPDK_FLAGS = ['-DSPDK_STRING_H']
 
 # core_deps = [dpdk]
@@ -95,3 +118,9 @@ foreach LIB : LDLIBS
     dep = cc.find_library(LIB, required : false)
     core_deps += dep
 endforeach
+
+ISAL_DIR = join_paths('..', 'spdk', 'isa-l', '.libs')
+ISAL_INC = include_directories(join_paths(ISAL_DIR, '..'))
+isal_dep = declare_dependency(
+    link_args : ['-L' + ISAL_DIR, '-lisal'],
+    include_directories : ISAL_INC)
