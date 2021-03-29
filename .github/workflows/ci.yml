@@ -1,0 +1,47 @@
+# A basic workflow to verify the reflex4arm build
+
+name: CI
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+      - "test/**"
+  pull_request:
+    branches: [main]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  compile:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+      - name: Init submodules
+        run: git submodule update --init --recursive
+      - name: Prepare environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libconfig-dev libnuma-dev \
+            libpciaccess-dev libaio-dev libevent-dev g++-multilib \
+            libcunit1-dev libssl-dev uuid-dev
+          sudo ./spdk/scripts/pkgdep.sh
+      - name: Patch the spdk/dpdk
+        run: |
+          sed -i 's|mempool/ring|mempool/ring net/ena|g' spdk/dpdkbuild/Makefile
+          sed -i 's|false|true|g' spdk/dpdk/lib/librte_timer/meson.build
+      - name: Build SPDK and DPDK
+        run: |
+          cd spdk && ./configure --with-igb-uio-driver
+          sudo make
+      - name: Compile ReFlex4ARM
+        run: meson build && meson compile -C build
