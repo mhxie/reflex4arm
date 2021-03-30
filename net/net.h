@@ -58,17 +58,15 @@
 
 #pragma once
 
-#include <sys/socket.h>
-#include <rte_config.h>
-#include <rte_mbuf.h>
-
-#include <ix/types.h>
-#include <ix/mbuf.h>
 #include <ix/ethdev.h>
-
+#include <ix/mbuf.h>
+#include <ix/types.h>
 #include <net/arp.h>
 #include <net/icmp.h>
 #include <net/udp.h>
+#include <rte_config.h>
+#include <rte_mbuf.h>
+#include <sys/socket.h>
 
 /* Address Resolution Protocol (ARP) definitions */
 extern int arp_lookup_mac(struct ip_addr *addr, struct eth_addr *mac);
@@ -81,7 +79,7 @@ extern void icmp_input(struct eth_fg *, struct rte_mbuf *pkt, struct lwip_icmp_h
 
 /* Unreliable Datagram Protocol (UDP) definitions */
 extern void udp_input(struct mbuf *pkt, struct ip_hdr *iphdr,
-		      struct lwip_udp_hdr *udphdr);
+                      struct lwip_udp_hdr *udphdr);
 
 /* Transmission Control Protocol (TCP) definitions */
 /* FIXME: change when we integrate better with LWIP */
@@ -98,21 +96,20 @@ extern int tcp_api_init_fg(void);
  * @l4len: the length of the L4 (e.g. UDP or TCP) header and data.
  */
 static inline void ip_setup_header(struct ip_hdr *iphdr, uint8_t proto,
-				   uint32_t saddr, uint32_t daddr,
-				   uint16_t l4len)
-{
-	iphdr->header_len = sizeof(struct ip_hdr) / 4;
-	iphdr->version = 4;
-	iphdr->tos = 0;
-	iphdr->len = hton16(sizeof(struct ip_hdr) + l4len);
-	iphdr->id = 0;
-	iphdr->off = 0;
-	iphdr->ttl = 64;
-	iphdr->proto = proto;
-	iphdr->chksum = 0;
-	iphdr->src_addr.addr = hton32(saddr);
-	iphdr->dst_addr.addr = hton32(daddr);
-	// iphdr->chksum = chksum_internet((void *) iphdr, sizeof(struct ip_hdr));
+                                   uint32_t saddr, uint32_t daddr,
+                                   uint16_t l4len) {
+    iphdr->header_len = sizeof(struct ip_hdr) / 4;
+    iphdr->version = 4;
+    iphdr->tos = 0;
+    iphdr->len = hton16(sizeof(struct ip_hdr) + l4len);
+    iphdr->id = 0;
+    iphdr->off = 0;
+    iphdr->ttl = 64;
+    iphdr->proto = proto;
+    iphdr->chksum = 0;
+    iphdr->src_addr.addr = hton32(saddr);
+    iphdr->dst_addr.addr = hton32(daddr);
+    // iphdr->chksum = chksum_internet((void *) iphdr, sizeof(struct ip_hdr));
 }
 
 int ip_send_one(struct eth_fg *cur_fg, struct ip_addr *dst_addr, struct rte_mbuf *pkt, size_t len);

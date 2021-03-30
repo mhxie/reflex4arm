@@ -58,59 +58,54 @@
  * See RFC 792 for more details.
  */
 
-#include <sys/socket.h>
+#include <arch/chksum.h>
+#include <ix/cfg.h>
+#include <ix/errno.h>
+#include <ix/ethdev.h>
+#include <ix/log.h>
+#include <ix/stddef.h>
+#include <ix/timer.h>
+#include <net/ethernet.h>
+#include <net/icmp.h>
+#include <net/ip.h>
 #include <rte_config.h>
 #include <rte_mbuf.h>
-
-#include <ix/stddef.h>
-#include <ix/errno.h>
-#include <ix/log.h>
-#include <ix/timer.h>
-#include <ix/cfg.h>
-#include <ix/ethdev.h>
-
-#include <arch/chksum.h>
-
-#include <net/ethernet.h>
-#include <net/ip.h>
-#include <net/icmp.h>
+#include <sys/socket.h>
 
 #include "net.h"
 
-static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip_icmp_hdr *hdr, int len)
-{
-	struct eth_hdr *ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
-	struct ip_hdr *iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
-	int ret;
+static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip_icmp_hdr *hdr, int len) {
+    struct eth_hdr *ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
+    struct ip_hdr *iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
+    int ret;
 
-	
-	ethhdr->dhost = ethhdr->shost;
-	ethhdr->shost = CFG.mac;
+    ethhdr->dhost = ethhdr->shost;
+    ethhdr->shost = CFG.mac;
 
-	printf("eth_dhost: %d, eth_shost: %d\n", ethhdr->dhost, ethhdr->shost);
-	/* FIXME: check for invalid (e.g. multicast) src addr */
-	iphdr->dst_addr = iphdr->src_addr;
-	iphdr->src_addr.addr = hton32(CFG.host_addr.addr);
+    printf("eth_dhost: %d, eth_shost: %d\n", ethhdr->dhost, ethhdr->shost);
+    /* FIXME: check for invalid (e.g. multicast) src addr */
+    iphdr->dst_addr = iphdr->src_addr;
+    iphdr->src_addr.addr = hton32(CFG.host_addr.addr);
 
-	hdr->chksum = 0;
-	hdr->chksum = chksum_internet((void *) hdr, len);
+    hdr->chksum = 0;
+    hdr->chksum = chksum_internet((void *)hdr, len);
 
-	pkt->ol_flags = 0;
-	pkt->pkt_len = rte_pktmbuf_pkt_len(pkt);
-	pkt->data_len = rte_pktmbuf_pkt_len(pkt);
+    pkt->ol_flags = 0;
+    pkt->pkt_len = rte_pktmbuf_pkt_len(pkt);
+    pkt->data_len = rte_pktmbuf_pkt_len(pkt);
 
-	printf("icmp_reflect: len %u, pkt %p, dst_addr is %x --> queue %d\n", len, pkt, iphdr->dst_addr, percpu_get(cpu_id));
-	printf("@active_eth_port: %d, tx_buf: %d\n", active_eth_port, percpu_get(tx_buf));
-	ret = rte_eth_tx_buffer(active_eth_port, 0, percpu_get(tx_buf), pkt); 
+    printf("icmp_reflect: len %u, pkt %p, dst_addr is %x --> queue %d\n", len, pkt, iphdr->dst_addr, percpu_get(cpu_id));
+    printf("@active_eth_port: %d, tx_buf: %d\n", active_eth_port, percpu_get(tx_buf));
+    ret = rte_eth_tx_buffer(active_eth_port, 0, percpu_get(tx_buf), pkt);
 
-	//if (unlikely(ret < 1)) {
-	if (unlikely(ret < 0)) {
-		printf("Warning: could not send ICMP reply\n");
-		rte_pktmbuf_free(pkt);
-		return -EIO;
-	}
+    //if (unlikely(ret < 1)) {
+    if (unlikely(ret < 0)) {
+        printf("Warning: could not send ICMP reply\n");
+        rte_pktmbuf_free(pkt);
+        return -EIO;
+    }
 
-	return 0;
+    return 0;
 }
 
 /*
@@ -118,97 +113,95 @@ static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip
  * @pkt: the packet
  * @hdr: the ICMP header
  */
-void icmp_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip_icmp_hdr *hdr, int len)
-{
-	if (len < ICMP_MINLEN)
-		goto out;
-	if (chksum_internet((void *) hdr, len))
-		goto out;
+void icmp_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip_icmp_hdr *hdr, int len) {
+    if (len < ICMP_MINLEN)
+        goto out;
+    if (chksum_internet((void *)hdr, len))
+        goto out;
 
-	log_info("icmp: got request type %d, code %d\n",
-		  hdr->type, hdr->code);
+    log_info("icmp: got request type %d, code %d\n",
+             hdr->type, hdr->code);
 
-	switch (hdr->type) {
-		case ICMP_ECHO:
-			hdr->type = ICMP_ECHOREPLY;
-			icmp_reflect(cur_fg, pkt, hdr, len);
-			break;
-		case ICMP_ECHOREPLY: {
-			uint16_t *seq;
-			uint64_t *icmptimestamp;
-			uint64_t time;
+    switch (hdr->type) {
+        case ICMP_ECHO:
+            hdr->type = ICMP_ECHOREPLY;
+            icmp_reflect(cur_fg, pkt, hdr, len);
+            break;
+        case ICMP_ECHOREPLY: {
+            uint16_t *seq;
+            uint64_t *icmptimestamp;
+            uint64_t time;
 
-			seq = mbuf_nextd_off(hdr, uint16_t *, sizeof(struct lwip_icmp_hdr) + 2);
-			icmptimestamp = mbuf_nextd_off(hdr, uint64_t *, sizeof(struct lwip_icmp_hdr) + 4);
+            seq = mbuf_nextd_off(hdr, uint16_t *, sizeof(struct lwip_icmp_hdr) + 2);
+            icmptimestamp = mbuf_nextd_off(hdr, uint64_t *, sizeof(struct lwip_icmp_hdr) + 4);
 
-			time = (rdtsc() - *icmptimestamp) / cycles_per_us;
+            time = (rdtsc() - *icmptimestamp) / cycles_per_us;
 
-			log_info("icmp: echo reply: %d bytes: icmp_req=%d time=%lld us\n",
-				len, ntoh16(*seq), time);
-			goto out;
-		}
-		default:
-			log_info("Goto out\n");
-			goto out;
-	}
-	// log_info("Return from icmp\n");
-	return;
+            log_info("icmp: echo reply: %d bytes: icmp_req=%d time=%lld us\n",
+                     len, ntoh16(*seq), time);
+            goto out;
+        }
+        default:
+            log_info("Goto out\n");
+            goto out;
+    }
+    // log_info("Return from icmp\n");
+    return;
 
 out:
-	rte_pktmbuf_free(pkt);
+    rte_pktmbuf_free(pkt);
 }
 
-int icmp_echo(struct eth_fg *cur_fg, struct ip_addr *dest, uint16_t id, uint16_t seq, uint64_t timestamp)
-{
-	int ret;
-	struct rte_mbuf *pkt;
-	struct eth_hdr *ethhdr;
-	struct ip_hdr *iphdr;
-	struct icmp_pkt *icmppkt;
-	uint64_t *icmptimestamp;
-	uint16_t len;
+int icmp_echo(struct eth_fg *cur_fg, struct ip_addr *dest, uint16_t id, uint16_t seq, uint64_t timestamp) {
+    int ret;
+    struct rte_mbuf *pkt;
+    struct eth_hdr *ethhdr;
+    struct ip_hdr *iphdr;
+    struct icmp_pkt *icmppkt;
+    uint64_t *icmptimestamp;
+    uint16_t len;
 
-	pkt = mbuf_alloc_local();
-	if (unlikely(!(pkt)))
-		return -ENOMEM;
+    pkt = mbuf_alloc_local();
+    if (unlikely(!(pkt)))
+        return -ENOMEM;
 
-	ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
-	iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
-	icmppkt = mbuf_nextd(iphdr, struct icmp_pkt *);
-	icmptimestamp = mbuf_nextd_off(icmppkt, uint64_t *, sizeof(struct lwip_icmp_hdr) + 4);
+    ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
+    iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
+    icmppkt = mbuf_nextd(iphdr, struct icmp_pkt *);
+    icmptimestamp = mbuf_nextd_off(icmppkt, uint64_t *, sizeof(struct lwip_icmp_hdr) + 4);
 
-	len = sizeof(struct lwip_icmp_hdr) + 4 + sizeof(uint64_t);
+    len = sizeof(struct lwip_icmp_hdr) + 4 + sizeof(uint64_t);
 
-	iphdr->header_len = sizeof(struct ip_hdr) / 4;
-	iphdr->version = 4;
-	iphdr->tos = 0;
-	iphdr->len = hton16(sizeof(struct ip_hdr) + len);
-	iphdr->id = 0;
-	iphdr->off = 0;
-	iphdr->ttl = 64;
-	iphdr->chksum = 0;
-	iphdr->proto = IPPROTO_ICMP;
-	iphdr->src_addr.addr = hton32(CFG.host_addr.addr);
-	iphdr->dst_addr.addr = hton32(dest->addr);
-	iphdr->chksum = chksum_internet((void *) iphdr, sizeof(struct ip_hdr));
+    iphdr->header_len = sizeof(struct ip_hdr) / 4;
+    iphdr->version = 4;
+    iphdr->tos = 0;
+    iphdr->len = hton16(sizeof(struct ip_hdr) + len);
+    iphdr->id = 0;
+    iphdr->off = 0;
+    iphdr->ttl = 64;
+    iphdr->chksum = 0;
+    iphdr->proto = IPPROTO_ICMP;
+    iphdr->src_addr.addr = hton32(CFG.host_addr.addr);
+    iphdr->dst_addr.addr = hton32(dest->addr);
+    iphdr->chksum = chksum_internet((void *)iphdr, sizeof(struct ip_hdr));
 
-	icmppkt->hdr.type = ICMP_ECHO;
-	icmppkt->hdr.code = ICMP_ECHOREPLY;
-	icmppkt->hdr.chksum = 0;
-	icmppkt->icmp_id = hton16(id);
-	icmppkt->icmp_seq = hton16(seq);
-	*icmptimestamp = timestamp;
-	icmppkt->hdr.chksum = chksum_internet((void *) icmppkt, len);
+    icmppkt->hdr.type = ICMP_ECHO;
+    icmppkt->hdr.code = ICMP_ECHOREPLY;
+    icmppkt->hdr.chksum = 0;
+    icmppkt->icmp_id = hton16(id);
+    icmppkt->icmp_seq = hton16(seq);
+    *icmptimestamp = timestamp;
+    icmppkt->hdr.chksum = chksum_internet((void *)icmppkt, len);
 
-	pkt->ol_flags = 0;
+    pkt->ol_flags = 0;
 
-	/* FIXME -- unclear if fg is/should be set */
-	ret = ip_send_one(cur_fg, dest, pkt, sizeof(struct eth_hdr) + sizeof(struct ip_hdr) + len);
+    /* FIXME -- unclear if fg is/should be set */
+    ret = ip_send_one(cur_fg, dest, pkt, sizeof(struct eth_hdr) + sizeof(struct ip_hdr) + len);
 
-	if (unlikely(ret)) {
-		mbuf_free(pkt);
-		return -EIO;
-	}
+    if (unlikely(ret)) {
+        mbuf_free(pkt);
+        return -EIO;
+    }
 
-	return 0;
+    return 0;
 }

@@ -90,13 +90,13 @@
  *
  */
 
-#include "lwip/opt.h"
-
 #include "lwip/inet_chksum.h"
-#include "lwip/def.h"
 
 #include <stddef.h>
 #include <string.h>
+
+#include "lwip/def.h"
+#include "lwip/opt.h"
 
 /* These are some reference implementations of the checksum algorithm, with the
  * aim of being simple, correct and fully portable. Checksumming is the
@@ -110,15 +110,15 @@
  */
 
 #ifndef LWIP_CHKSUM
-# define LWIP_CHKSUM lwip_standard_chksum
-# ifndef LWIP_CHKSUM_ALGORITHM
-#  define LWIP_CHKSUM_ALGORITHM 2
-# endif
+#define LWIP_CHKSUM lwip_standard_chksum
+#ifndef LWIP_CHKSUM_ALGORITHM
+#define LWIP_CHKSUM_ALGORITHM 2
+#endif
 u16_t lwip_standard_chksum(void *dataptr, int len);
 #endif
 /* If none set: */
 #ifndef LWIP_CHKSUM_ALGORITHM
-# define LWIP_CHKSUM_ALGORITHM 0
+#define LWIP_CHKSUM_ALGORITHM 0
 #endif
 
 #if (LWIP_CHKSUM_ALGORITHM == 1) /* Version #1 */
@@ -132,41 +132,39 @@ u16_t lwip_standard_chksum(void *dataptr, int len);
  * @note accumulator size limits summable length to 64k
  * @note host endianess is irrelevant (p3 RFC1071)
  */
-u16_t
-lwip_standard_chksum(void *dataptr, u16_t len)
-{
-  u32_t acc;
-  u16_t src;
-  u8_t *octetptr;
+u16_t lwip_standard_chksum(void *dataptr, u16_t len) {
+    u32_t acc;
+    u16_t src;
+    u8_t *octetptr;
 
-  acc = 0;
-  /* dataptr may be at odd or even addresses */
-  octetptr = (u8_t*)dataptr;
-  while (len > 1) {
-    /* declare first octet as most significant
+    acc = 0;
+    /* dataptr may be at odd or even addresses */
+    octetptr = (u8_t *)dataptr;
+    while (len > 1) {
+        /* declare first octet as most significant
        thus assume network order, ignoring host order */
-    src = (*octetptr) << 8;
-    octetptr++;
-    /* declare second octet as least significant */
-    src |= (*octetptr);
-    octetptr++;
-    acc += src;
-    len -= 2;
-  }
-  if (len > 0) {
-    /* accumulate remaining octet */
-    src = (*octetptr) << 8;
-    acc += src;
-  }
-  /* add deferred carry bits */
-  acc = (acc >> 16) + (acc & 0x0000ffffUL);
-  if ((acc & 0xffff0000UL) != 0) {
+        src = (*octetptr) << 8;
+        octetptr++;
+        /* declare second octet as least significant */
+        src |= (*octetptr);
+        octetptr++;
+        acc += src;
+        len -= 2;
+    }
+    if (len > 0) {
+        /* accumulate remaining octet */
+        src = (*octetptr) << 8;
+        acc += src;
+    }
+    /* add deferred carry bits */
     acc = (acc >> 16) + (acc & 0x0000ffffUL);
-  }
-  /* This maybe a little confusing: reorder sum using htons()
+    if ((acc & 0xffff0000UL) != 0) {
+        acc = (acc >> 16) + (acc & 0x0000ffffUL);
+    }
+    /* This maybe a little confusing: reorder sum using htons()
      instead of ntohs() since it has a little less call overhead.
      The caller must invert bits for Internet sum ! */
-  return htons((u16_t)acc);
+    return htons((u16_t)acc);
 }
 #endif
 
@@ -186,46 +184,44 @@ lwip_standard_chksum(void *dataptr, u16_t len)
  * @return host order (!) lwip checksum (non-inverted Internet sum) 
  */
 
-u16_t
-lwip_standard_chksum(void *dataptr, int len)
-{
-  u8_t *pb = (u8_t *)dataptr;
-  u16_t *ps, t = 0;
-  u32_t sum = 0;
-  int odd = ((mem_ptr_t)pb & 1);
+u16_t lwip_standard_chksum(void *dataptr, int len) {
+    u8_t *pb = (u8_t *)dataptr;
+    u16_t *ps, t = 0;
+    u32_t sum = 0;
+    int odd = ((mem_ptr_t)pb & 1);
 
-  /* Get aligned to u16_t */
-  if (odd && len > 0) {
-    ((u8_t *)&t)[1] = *pb++;
-    len--;
-  }
+    /* Get aligned to u16_t */
+    if (odd && len > 0) {
+        ((u8_t *)&t)[1] = *pb++;
+        len--;
+    }
 
-  /* Add the bulk of the data */
-  ps = (u16_t *)(void *)pb;
-  while (len > 1) {
-    sum += *ps++;
-    len -= 2;
-  }
+    /* Add the bulk of the data */
+    ps = (u16_t *)(void *)pb;
+    while (len > 1) {
+        sum += *ps++;
+        len -= 2;
+    }
 
-  /* Consume left-over byte, if any */
-  if (len > 0) {
-    ((u8_t *)&t)[0] = *(u8_t *)ps;
-  }
+    /* Consume left-over byte, if any */
+    if (len > 0) {
+        ((u8_t *)&t)[0] = *(u8_t *)ps;
+    }
 
-  /* Add end bytes */
-  sum += t;
+    /* Add end bytes */
+    sum += t;
 
-  /* Fold 32-bit sum to 16 bits
+    /* Fold 32-bit sum to 16 bits
      calling this twice is propably faster than if statements... */
-  sum = FOLD_U32T(sum);
-  sum = FOLD_U32T(sum);
+    sum = FOLD_U32T(sum);
+    sum = FOLD_U32T(sum);
 
-  /* Swap if alignment was odd */
-  if (odd) {
-    sum = SWAP_BYTES_IN_WORD(sum);
-  }
+    /* Swap if alignment was odd */
+    if (odd) {
+        sum = SWAP_BYTES_IN_WORD(sum);
+    }
 
-  return (u16_t)sum;
+    return (u16_t)sum;
 }
 #endif
 
@@ -242,72 +238,70 @@ lwip_standard_chksum(void *dataptr, int len)
  * by Curt McDowell, Broadcom Corp. December 8th, 2005
  */
 
-u16_t
-lwip_standard_chksum(void *dataptr, int len)
-{
-  u8_t *pb = (u8_t *)dataptr;
-  u16_t *ps, t = 0;
-  u32_t *pl;
-  u32_t sum = 0, tmp;
-  /* starts at odd byte address? */
-  int odd = ((mem_ptr_t)pb & 1);
+u16_t lwip_standard_chksum(void *dataptr, int len) {
+    u8_t *pb = (u8_t *)dataptr;
+    u16_t *ps, t = 0;
+    u32_t *pl;
+    u32_t sum = 0, tmp;
+    /* starts at odd byte address? */
+    int odd = ((mem_ptr_t)pb & 1);
 
-  if (odd && len > 0) {
-    ((u8_t *)&t)[1] = *pb++;
-    len--;
-  }
-
-  ps = (u16_t *)pb;
-
-  if (((mem_ptr_t)ps & 3) && len > 1) {
-    sum += *ps++;
-    len -= 2;
-  }
-
-  pl = (u32_t *)ps;
-
-  while (len > 7)  {
-    tmp = sum + *pl++;          /* ping */
-    if (tmp < sum) {
-      tmp++;                    /* add back carry */
+    if (odd && len > 0) {
+        ((u8_t *)&t)[1] = *pb++;
+        len--;
     }
 
-    sum = tmp + *pl++;          /* pong */
-    if (sum < tmp) {
-      sum++;                    /* add back carry */
+    ps = (u16_t *)pb;
+
+    if (((mem_ptr_t)ps & 3) && len > 1) {
+        sum += *ps++;
+        len -= 2;
     }
 
-    len -= 8;
-  }
+    pl = (u32_t *)ps;
 
-  /* make room in upper bits */
-  sum = FOLD_U32T(sum);
+    while (len > 7) {
+        tmp = sum + *pl++; /* ping */
+        if (tmp < sum) {
+            tmp++; /* add back carry */
+        }
 
-  ps = (u16_t *)pl;
+        sum = tmp + *pl++; /* pong */
+        if (sum < tmp) {
+            sum++; /* add back carry */
+        }
 
-  /* 16-bit aligned word remaining? */
-  while (len > 1) {
-    sum += *ps++;
-    len -= 2;
-  }
+        len -= 8;
+    }
 
-  /* dangling tail byte remaining? */
-  if (len > 0) {                /* include odd byte */
-    ((u8_t *)&t)[0] = *(u8_t *)ps;
-  }
+    /* make room in upper bits */
+    sum = FOLD_U32T(sum);
 
-  sum += t;                     /* add end bytes */
+    ps = (u16_t *)pl;
 
-  /* Fold 32-bit sum to 16 bits
+    /* 16-bit aligned word remaining? */
+    while (len > 1) {
+        sum += *ps++;
+        len -= 2;
+    }
+
+    /* dangling tail byte remaining? */
+    if (len > 0) { /* include odd byte */
+        ((u8_t *)&t)[0] = *(u8_t *)ps;
+    }
+
+    sum += t; /* add end bytes */
+
+    /* Fold 32-bit sum to 16 bits
      calling this twice is propably faster than if statements... */
-  sum = FOLD_U32T(sum);
-  sum = FOLD_U32T(sum);
+    sum = FOLD_U32T(sum);
+    sum = FOLD_U32T(sum);
 
-  if (odd) {
-    sum = SWAP_BYTES_IN_WORD(sum);
-  }
+    if (odd) {
+        sum = SWAP_BYTES_IN_WORD(sum);
+    }
 
-  return (u16_t)sum;
+    return (u16_t)sum;
 }
 #endif
 
@@ -352,39 +346,36 @@ inet_cksum_pseudo_base(struct pbuf *p, u8_t proto, u16_t proto_len, u32_t acc)
 #endif
 
 /* Pseudo-header checksum to initialize checksum field in TCP header for TCP csum offload */
-static __inline unsigned short 
-in_pseudo(unsigned int sum, unsigned int b, unsigned int c) 
-{
-  #if defined(__i386__) || defined(__x86_64__)
+static __inline unsigned short
+in_pseudo(unsigned int sum, unsigned int b, unsigned int c) {
+#if defined(__i386__) || defined(__x86_64__)
     __asm(
-      "addl %1, %0\n" 
-      "adcl %2, %0\n" 
-      "adcl $0, %0" 
-      : "+r" (sum) 
-      : "g" (b), 
-        "g" (c) 
-      : "cc" 
-    ); 
-  #elif defined(__aarch64__)
+        "addl %1, %0\n"
+        "adcl %2, %0\n"
+        "adcl $0, %0"
+        : "+r"(sum)
+        : "g"(b),
+          "g"(c)
+        : "cc");
+#elif defined(__aarch64__)
     __asm(
-      "eor w4, w4, w4\n"
-      "adds %w[sum], %w[sum], %w[b]\n"
-      "adcs %w[sum], %w[sum], %w[c]\n"
-      "adc %w[sum], %w[sum], w4"
-      : [sum] "+r"(sum)
-      : [b] "r"(b),
-        [c] "r"(c)
-      : "cc", "w4"
-    );
-  #else
+        "eor w4, w4, w4\n"
+        "adds %w[sum], %w[sum], %w[b]\n"
+        "adcs %w[sum], %w[sum], %w[c]\n"
+        "adc %w[sum], %w[sum], w4"
+        : [sum] "+r"(sum)
+        : [b] "r"(b),
+          [c] "r"(c)
+        : "cc", "w4");
+#else
     uint64_t chksum = sum;
     chksum += b;
     chksum += c;
     chksum = (chksum & 0xffffffff) + (chksum >> 32);
 
     chksum = (chksum & 0xffff) + (chksum >> 16);
-    if (chksum > 0xffff) 
-        chksum -= 0xffff; // get overflow
+    if (chksum > 0xffff)
+        chksum -= 0xffff;  // get overflow
     return (chksum);
     // if (~b < sum) // overflow
     //   sum += b+1;
@@ -394,18 +385,18 @@ in_pseudo(unsigned int sum, unsigned int b, unsigned int c)
     //   sum += c+1;
     // else:
     //   sum += c;
-  #endif
-  
-  sum = (sum & 0xffff) + (sum >> 16); 
-  if (sum > 0xffff) 
-      sum -= 0xffff; // get overflow
-  // u16_t sum_high = sum & 0xff00;
-  // u16_t sum_low = sum & 0x00ff;
-  // sum = (sum_high >> 8) + (sum_low << 8);
-  // sum = SWAP_BYTES_IN_WORD(sum);
-  // printf("The checksum we got is %04x.\n", sum);
-  return (sum); 
-} 
+#endif
+
+    sum = (sum & 0xffff) + (sum >> 16);
+    if (sum > 0xffff)
+        sum -= 0xffff;  // get overflow
+    // u16_t sum_high = sum & 0xff00;
+    // u16_t sum_low = sum & 0x00ff;
+    // sum = (sum_high >> 8) + (sum_low << 8);
+    // sum = SWAP_BYTES_IN_WORD(sum);
+    // printf("The checksum we got is %04x.\n", sum);
+    return (sum);
+}
 /* inet_chksum_pseudo:
  *
  * This function has been modified for TCP checksum offload. 
@@ -419,15 +410,13 @@ in_pseudo(unsigned int sum, unsigned int b, unsigned int c)
  * @param proto_len length of the ip data part (used for checksum of pseudo header)
  * @return checksum (as u16_t) to be saved directly in the protocol header
  */
-u16_t
-inet_chksum_pseudo(struct pbuf *p, u8_t proto, u16_t proto_len,
-       ip_addr_t *src, ip_addr_t *dest)
-{
-  // u32_t sum = inet_chksum_pbuf(p);
-  // printf("I am calculating: src-0x%04x + dst-0x%04x + 0x%04x\n", ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
-  // sum += in_pseudo(ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
-  // return (sum & 0xffff) + (sum >> 16);
-	return in_pseudo(ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
+u16_t inet_chksum_pseudo(struct pbuf *p, u8_t proto, u16_t proto_len,
+                         ip_addr_t *src, ip_addr_t *dest) {
+    // u32_t sum = inet_chksum_pbuf(p);
+    // printf("I am calculating: src-0x%04x + dst-0x%04x + 0x%04x\n", ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
+    // sum += in_pseudo(ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
+    // return (sum & 0xffff) + (sum >> 16);
+    return in_pseudo(ip4_addr_get_u32(src), ip4_addr_get_u32(dest), hton32(proto + p->tot_len));
 }
 #if LWIP_IPV6
 /**
@@ -441,73 +430,70 @@ inet_chksum_pseudo(struct pbuf *p, u8_t proto, u16_t proto_len,
  * @param proto_len length of the ipv6 payload (used for checksum of pseudo header)
  * @return checksum (as u16_t) to be saved directly in the protocol header
  */
-u16_t
-ip6_chksum_pseudo(struct pbuf *p, u8_t proto, u16_t proto_len,
-       ip6_addr_t *src, ip6_addr_t *dest)
-{
-  u32_t acc = 0;
-  u32_t addr;
-  u8_t addr_part;
+u16_t ip6_chksum_pseudo(struct pbuf *p, u8_t proto, u16_t proto_len,
+                        ip6_addr_t *src, ip6_addr_t *dest) {
+    u32_t acc = 0;
+    u32_t addr;
+    u8_t addr_part;
 
-  for (addr_part = 0; addr_part < 4; addr_part++) {
-    addr = src->addr[addr_part];
-    acc += (addr & 0xffffUL);
-    acc += ((addr >> 16) & 0xffffUL);
-    addr = dest->addr[addr_part];
-    acc += (addr & 0xffffUL);
-    acc += ((addr >> 16) & 0xffffUL);
-  }
-  /* fold down to 16 bits */
-  acc = FOLD_U32T(acc);
-  acc = FOLD_U32T(acc);
+    for (addr_part = 0; addr_part < 4; addr_part++) {
+        addr = src->addr[addr_part];
+        acc += (addr & 0xffffUL);
+        acc += ((addr >> 16) & 0xffffUL);
+        addr = dest->addr[addr_part];
+        acc += (addr & 0xffffUL);
+        acc += ((addr >> 16) & 0xffffUL);
+    }
+    /* fold down to 16 bits */
+    acc = FOLD_U32T(acc);
+    acc = FOLD_U32T(acc);
 
-  return inet_cksum_pseudo_base(p, proto, proto_len, acc);
+    return inet_cksum_pseudo_base(p, proto, proto_len, acc);
 }
 #endif /* LWIP_IPV6 */
 
 /** Parts of the pseudo checksum which are common to IPv4 and IPv6 */
 static u16_t
 inet_cksum_pseudo_partial_base(struct pbuf *p, u8_t proto, u16_t proto_len,
-       u16_t chksum_len, u32_t acc)
-{
-  struct pbuf *q;
-  u8_t swapped = 0;
-  u16_t chklen;
+                               u16_t chksum_len, u32_t acc) {
+    struct pbuf *q;
+    u8_t swapped = 0;
+    u16_t chklen;
 
-  /* iterate through all pbuf in chain */
-  for(q = p; (q != NULL) && (chksum_len > 0); q = q->next) {
-    LWIP_DEBUGF(INET_DEBUG, ("inet_chksum_pseudo(): checksumming pbuf %p (has next %p) \n",
-      (void *)q, (void *)q->next));
-    chklen = q->len;
-    if (chklen > chksum_len) {
-      chklen = chksum_len;
+    /* iterate through all pbuf in chain */
+    for (q = p; (q != NULL) && (chksum_len > 0); q = q->next) {
+        LWIP_DEBUGF(INET_DEBUG, ("inet_chksum_pseudo(): checksumming pbuf %p (has next %p) \n",
+                                 (void *)q, (void *)q->next));
+        chklen = q->len;
+        if (chklen > chksum_len) {
+            chklen = chksum_len;
+        }
+        acc += LWIP_CHKSUM(q->payload, chklen);
+        chksum_len -= chklen;
+        LWIP_ASSERT("delete me", chksum_len < 0x7fff);
+        /*LWIP_DEBUGF(INET_DEBUG, ("inet_chksum_pseudo(): unwrapped lwip_chksum()=%"X32_F" \n", acc));*/
+        /* fold the upper bit down */
+        acc = FOLD_U32T(acc);
+        if (q->len % 2 != 0) {
+            swapped = 1 - swapped;
+            acc = SWAP_BYTES_IN_WORD(acc);
+        }
+        /*LWIP_DEBUGF(INET_DEBUG, ("inet_chksum_pseudo(): wrapped lwip_chksum()=%"X32_F" \n", acc));*/
     }
-    acc += LWIP_CHKSUM(q->payload, chklen);
-    chksum_len -= chklen;
-    LWIP_ASSERT("delete me", chksum_len < 0x7fff);
-    /*LWIP_DEBUGF(INET_DEBUG, ("inet_chksum_pseudo(): unwrapped lwip_chksum()=%"X32_F" \n", acc));*/
-    /* fold the upper bit down */
-    acc = FOLD_U32T(acc);
-    if (q->len % 2 != 0) {
-      swapped = 1 - swapped;
-      acc = SWAP_BYTES_IN_WORD(acc);
+
+    if (swapped) {
+        acc = SWAP_BYTES_IN_WORD(acc);
     }
-    /*LWIP_DEBUGF(INET_DEBUG, ("inet_chksum_pseudo(): wrapped lwip_chksum()=%"X32_F" \n", acc));*/
-  }
 
-  if (swapped) {
-    acc = SWAP_BYTES_IN_WORD(acc);
-  }
+    acc += (u32_t)htons((u16_t)proto);
+    acc += (u32_t)htons(proto_len);
 
-  acc += (u32_t)htons((u16_t)proto);
-  acc += (u32_t)htons(proto_len);
-
-  /* Fold 32-bit sum to 16 bits
+    /* Fold 32-bit sum to 16 bits
      calling this twice is propably faster than if statements... */
-  acc = FOLD_U32T(acc);
-  acc = FOLD_U32T(acc);
-  LWIP_DEBUGF(INET_DEBUG, ("inet_chksum_pseudo(): pbuf chain lwip_chksum()=%"X32_F"\n", acc));
-  return (u16_t)~(acc & 0xffffUL);
+    acc = FOLD_U32T(acc);
+    acc = FOLD_U32T(acc);
+    LWIP_DEBUGF(INET_DEBUG, ("inet_chksum_pseudo(): pbuf chain lwip_chksum()=%" X32_F "\n", acc));
+    return (u16_t) ~(acc & 0xffffUL);
 }
 
 /* inet_chksum_pseudo_partial:
@@ -522,24 +508,22 @@ inet_cksum_pseudo_partial_base(struct pbuf *p, u8_t proto, u16_t proto_len,
  * @param proto_len length of the ip data part (used for checksum of pseudo header)
  * @return checksum (as u16_t) to be saved directly in the protocol header
  */
-u16_t
-inet_chksum_pseudo_partial(struct pbuf *p, u8_t proto, u16_t proto_len,
-       u16_t chksum_len, ip_addr_t *src, ip_addr_t *dest)
-{
-  u32_t acc;
-  u32_t addr;
+u16_t inet_chksum_pseudo_partial(struct pbuf *p, u8_t proto, u16_t proto_len,
+                                 u16_t chksum_len, ip_addr_t *src, ip_addr_t *dest) {
+    u32_t acc;
+    u32_t addr;
 
-  addr = ip4_addr_get_u32(src);
-  acc = (addr & 0xffffUL);
-  acc += ((addr >> 16) & 0xffffUL);
-  addr = ip4_addr_get_u32(dest);
-  acc += (addr & 0xffffUL);
-  acc += ((addr >> 16) & 0xffffUL);
-  /* fold down to 16 bits */
-  acc = FOLD_U32T(acc);
-  acc = FOLD_U32T(acc);
+    addr = ip4_addr_get_u32(src);
+    acc = (addr & 0xffffUL);
+    acc += ((addr >> 16) & 0xffffUL);
+    addr = ip4_addr_get_u32(dest);
+    acc += (addr & 0xffffUL);
+    acc += ((addr >> 16) & 0xffffUL);
+    /* fold down to 16 bits */
+    acc = FOLD_U32T(acc);
+    acc = FOLD_U32T(acc);
 
-  return inet_cksum_pseudo_partial_base(p, proto, proto_len, chksum_len, acc);
+    return inet_cksum_pseudo_partial_base(p, proto, proto_len, chksum_len, acc);
 }
 
 #if LWIP_IPV6
@@ -556,27 +540,25 @@ inet_chksum_pseudo_partial(struct pbuf *p, u8_t proto, u16_t proto_len,
  * @param chksum_len number of payload bytes used to compute chksum
  * @return checksum (as u16_t) to be saved directly in the protocol header
  */
-u16_t
-ip6_chksum_pseudo_partial(struct pbuf *p, u8_t proto, u16_t proto_len,
-       u16_t chksum_len, ip6_addr_t *src, ip6_addr_t *dest)
-{
-  u32_t acc = 0;
-  u32_t addr;
-  u8_t addr_part;
+u16_t ip6_chksum_pseudo_partial(struct pbuf *p, u8_t proto, u16_t proto_len,
+                                u16_t chksum_len, ip6_addr_t *src, ip6_addr_t *dest) {
+    u32_t acc = 0;
+    u32_t addr;
+    u8_t addr_part;
 
-  for (addr_part = 0; addr_part < 4; addr_part++) {
-    addr = src->addr[addr_part];
-    acc += (addr & 0xffffUL);
-    acc += ((addr >> 16) & 0xffffUL);
-    addr = dest->addr[addr_part];
-    acc += (addr & 0xffffUL);
-    acc += ((addr >> 16) & 0xffffUL);
-  }
-  /* fold down to 16 bits */
-  acc = FOLD_U32T(acc);
-  acc = FOLD_U32T(acc);
+    for (addr_part = 0; addr_part < 4; addr_part++) {
+        addr = src->addr[addr_part];
+        acc += (addr & 0xffffUL);
+        acc += ((addr >> 16) & 0xffffUL);
+        addr = dest->addr[addr_part];
+        acc += (addr & 0xffffUL);
+        acc += ((addr >> 16) & 0xffffUL);
+    }
+    /* fold down to 16 bits */
+    acc = FOLD_U32T(acc);
+    acc = FOLD_U32T(acc);
 
-  return inet_cksum_pseudo_partial_base(p, proto, proto_len, chksum_len, acc);
+    return inet_cksum_pseudo_partial_base(p, proto, proto_len, chksum_len, acc);
 }
 #endif /* LWIP_IPV6 */
 
@@ -590,10 +572,8 @@ ip6_chksum_pseudo_partial(struct pbuf *p, u8_t proto, u16_t proto_len,
  * @return checksum (as u16_t) to be saved directly in the protocol header
  */
 
-u16_t
-inet_chksum(void *dataptr, u16_t len)
-{
-  return ~LWIP_CHKSUM(dataptr, len);
+u16_t inet_chksum(void *dataptr, u16_t len) {
+    return ~LWIP_CHKSUM(dataptr, len);
 }
 
 /**
@@ -603,28 +583,26 @@ inet_chksum(void *dataptr, u16_t len)
  * @param p pbuf chain over that the checksum should be calculated
  * @return checksum (as u16_t) to be saved directly in the protocol header
  */
-u16_t
-inet_chksum_pbuf(struct pbuf *p)
-{
-  u32_t acc;
-  struct pbuf *q;
-  u8_t swapped;
+u16_t inet_chksum_pbuf(struct pbuf *p) {
+    u32_t acc;
+    struct pbuf *q;
+    u8_t swapped;
 
-  acc = 0;
-  swapped = 0;
-  for(q = p; q != NULL; q = q->next) {
-    acc += LWIP_CHKSUM(q->payload, q->len);
-    acc = FOLD_U32T(acc);
-    if (q->len % 2 != 0) {
-      swapped = 1 - swapped;
-      acc = SWAP_BYTES_IN_WORD(acc);
+    acc = 0;
+    swapped = 0;
+    for (q = p; q != NULL; q = q->next) {
+        acc += LWIP_CHKSUM(q->payload, q->len);
+        acc = FOLD_U32T(acc);
+        if (q->len % 2 != 0) {
+            swapped = 1 - swapped;
+            acc = SWAP_BYTES_IN_WORD(acc);
+        }
     }
-  }
 
-  if (swapped) {
-    acc = SWAP_BYTES_IN_WORD(acc);
-  }
-  return (u16_t)~(acc & 0xffffUL);
+    if (swapped) {
+        acc = SWAP_BYTES_IN_WORD(acc);
+    }
+    return (u16_t) ~(acc & 0xffffUL);
 }
 
 /* These are some implementations for LWIP_CHKSUM_COPY, which copies data
@@ -639,10 +617,8 @@ inet_chksum_pbuf(struct pbuf *p)
  * For architectures with big caches, data might still be in cache when
  * generating the checksum after copying.
  */
-u16_t
-lwip_chksum_copy(void *dst, const void *src, u16_t len)
-{
-  MEMCPY(dst, src, len);
-  return LWIP_CHKSUM(dst, len);
+u16_t lwip_chksum_copy(void *dst, const void *src, u16_t len) {
+    MEMCPY(dst, src, len);
+    return LWIP_CHKSUM(dst, len);
 }
 #endif /* (LWIP_CHKSUM_COPY_ALGORITHM == 1) */
