@@ -31,6 +31,7 @@ if get_option('ENABLE_KSTATS')
 endif
 
 core_sources = []
+deps = []
 subdir('lwip')
 subdir('net')
 subdir('nvme')
@@ -42,13 +43,16 @@ subdir('apps')
 CFLAGS += DPDK_MACHINE_FLAGS
 CFLAGS += SPDK_FLAGS
 
+incs = [inc, pci_dma_inc, ix_inc, SPDK_INC, DPDK_INC]
+deps += [core_deps, spdk_deps, dpdk_deps]
+
 
 executable('dp',
             app_sources+core_sources,
             c_args : CFLAGS,
             # link_args : LDFLAGS,
-            include_directories : [inc, pci_dma_inc, ix_inc, SPDK_INC, DPDK_INC],
+            include_directories : incs,
             link_with: [ix_lib],
             objects: [SPDK_LIBS, DPDK_LIBS],
-            dependencies : [core_deps, spdk_deps, dpdk_deps, isal_dep],
+            dependencies : deps,
             install : true)

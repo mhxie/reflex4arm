@@ -119,8 +119,16 @@ foreach LIB : LDLIBS
     core_deps += dep
 endforeach
 
-ISAL_DIR = join_paths('..', 'spdk', 'isa-l', '.libs')
-ISAL_INC = include_directories(join_paths(ISAL_DIR, '..'))
-isal_dep = declare_dependency(
-    link_args : ['-L' + ISAL_DIR, '-lisal'],
-    include_directories : ISAL_INC)
+output = run_command('nasm', '-v')
+nasm_ver = output.stdout().split(' ')[2]
+
+if nasm_ver >= '2.13.03'
+    ISAL_DIR = join_paths('..', 'spdk', 'isa-l', '.libs')
+    ISAL_INC = include_directories(join_paths(ISAL_DIR, '..'))
+    isal_dep = declare_dependency(
+        link_args : ['-L' + ISAL_DIR, '-lisal'],
+        include_directories : ISAL_INC)
+    core_deps += isal_dep
+else
+    message('ISA-L requires NASM version 2.13.03 or newer, got', nasm_ver)
+endif

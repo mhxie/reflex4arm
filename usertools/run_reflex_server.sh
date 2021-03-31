@@ -2,7 +2,7 @@
 
 # Script to run ReFlex setup after machine reboot and start the ReFlex server
 
-REFLEX_HOME=/home/ubuntu/reflex4arm
+REFLEX_HOME=`pwd`
 ETH_NAME=`ifconfig | grep flags | head -n2 | tail -n1 | cut -d':' -f1`
 ETH_PCI=`lspci | grep ENA | tail -n1 | awk '{print $1}'`
 
