@@ -58,25 +58,22 @@
 
 #pragma once
 
-#include <rte_per_lcore.h>
-
-#include <ix/stddef.h>
 #include <arch/cpu.h>
 #include <ix/log.h>
+#include <ix/stddef.h>
+#include <rte_per_lcore.h>
 
-
-#define NCPU	128
-extern int cpu_count; /* the number of available CPUs */
+#define NCPU 128
+extern int cpu_count;   /* the number of available CPUs */
 extern int cpus_active; /* the number of in-use CPUs */
-
 
 /* used to define percpu variables */
 #define DEFINE_PERCPU(type, name) \
-	(RTE_DEFINE_PER_LCORE(type, name))
+    (RTE_DEFINE_PER_LCORE(type, name))
 
 /* used to make percpu variables externally available */
 #define DECLARE_PERCPU(type, name) \
-	(RTE_DELCARE_PER_LCORE(type, name))
+    (RTE_DELCARE_PER_LCORE(type, name))
 
 extern void *percpu_offsets[NCPU];
 
@@ -88,16 +85,15 @@ extern void *percpu_offsets[NCPU];
  * Returns a percpu variable.
  */
 // TODO: Might need to change depending on where RTE_PER_LCORE stores variables
-#define percpu_get_remote(var, cpu)				\
-	(*((typeof(var) *) ((uintptr_t) &var +			\
-			    (uintptr_t) percpu_offsets[(cpu)])))
+#define percpu_get_remote(var, cpu)      \
+    (*((typeof(var) *)((uintptr_t)&var + \
+                       (uintptr_t)percpu_offsets[(cpu)])))
 
-static inline void *__percpu_get(void *key)
-{
-	void *offset;
+static inline void *__percpu_get(void *key) {
+    void *offset;
 
-	//asm("mov %%gs:0, %0" : "=r"(offset));
-	return (void *)((uintptr_t) key + (uintptr_t) offset);
+    //asm("mov %%gs:0, %0" : "=r"(offset));
+    return (void *)((uintptr_t)key + (uintptr_t)offset);
 }
 
 /**
@@ -106,8 +102,8 @@ static inline void *__percpu_get(void *key)
  *
  * Returns a percpu variable address.
  */
-#define percpu_get_addr(var)						\
-	((typeof(var) *) (__percpu_get(&var)))
+#define percpu_get_addr(var) \
+    ((typeof(var) *)(__percpu_get(&var)))
 
 /**
  * percpu_get - get the local percpu variable
@@ -115,8 +111,8 @@ static inline void *__percpu_get(void *key)
  *
  * Returns a percpu variable.
  */
-#define percpu_get(var)						\
-	(RTE_PER_LCORE(var))
+#define percpu_get(var) \
+    (RTE_PER_LCORE(var))
 
 /**
  * cpu_is_active - is the CPU being used?
@@ -124,27 +120,26 @@ static inline void *__percpu_get(void *key)
  *
  * Returns true if yes, false if no.
  */
-#define cpu_is_active(cpu)					\
-	(percpu_offsets[(cpu)] != NULL)
+#define cpu_is_active(cpu) \
+    (percpu_offsets[(cpu)] != NULL)
 
-static inline unsigned int __cpu_next_active(unsigned int cpu)
-{
-  while (cpu < (unsigned int)cpu_count) {
-		cpu++;
+static inline unsigned int __cpu_next_active(unsigned int cpu) {
+    while (cpu < (unsigned int)cpu_count) {
+        cpu++;
 
-		if (cpu_is_active(cpu))
-			return cpu;
-	}
+        if (cpu_is_active(cpu))
+            return cpu;
+    }
 
-	return cpu;
+    return cpu;
 }
 
 /**
  * for_each_active_cpu - iterates over each active (used by IX) CPU
  * @cpu: an integer to store the cpu
  */
-#define for_each_active_cpu(cpu)				\
-	for ((cpu) = -1; (cpu) = __cpu_next_active(cpu); (cpu) < cpu_count)
+#define for_each_active_cpu(cpu) \
+    for ((cpu) = -1; (cpu) = __cpu_next_active(cpu); (cpu) < cpu_count)
 
 RTE_DECLARE_PER_LCORE(unsigned int, cpu_numa_node);
 RTE_DECLARE_PER_LCORE(unsigned int, cpu_id);
@@ -154,8 +149,7 @@ extern void cpu_do_bookkeeping(void);
 
 typedef void (*cpu_func_t)(void *data);
 extern int cpu_run_on_one(cpu_func_t func, void *data,
-			  unsigned int cpu);
+                          unsigned int cpu);
 
 extern int cpu_init_one(unsigned int cpu);
 extern int cpu_init(void);
-

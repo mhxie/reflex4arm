@@ -65,14 +65,17 @@
 #endif
 #pragma once
 
-static inline uint64_t __mm_crc32_u64(uint64_t crc, uint64_t val)
-{
-	#if defined(__i386__) || defined(__x86_64__)
-		asm("crc32q %1, %0" : "+r"(crc) : "rm"(val));
-	#elif defined(__aarch64__)
-		asm("crc32cx %w[crc], %w[crc], %x[value]" : [crc] "+r"(crc) : [value] "r" (val));
-	#endif
-	return crc;
+static inline uint64_t __mm_crc32_u64(uint64_t crc, uint64_t val) {
+#if defined(__i386__) || defined(__x86_64__)
+    asm("crc32q %1, %0"
+        : "+r"(crc)
+        : "rm"(val));
+#elif defined(__aarch64__)
+    asm("crc32cx %w[crc], %w[crc], %x[value]"
+        : [crc] "+r"(crc)
+        : [value] "r"(val));
+#endif
+    return crc;
 }
 
 /**
@@ -85,9 +88,8 @@ static inline uint64_t __mm_crc32_u64(uint64_t crc, uint64_t val)
  *
  * Returns a 32-bit hash value.
  */
-static inline uint32_t hash_crc32c_one(uint32_t seed, uint64_t val)
-{
-	return __mm_crc32_u64(seed, val);
+static inline uint32_t hash_crc32c_one(uint32_t seed, uint64_t val) {
+    return __mm_crc32_u64(seed, val);
 }
 
 /**
@@ -101,10 +103,9 @@ static inline uint32_t hash_crc32c_one(uint32_t seed, uint64_t val)
  *
  * Returns a 32-bit hash value.
  */
-static inline uint32_t hash_crc32c_two(uint32_t seed, uint64_t a, uint64_t b)
-{
-	seed = __mm_crc32_u64(seed, a);
-	return __mm_crc32_u64(seed, b);
+static inline uint32_t hash_crc32c_two(uint32_t seed, uint64_t a, uint64_t b) {
+    seed = __mm_crc32_u64(seed, a);
+    return __mm_crc32_u64(seed, b);
 }
 
 /*
@@ -135,22 +136,20 @@ static inline uint32_t hash_crc32c_two(uint32_t seed, uint64_t a, uint64_t b)
  * CityHash was created by Geoff Pike and Jyrki Alakuijala
  */
 
-#define HASH_CITY_K2	0x9ae16a3b2f90404fULL
+#define HASH_CITY_K2 0x9ae16a3b2f90404fULL
 
-static inline uint64_t __hash_city_len16(uint64_t u, uint64_t v, uint64_t mul)
-{
-	uint64_t a, b;
-	a = (u ^ v) * mul;
-	a ^= (a >> 47);
-	b = (v ^ a) * mul;
-	b ^= (b >> 47);
-	b *= mul;
-	return b;
+static inline uint64_t __hash_city_len16(uint64_t u, uint64_t v, uint64_t mul) {
+    uint64_t a, b;
+    a = (u ^ v) * mul;
+    a ^= (a >> 47);
+    b = (v ^ a) * mul;
+    b ^= (b >> 47);
+    b *= mul;
+    return b;
 }
 
-static inline uint64_t __hash_city_rotate(uint64_t val, int shift)
-{
-	return ((val >> shift) | (val << (64 - shift)));
+static inline uint64_t __hash_city_rotate(uint64_t val, int shift) {
+    return ((val >> shift) | (val << (64 - shift)));
 }
 
 /**
@@ -162,14 +161,13 @@ static inline uint64_t __hash_city_rotate(uint64_t val, int shift)
  *
  * Returns a 64-bit hash value.
  */
-static inline uint64_t hash_city_one(uint64_t val)
-{
-	uint64_t mul = HASH_CITY_K2 + 16;
-	uint64_t a = val + HASH_CITY_K2;
-	uint64_t b = val;
-	uint64_t c = __hash_city_rotate(b, 37) * mul + a;
-	uint64_t d = (__hash_city_rotate(a, 25) + b) * mul;
-	return __hash_city_len16(c, d, mul);
+static inline uint64_t hash_city_one(uint64_t val) {
+    uint64_t mul = HASH_CITY_K2 + 16;
+    uint64_t a = val + HASH_CITY_K2;
+    uint64_t b = val;
+    uint64_t c = __hash_city_rotate(b, 37) * mul + a;
+    uint64_t d = (__hash_city_rotate(a, 25) + b) * mul;
+    return __hash_city_len16(c, d, mul);
 }
 
 /**
@@ -182,13 +180,11 @@ static inline uint64_t hash_city_one(uint64_t val)
  *
  * Returns a 64-bit hash value.
  */
-static inline uint64_t hash_city_two(uint64_t val_a, uint64_t val_b)
-{
-	uint64_t mul = HASH_CITY_K2 + 32;
-	uint64_t a = val_a + HASH_CITY_K2;
-	uint64_t b = val_b;
-	uint64_t c = __hash_city_rotate(b, 37) * mul + a;
-	uint64_t d = (__hash_city_rotate(a, 25) + b) * mul;
-	return __hash_city_len16(c, d, mul);
+static inline uint64_t hash_city_two(uint64_t val_a, uint64_t val_b) {
+    uint64_t mul = HASH_CITY_K2 + 32;
+    uint64_t a = val_a + HASH_CITY_K2;
+    uint64_t b = val_b;
+    uint64_t c = __hash_city_rotate(b, 37) * mul + a;
+    uint64_t d = (__hash_city_rotate(a, 25) + b) * mul;
+    return __hash_city_len16(c, d, mul);
 }
-

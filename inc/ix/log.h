@@ -67,12 +67,12 @@ extern void logk(int level, const char *fmt, ...);
 extern int max_loglevel;
 
 enum {
-	LOG_EMERG	= 0, /* system is dead */
-	LOG_CRIT	= 1, /* critical */
-	LOG_ERR	   	= 2, /* error */
-	LOG_WARN	= 3, /* warning */
-	LOG_INFO	= 4, /* informational */
-	LOG_DEBUG	= 5, /* debug */
+    LOG_EMERG = 0, /* system is dead */
+    LOG_CRIT = 1,  /* critical */
+    LOG_ERR = 2,   /* error */
+    LOG_WARN = 3,  /* warning */
+    LOG_INFO = 4,  /* informational */
+    LOG_DEBUG = 5, /* debug */
 };
 
 #define log_emerg(fmt, ...) logk(LOG_EMERG, fmt, ##__VA_ARGS__)
@@ -87,6 +87,8 @@ enum {
 #define log_debug(fmt, ...)
 #endif
 
-#define panic(fmt, ...) \
-do {logk(LOG_EMERG, fmt, ##__VA_ARGS__); exit(-1); } while (0)
-
+#define panic(fmt, ...)                      \
+    do {                                     \
+        logk(LOG_EMERG, fmt, ##__VA_ARGS__); \
+        exit(-1);                            \
+    } while (0)
