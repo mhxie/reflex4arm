@@ -12,8 +12,13 @@ inc = include_directories('inc')
 SPDK_INC = include_directories(join_paths('spdk', 'include'))
 DPDK_INC = include_directories(join_paths(DPDK_ROOT, 'include'))
 
+CFLAGS = [
+    '-fno-dwarf2-cfi-asm',
+    '-fno-asynchronous-unwind-tables',
+    '-O3',
+    '-march=native'
+]
 
-CFLAGS = ['-fno-dwarf2-cfi-asm', '-fno-asynchronous-unwind-tables', '-O3', '-mavx']
 if get_option('DEBUG')
     CFLAGS += ['-DDEBUG']
 endif
@@ -40,8 +45,6 @@ subdir('libix')
 subdir('apps')
 
 # libdpdk = dependency('libdpdk', method : 'pkg-config')
-CFLAGS += DPDK_MACHINE_FLAGS
-CFLAGS += SPDK_FLAGS
 
 incs = [inc, pci_dma_inc, ix_inc, SPDK_INC, DPDK_INC]
 deps += [core_deps, spdk_deps, dpdk_deps]
