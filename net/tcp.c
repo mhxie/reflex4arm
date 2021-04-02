@@ -94,6 +94,7 @@
  *
  */
 
+#include <rte_ethdev.h>
 #include <rte_per_lcore.h>
 
 #include "lwip/opt.h"
@@ -1744,7 +1745,9 @@ u16_t tcp_eff_send_mss_impl(u16_t sendmss, ipX_addr_t *dest
         if (outif == NULL) {
             return sendmss;
         }
-        mtu = outif->mtu;
+        // FIXME: correct the port number
+        // mtu = outif->mtu;
+        rte_eth_dev_get_mtu(0, &mtu);
     }
 
     if (mtu != 0) {
