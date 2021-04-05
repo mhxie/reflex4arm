@@ -58,22 +58,18 @@
 
 #pragma once
 
-#include <sys/socket.h>
-#include <rte_config.h>
-#include <rte_mempool.h>
-
-#include <ix/stddef.h>
 #include <assert.h>
 #include <ix/cpu.h>
 #include <ix/ethfg.h>
 #include <ix/log.h>
-
-
+#include <ix/stddef.h>
+#include <rte_config.h>
+#include <rte_mempool.h>
+#include <sys/socket.h>
 
 #define MEMPOOL_DEFAULT_CHUNKSIZE 128
 
-
-#undef  DEBUG_MEMPOOL
+#undef DEBUG_MEMPOOL
 
 #ifdef DEBUG_MEMPOOL
 #define MEMPOOL_INITIAL_OFFSET (sizeof(void *))
@@ -83,70 +79,67 @@
 
 // one per data type
 struct mempool_datastore {
-	uint64_t                 magic;
-	spinlock_t               lock;
-	struct rte_mempool	*pool;
-	uint32_t                nr_elems;
-	size_t                  elem_len;
-	int64_t                 num_locks;
-	const char             *prettyname;
-	struct mempool_datastore *next_ds;
+    uint64_t magic;
+    spinlock_t lock;
+    struct rte_mempool *pool;
+    uint32_t nr_elems;
+    size_t elem_len;
+    int64_t num_locks;
+    const char *prettyname;
+    struct mempool_datastore *next_ds;
 };
-
 
 struct mempool {
-	int                     num_free;
-	size_t                  elem_len;
+    int num_free;
+    size_t elem_len;
 
-	uint64_t                 magic;
-	struct mempool_datastore *datastore;
-	int                     sanity;
-	uint32_t                nr_elems;
+    uint64_t magic;
+    struct mempool_datastore *datastore;
+    int sanity;
+    uint32_t nr_elems;
 };
-#define MEMPOOL_MAGIC   0x12911776
-
+#define MEMPOOL_MAGIC 0x12911776
 
 /*
  * mempool sanity macros ensures that pointers between mempool-allocated objects are of identical type
  */
 
-#define MEMPOOL_SANITY_GLOBAL    0
-#define MEMPOOL_SANITY_PERCPU    1
+#define MEMPOOL_SANITY_GLOBAL 0
+#define MEMPOOL_SANITY_PERCPU 1
 
 #ifdef DEBUG_MEMPOOL
 
+#define MEMPOOL_SANITY_OBJECT(_a)                                 \
+    do {                                                          \
+        struct mempool **hidden = (struct mempool **)_a;          \
+        assert(hidden[-1] && hidden[-1]->magic == MEMPOOL_MAGIC); \
+    } while (0);
 
-#define MEMPOOL_SANITY_OBJECT(_a) do {\
-	struct mempool **hidden = (struct mempool **)_a;\
-	assert(hidden[-1] && hidden[-1]->magic == MEMPOOL_MAGIC); \
-	} while (0);
-
-static inline int __mempool_get_sanity(void *a)
-{
-	struct mempool **hidden = (struct mempool **)a;
-	struct mempool *p = hidden[-1];
-	return p->sanity;
+static inline int __mempool_get_sanity(void *a) {
+    struct mempool **hidden = (struct mempool **)a;
+    struct mempool *p = hidden[-1];
+    return p->sanity;
 }
 
+#define MEMPOOL_SANITY_ACCESS(_obj)  \
+    do {                             \
+        MEMPOOL_SANITY_OBJECT(_obj); \
+    } while (0);
 
-#define MEMPOOL_SANITY_ACCESS(_obj)   do { \
-	MEMPOOL_SANITY_OBJECT(_obj);\
-	} while (0);
-
-#define  MEMPOOL_SANITY_LINK(_a, _b) do {\
-	MEMPOOL_SANITY_ACCESS(_a);\
-	MEMPOOL_SANITY_ACCESS(_b);\
-	int sa = __mempool_get_sanity(_a);\
-	int sb = __mempool_get_sanity(_b);\
-	assert (sa == sb);\
-	}  while (0);
+#define MEMPOOL_SANITY_LINK(_a, _b)        \
+    do {                                   \
+        MEMPOOL_SANITY_ACCESS(_a);         \
+        MEMPOOL_SANITY_ACCESS(_b);         \
+        int sa = __mempool_get_sanity(_a); \
+        int sb = __mempool_get_sanity(_b); \
+        assert(sa == sb);                  \
+    } while (0);
 
 #else
 #define MEMPOOL_SANITY_ISPERFG(_a)
 #define MEMPOOL_SANITY_ACCESS(_a)
 #define MEMPOOL_SANITY_LINK(_a, _b)
 #endif
-
 
 /**
  * mempool_alloc - allocates an element from a memory pool
@@ -155,20 +148,17 @@ static inline int __mempool_get_sanity(void *a)
  * Returns a pointer to the allocated element or NULL if unsuccessful.
  */
 extern void *mempool_alloc_2(struct mempool *m);
-static inline void *mempool_alloc(struct mempool *m)
-{
-	// PTR to fill form mempool
-	void *ptr;
-	
-	// Get memory from mempool 
-	int ret = rte_mempool_get(m->datastore->pool, &ptr);
-	if (ret){
-		log_debug("rte_mempool_get returned error %d\n", ret);
-		return NULL;
-	}
-	else
-		return ptr;
+static inline void *mempool_alloc(struct mempool *m) {
+    // PTR to fill form mempool
+    void *ptr;
 
+    // Get memory from mempool
+    int ret = rte_mempool_get(m->datastore->pool, &ptr);
+    if (ret) {
+        log_debug("rte_mempool_get returned error %d\n", ret);
+        return NULL;
+    } else
+        return ptr;
 }
 
 /**
@@ -179,37 +169,28 @@ static inline void *mempool_alloc(struct mempool *m)
  * NOTE: Must be the same memory pool that it was allocated from
  */
 extern void mempool_free_2(struct mempool *m, void *ptr);
-static inline void mempool_free(struct mempool *m, void *ptr)
-{
-
-	// Put memory back into mempool 
-	rte_mempool_put(m->datastore->pool, ptr);
-
+static inline void mempool_free(struct mempool *m, void *ptr) {
+    // Put memory back into mempool
+    rte_mempool_put(m->datastore->pool, ptr);
 }
 
-static inline void *mempool_idx_to_ptr(struct mempool *m, uint32_t idx, int elem_len)
-{
-	void *p;
-	assert(idx < m->nr_elems);
-	p= m->datastore + elem_len * idx + MEMPOOL_INITIAL_OFFSET;
-	MEMPOOL_SANITY_ACCESS(p);
-	return p;
+static inline void *mempool_idx_to_ptr(struct mempool *m, uint32_t idx, int elem_len) {
+    void *p;
+    assert(idx < m->nr_elems);
+    p = m->datastore + elem_len * idx + MEMPOOL_INITIAL_OFFSET;
+    MEMPOOL_SANITY_ACCESS(p);
+    return p;
 }
 
-static inline uintptr_t mempool_ptr_to_idx(struct mempool *m, void *p, int elem_len)
-{
-	uintptr_t x = (uintptr_t)p - (uintptr_t)m->datastore->pool - MEMPOOL_INITIAL_OFFSET;
-	x = x / elem_len;
-	assert(x < m->nr_elems);
-	return x;
+static inline uintptr_t mempool_ptr_to_idx(struct mempool *m, void *p, int elem_len) {
+    uintptr_t x = (uintptr_t)p - (uintptr_t)m->datastore->pool - MEMPOOL_INITIAL_OFFSET;
+    x = x / elem_len;
+    assert(x < m->nr_elems);
+    return x;
 }
-
 
 extern int mempool_create_datastore(struct mempool_datastore *m, int nr_elems, size_t elem_len, const char *prettyname);
 extern int mempool_create_datastore_align(struct mempool_datastore *m, int nr_elems, size_t elem_len, const char *prettyname);
 extern int mempool_create_datastore_contig_nopad(struct mempool_datastore *m, int nr_elems, size_t elem_len, const char *prettyname);
 extern int mempool_create(struct mempool *m, struct mempool_datastore *mds, int16_t sanity_type, int16_t sanity_id);
 extern void mempool_destroy(struct mempool *m);
-
-
-

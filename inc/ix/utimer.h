@@ -31,9 +31,8 @@
 
 #pragma once
 
-
-#include <rte_per_lcore.h>
 #include <ix/stddef.h>
+#include <rte_per_lcore.h>
 
 struct utimer_list;
 

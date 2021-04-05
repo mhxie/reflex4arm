@@ -74,7 +74,7 @@
 
 #define BINARY_HEADER binary_header_blk_t
 
-#define NVME_ENABLE
+// #define NVME_ENABLE
 
 #define MAX_PAGES_PER_ACCESS 256  // max 1MB per req
 #define PAGE_SIZE 4096

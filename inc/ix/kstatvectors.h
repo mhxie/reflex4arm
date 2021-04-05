@@ -52,11 +52,9 @@
  * THE SOFTWARE.
  */
 
-
 /*
  * actually not a pragma once file
  */
-
 
 DEF_KSTATS(none);
 DEF_KSTATS(idle);

@@ -2,12 +2,14 @@
 
 # Script to run ReFlex setup after machine reboot and start the ReFlex server
 
-export REFLEX_HOME=/home/ubuntu/reflex4arm
+REFLEX_HOME=`pwd`
+ETH_NAME=`ifconfig | grep flags | head -n2 | tail -n1 | cut -d':' -f1`
+ETH_PCI=`lspci | grep ENA | tail -n1 | awk '{print $1}'`
 
-DRIVER_OVERRIDE=deps/dpdk/build/kernel/linux/igb_uio/igb_uio.ko $REFLEX_HOME/deps/spdk/scripts/setup.sh
+DRIVER_OVERRIDE=spdk/dpdk/build-tmp/kernel/linux/igb_uio/igb_uio.ko $REFLEX_HOME/spdk/scripts/setup.sh
 
-ifconfig ens6 down
-$REFLEX_HOME/deps/dpdk/usertools/dpdk-devbind.py --bind=igb_uio 0000:00:04.0
+ifconfig $ETH_NAME down
+$REFLEX_HOME/spdk/dpdk/usertools/dpdk-devbind.py --bind=igb_uio $ETH_PCI
 
 # mkdir -p /mnt/huge
 # mount -t hugetlbfs nodev /mnt/huge
