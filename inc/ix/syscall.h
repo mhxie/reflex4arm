@@ -57,12 +57,11 @@
  */
 
 #pragma once
-#include <rte_per_lcore.h>
-
 #include <ix/compiler.h>
 #include <ix/cpu.h>
 #include <ix/log.h>
 #include <ix/types.h>
+#include <rte_per_lcore.h>
 #define SYSCALL_START 0x100000
 
 /*

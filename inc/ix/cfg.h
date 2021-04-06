@@ -61,49 +61,48 @@
 #include <ix/pci.h>
 #include <net/ethernet.h>
 
-
-#define CFG_MAX_PORTS    16
-#define CFG_MAX_CPU     128
-#define CFG_MAX_ETHDEV   16
-#define CFG_MAX_NVMEDEV   24
+#define CFG_MAX_PORTS 16
+#define CFG_MAX_CPU 128
+#define CFG_MAX_ETHDEV 16
+#define CFG_MAX_NVMEDEV 24
 
 enum dev_types {
-	ETH_DEV,
-	NVME_DEV,
+    ETH_DEV,
+    NVME_DEV,
 };
 
 enum nvme_dev_models {
-	DEFAULT_FLASH, 		// generic device with no token limit
-	FAKE_FLASH,			// no flash: don't schedule nvme requests on device, directly call nvme completion event
-	FLASH_DEV_MODEL,	// flash with request cost model and token limits specified in config input file
+    DEFAULT_FLASH,    // generic device with no token limit
+    FAKE_FLASH,       // no flash: don't schedule nvme requests on device, directly call nvme completion event
+    FLASH_DEV_MODEL,  // flash with request cost model and token limits specified in config input file
 };
 
 struct cfg_ip_addr {
-	uint32_t addr;
+    uint32_t addr;
 };
 
 struct cfg_parameters {
-	struct cfg_ip_addr host_addr;
-	struct cfg_ip_addr broadcast_addr;
-	struct cfg_ip_addr gateway_addr;
-	uint32_t mask;
+    struct cfg_ip_addr host_addr;
+    struct cfg_ip_addr broadcast_addr;
+    struct cfg_ip_addr gateway_addr;
+    uint32_t mask;
 
-	struct eth_addr mac;
+    struct eth_addr mac;
 
-	int num_cpus;
-	unsigned int cpu[CFG_MAX_CPU];
+    int num_cpus;
+    unsigned int cpu[CFG_MAX_CPU];
 
-	int num_ethdev;
-	struct pci_addr ethdev[CFG_MAX_ETHDEV];
+    int num_ethdev;
+    struct pci_addr ethdev[CFG_MAX_ETHDEV];
 
-	int num_nvmedev;
-	struct pci_addr nvmedev[CFG_MAX_NVMEDEV];
-	unsigned long ns_sizes[CFG_MAX_NVMEDEV];
+    int num_nvmedev;
+    struct pci_addr nvmedev[CFG_MAX_NVMEDEV];
+    unsigned long ns_sizes[CFG_MAX_NVMEDEV];
 
-	int num_ports;
-	uint16_t ports[CFG_MAX_PORTS];
+    int num_ports;
+    uint16_t ports[CFG_MAX_PORTS];
 
-	char loader_path[256];
+    char loader_path[256];
 };
 
 extern struct cfg_parameters CFG;
@@ -111,15 +110,14 @@ extern struct cfg_parameters CFG;
 int nvme_dev_model;
 bool nvme_sched_flag;
 
-
 int NVME_READ_COST;
 int NVME_WRITE_COST;
 unsigned long MAX_DEV_TOKEN_RATE;
 
-struct lat_tokenrate_pair{
-	uint32_t p95_tail_latency;
-	uint64_t token_rate_limit;
-	uint64_t token_rdonly_rate_limit;
+struct lat_tokenrate_pair {
+    uint32_t p95_tail_latency;
+    uint64_t token_rate_limit;
+    uint64_t token_rdonly_rate_limit;
 };
 
 struct lat_tokenrate_pair dev_model[128];

@@ -12,7 +12,6 @@ if get_option('ENABLE_KSTATS')
     core_sources += ['kstats.c']
 endif
 
-
 DPDK_LIB_NAMES = [
     # 'librte_ethdev.a',
     # 'librte_mbuf.a',
@@ -54,23 +53,6 @@ foreach NAME : DPDK_WHOLE_LIB_NAMES
                         '-Wl,--no-whole-archive'])
 endforeach
 
-
-DPDK_MACHINE_FLAGS = [
-    '-DRTE_MACHINE_CPUFLAG_SSE',
-    '-DRTE_MACHINE_CPUFLAG_SSE2',
-    '-DRTE_MACHINE_CPUFLAG_SSE3',
-    '-DRTE_MACHINE_CPUFLAG_SSSE3',
-    '-DRTE_MACHINE_CPUFLAG_SSE4_1',
-    '-DRTE_MACHINE_CPUFLAG_SSE4_2',
-    '-DRTE_MACHINE_CPUFLAG_AES',
-    '-DRTE_MACHINE_CPUFLAG_PCLMULQDQ',
-    '-DRTE_MACHINE_CPUFLAG_AVX',
-    '-DRTE_MACHINE_CPUFLAG_RDRAND',
-    '-DRTE_MACHINE_CPUFLAG_FSGSBASE',
-    '-DRTE_MACHINE_CPUFLAG_F16C',
-    '-DRTE_MACHINE_CPUFLAG_AVX2'
-]
-
 SPDK_LIB_NAMES = [
     'libspdk_env_dpdk.a',
     # 'libspdk_nvme.a',
@@ -103,9 +85,6 @@ foreach NAME : SPDK_WHOLE_LIB_NAMES
                         '-Wl,--no-whole-archive'])
 endforeach
 
-
-SPDK_FLAGS = ['-DSPDK_STRING_H']
-
 # core_deps = [dpdk]
 core_deps = []
 core_deps += dependency('threads')
@@ -119,8 +98,16 @@ foreach LIB : LDLIBS
     core_deps += dep
 endforeach
 
-ISAL_DIR = join_paths('..', 'spdk', 'isa-l', '.libs')
-ISAL_INC = include_directories(join_paths(ISAL_DIR, '..'))
-isal_dep = declare_dependency(
-    link_args : ['-L' + ISAL_DIR, '-lisal'],
-    include_directories : ISAL_INC)
+output = run_command('nasm', '-v')
+nasm_ver = output.stdout().split(' ')[2]
+
+if nasm_ver >= '2.13.03'
+    ISAL_DIR = join_paths('..', 'spdk', 'isa-l', '.libs')
+    ISAL_INC = include_directories(join_paths(ISAL_DIR, '..'))
+    isal_dep = declare_dependency(
+        link_args : ['-L' + ISAL_DIR, '-lisal'],
+        include_directories : ISAL_INC)
+    core_deps += isal_dep
+else
+    message('ISA-L requires NASM version 2.13.03 or newer, got', nasm_ver)
+endif

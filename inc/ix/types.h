@@ -85,25 +85,23 @@ typedef signed long long int64_t;
 
 #endif /* __WORDSIZE == __64BIT_WORDS */
 
-typedef unsigned long	uintptr_t;
-typedef long		off_t;
-typedef unsigned long	size_t;
-typedef long		ssize_t;
+typedef unsigned long uintptr_t;
+typedef long off_t;
+typedef unsigned long size_t;
+typedef long ssize_t;
 
 typedef struct {
-	volatile int locked;
+    volatile int locked;
 } spinlock_t;
 
 typedef struct {
-	int cnt;
+    int cnt;
 } atomic_t;
 
 typedef struct {
-	long cnt;
+    long cnt;
 } atomic64_t;
 
-
 typedef struct {
-	unsigned long cnt;
+    unsigned long cnt;
 } atomic_u64_t;
-

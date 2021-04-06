@@ -38,15 +38,18 @@ Client-end:
 - Intel(R) Core(TM) i7-7700 CPU @ 3.60GHz
 - Memory size: 2\*8 GB
 - Ubuntu 17.10 (kernel 5.0.7)
-- DPDK/SPDK: v20.07/v20.05
+- DPDK/SPDK: v19.05/v19.04
 
 ## AWS EC2 Environments
 
 x86_64 Server:
 
-- Image: Ubuntu Server 20.04 LTS (ami-06e54d05255faf8f6)
+- Image:
+   - Ubuntu Server 20.04 LTS (ami-06e54d05255faf8f6) or
+   - Amazon Linux 2 AMI (ami-00f9f4069d04c0c6e)
 - Instance: i3-large or i3-xlarge or i3-2xlarge
 - Network Interface: 2 \* Elastic Network Adaptor (ENA)
+- DPDK/SPDK: v20.07/v20.05
 
 ARM Server: TBD
 
@@ -73,9 +76,7 @@ ARM Server: TBD
    sudo yum update
    sudo yum install libconfig-devel libpciaccess-devel python3 python3-pip
    sudo yum install kernel-devel-$(uname -r)
-   # patch the dependency script
-   sed -i 's/redhat-release/yum/g' deps/spdk/scripts/pkgdep.sh
-   sudo ./deps/spdk/scripts/pkgdep.sh
+   sudo ./spdk/scripts/pkgdep/rhel.sh
    ```
 
 3. Build the dependecies:
@@ -83,7 +84,7 @@ ARM Server: TBD
    Patch the `spdk/dpdk` with:
 
    - In `dpdkbuild/Makefile`, append `net/ena` after `DPDK_DRIVERS = bus bus/pci bus/vdev mempool/ring`
-   - In `lib/librte_net/meson.build`, append `rte_ether.h` & `rte_ether.c`
+   <!-- - In `lib/librte_net/meson.build`, append `rte_ether.h` & `rte_ether.c` -->
    - In `lib/librte_timer/meson.build`, enable `build` as `true`
 
    Build SPDK && Drivers
@@ -109,7 +110,8 @@ ARM Server: TBD
 
    ```
    cp ix.conf.sample ix.conf
-   # modify at least host_addr, gateway_addr, devices, flow director, and nvme_devices (ns_size at clients)
+   # modify at least host_addr, gateway_addr, devices, flow director, and nvme_devices
+   # comment out the nvme_devices and modify ns_size at clients
 
    # sudo modprobe uio
    sudo DRIVER_OVERRIDE=spdk/dpdk/build-tmp/kernel/linux/igb_uio/igb_uio.ko ./spdk/scripts/setup.sh
@@ -254,6 +256,7 @@ for i in 1 2 4 8 16 32 ; do BLKSIZE=4k DEPTH=$i fio randread_remote.fio; done
 ## Run ReFlex4ARM in boot time
 
 ```
+sed -i "s|ubuntu|$USER|g" sample.service
 sudo cp sample.service /etc/systemd/system/reflex4arm.service
 sudo chmod 644 /etc/systemd/system/reflex4arm.service
 sudo systemctl enable reflex4arm
