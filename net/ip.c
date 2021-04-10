@@ -56,29 +56,25 @@
  * ip.c - Ethernet + IP Version 4 Support
  */
 
-#include <stdio.h>
-
-#include <sys/socket.h>
-#include <rte_config.h>
-#include <rte_mbuf.h>
-
-#include <ix/stddef.h>
+#include <arch/chksum.h>
 #include <ix/byteorder.h>
-#include <ix/errno.h>
-#include <ix/log.h>
 #include <ix/cfg.h>
 #include <ix/control_plane.h>
+#include <ix/errno.h>
 #include <ix/ethdev.h>
-
-#include <arch/chksum.h>
-
+#include <ix/log.h>
+#include <ix/stddef.h>
 #include <net/ethernet.h>
 #include <net/ip.h>
+#include <rte_config.h>
+#include <rte_mbuf.h>
+#include <stdio.h>
+#include <sys/socket.h>
 
 /* FIXME: remove when we integrate better with LWIP */
 #include <lwip/pbuf.h>
-#include "net.h"
 
+#include "net.h"
 
 /**
  * ip_addr_to_str - prints an IP address as a human-readable string
@@ -87,106 +83,98 @@
  *
  * The buffer must be IP_ADDR_STR_LEN in size.
  */
-void ip_addr_to_str(struct ip_addr *addr, char *str)
-{
-	snprintf(str, IP_ADDR_STR_LEN, "%d.%d.%d.%d",
-		 ((addr->addr >> 24) & 0xff),
-		 ((addr->addr >> 16) & 0xff),
-		 ((addr->addr >> 8) & 0xff),
-		 (addr->addr & 0xff));
+void ip_addr_to_str(struct ip_addr *addr, char *str) {
+    snprintf(str, IP_ADDR_STR_LEN, "%d.%d.%d.%d",
+             ((addr->addr >> 24) & 0xff),
+             ((addr->addr >> 16) & 0xff),
+             ((addr->addr >> 8) & 0xff),
+             (addr->addr & 0xff));
 }
 
-static void ip_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct ip_hdr *hdr)
-{
-	int hdrlen, pktlen;
+static void ip_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct ip_hdr *hdr) {
+    int hdrlen, pktlen;
 
-	/* check that the packet is long enough */
-	if (!mbuf_enough_space(pkt, hdr, sizeof(struct ip_hdr)))
-		goto out;
-	/* check for IP version 4 */
-	if (hdr->version != 4) {
-		goto out;
-	}
-	/* the minimum legal IPv4 header length is 20 bytes (5 words) */
-	if (hdr->header_len < 5) {
-		goto out;
-	}
+    /* check that the packet is long enough */
+    if (!mbuf_enough_space(pkt, hdr, sizeof(struct ip_hdr)))
+        goto out;
+    /* check for IP version 4 */
+    if (hdr->version != 4) {
+        goto out;
+    }
+    /* the minimum legal IPv4 header length is 20 bytes (5 words) */
+    if (hdr->header_len < 5) {
+        goto out;
+    }
 
-	/* drop all IP fragment packets (unsupported) */
-	if (ntoh16(hdr->off) & (IP_OFFMASK | IP_MF)) {
-		goto out;
-	}
+    /* drop all IP fragment packets (unsupported) */
+    if (ntoh16(hdr->off) & (IP_OFFMASK | IP_MF)) {
+        goto out;
+    }
 
-	hdrlen = hdr->header_len * sizeof(uint32_t);
-	pktlen = ntoh16(hdr->len);
+    hdrlen = hdr->header_len * sizeof(uint32_t);
+    pktlen = ntoh16(hdr->len);
 
-	/* the ip total length must be large enough to hold the header */
-	if (pktlen < hdrlen) {
-		goto out;
-	}
-	if (!mbuf_enough_space(pkt, hdr, pktlen))
-		goto out;
+    /* the ip total length must be large enough to hold the header */
+    if (pktlen < hdrlen) {
+        goto out;
+    }
+    if (!mbuf_enough_space(pkt, hdr, pktlen))
+        goto out;
 
-	pktlen -= hdrlen;
+    pktlen -= hdrlen;
 
-	switch (hdr->proto) {
-	case IPPROTO_TCP:
-		/* FIXME: change when we integrate better with LWIP */
-		tcp_input_tmp(cur_fg, pkt, hdr, mbuf_nextd_off(hdr, void *, hdrlen));
-		break;
-		break;
-	case IPPROTO_ICMP:
-		icmp_input(cur_fg, pkt,										
-			   mbuf_nextd_off(hdr, struct lwip_icmp_hdr *, hdrlen),
-			   pktlen);
+    switch (hdr->proto) {
+        case IPPROTO_TCP:
+            /* FIXME: change when we integrate better with LWIP */
+            tcp_input_tmp(cur_fg, pkt, hdr, mbuf_nextd_off(hdr, void *, hdrlen));
+            break;
+            break;
+        case IPPROTO_ICMP:
+            icmp_input(cur_fg, pkt,
+                       mbuf_nextd_off(hdr, struct lwip_icmp_hdr *, hdrlen),
+                       pktlen);
 
-		break;
-	default: 
-		goto out;
-	}
+            break;
+        default:
+            goto out;
+    }
 
-	return;
+    return;
 
 out:
-	rte_pktmbuf_free(pkt);
+    rte_pktmbuf_free(pkt);
 }
 
-void eth_input_process(struct rte_mbuf *pkt, int nb_pkts){
+void eth_input_process(struct rte_mbuf *pkt, int nb_pkts) {
+    struct eth_hdr *ethhdr = rte_pktmbuf_mtod(pkt, struct eth_hdr *);
+    struct eth_fg *fg;
 
-	struct eth_hdr *ethhdr = rte_pktmbuf_mtod(pkt, struct eth_hdr *);
-	struct eth_fg *fg;
+    //set_current_queue(rx_queue);
+    //fg = fgs[pkt->fg_id];
+    fg = fgs[percpu_get(cpu_id)];  //FIXME: figure out flow group stuff
 
-	//set_current_queue(rx_queue);
-	//fg = fgs[pkt->fg_id];
-	fg = fgs[percpu_get(cpu_id)]; //FIXME: figure out flow group stuff
+    eth_fg_set_current(fg);
 
-	eth_fg_set_current(fg);
+    assert(nb_pkts == 1);
 
-	assert(nb_pkts == 1); 
+    if (ethhdr->type == hton16(ETHTYPE_IP)) {
+        ip_input(fg, pkt, mbuf_nextd(ethhdr, struct ip_hdr *));
+    } else if (ethhdr->type == hton16(ETHTYPE_ARP)) {
+        arp_input(pkt, mbuf_nextd(ethhdr, struct lwip_arp_hdr *));
+    } else {
+        rte_pktmbuf_free(pkt);
+    }
 
-	if (ethhdr->type == hton16(ETHTYPE_IP)){
-		ip_input(fg, pkt, mbuf_nextd(ethhdr, struct ip_hdr *));
-	}
-	else if (ethhdr->type == hton16(ETHTYPE_ARP)){
-		arp_input(pkt, mbuf_nextd(ethhdr, struct lwip_arp_hdr *));
-	}
-	else {
-		rte_pktmbuf_free(pkt); 
-	}
-
-//	unset_current_queue();
-	unset_current_fg();
-
+    //	unset_current_queue();
+    unset_current_fg();
 }
-
 
 /**
  * eth_input - process an ethernet packet
  * @pkt: the mbuf containing the packet
  */
-void eth_input(struct eth_rx_queue *rx_queue, struct mbuf *pkt)
-{
-	/*
+void eth_input(struct eth_rx_queue *rx_queue, struct mbuf *pkt) {
+    /*
 	struct eth_hdr *ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
 	struct eth_fg *fg;
 
@@ -213,90 +201,86 @@ void eth_input(struct eth_rx_queue *rx_queue, struct mbuf *pkt)
 /* FIXME: change when we integrate better with LWIP */
 /* NOTE: This function is only called for TCP */
 int ip_output_hinted(struct eth_fg *cur_fg, struct pbuf *p, struct ip_addr *src, struct ip_addr *dest,
-		     uint8_t ttl, uint8_t tos, uint8_t proto, uint8_t *dst_eth_addr)
-{
-	int ret;
-	struct rte_mbuf *pkt;
-	struct eth_hdr *ethhdr;
-	struct ip_hdr *iphdr;
-	unsigned char *payload;
-	struct pbuf *curp;
-	struct ip_addr dst_addr;
+                     uint8_t ttl, uint8_t tos, uint8_t proto, uint8_t *dst_eth_addr) {
+    int ret;
+    struct rte_mbuf *pkt;
+    struct eth_hdr *ethhdr;
+    struct ip_hdr *iphdr;
+    unsigned char *payload;
+    struct pbuf *curp;
+    struct ip_addr dst_addr;
 
-	pkt = mbuf_alloc_local();
-	if (unlikely(!(pkt)))
-		return -ENOMEM;
+    pkt = mbuf_alloc_local();
+    if (unlikely(!(pkt)))
+        return -ENOMEM;
 
-	ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
-	iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
-	payload = mbuf_nextd(iphdr, unsigned char *);
+    ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
+    iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
+    payload = mbuf_nextd(iphdr, unsigned char *);
 
-	dst_addr.addr = ntoh32(dest->addr);
+    dst_addr.addr = ntoh32(dest->addr);
 
-	ip_setup_header(iphdr, proto, ntoh32(src->addr),
-			ntoh32(dest->addr), p->tot_len);
-	iphdr->tos = tos;
-	iphdr->ttl = ttl;
+    ip_setup_header(iphdr, proto, ntoh32(src->addr),
+                    ntoh32(dest->addr), p->tot_len);
+    iphdr->tos = tos;
+    iphdr->ttl = ttl;
 
-	for (curp = p; curp; curp = curp->next) {
-		memcpy(payload, curp->payload, curp->len);
-		payload += curp->len;
-	}
+    for (curp = p; curp; curp = curp->next) {
+        memcpy(payload, curp->payload, curp->len);
+        payload += curp->len;
+    }
 
-	/* Offload IP and TCP tx checksums */
-	pkt->ol_flags = PKT_TX_IP_CKSUM;
-	pkt->ol_flags |= PKT_TX_TCP_CKSUM;
-	pkt->ol_flags |= PKT_TX_IPV4;
+    /* Offload IP and TCP tx checksums */
+    pkt->ol_flags = PKT_TX_IP_CKSUM;
+    pkt->ol_flags |= PKT_TX_TCP_CKSUM;
+    pkt->ol_flags |= PKT_TX_IPV4;
 
-	pkt->l2_len = sizeof (struct eth_hdr);
-	pkt->l3_len = sizeof (struct ip_hdr);
+    pkt->l2_len = sizeof(struct eth_hdr);
+    pkt->l3_len = sizeof(struct ip_hdr);
 
+    ret = ip_send_one(cur_fg, &dst_addr, pkt, sizeof(struct eth_hdr) + sizeof(struct ip_hdr) + p->tot_len);
+    if (unlikely(ret)) {
+        mbuf_free(pkt);
+        return -EIO;
+    }
 
-	ret = ip_send_one(cur_fg, &dst_addr, pkt, sizeof(struct eth_hdr) +
-			  sizeof(struct ip_hdr) + p->tot_len);
-	if (unlikely(ret)) {
-		mbuf_free(pkt);
-		return -EIO;
-	}
-
-	return 0;
+    return 0;
 }
 
-int ip_send_one(struct eth_fg *cur_fg, struct ip_addr *dst_addr, struct rte_mbuf *pkt, size_t len)
-{
-	int ret;
-	struct eth_hdr *ethhdr;
-	struct eth_tx_queue *txq;
-	struct ip_addr dst_addr_;
+int ip_send_one(struct eth_fg *cur_fg, struct ip_addr *dst_addr, struct rte_mbuf *pkt, size_t len) {
+    int ret;
+    struct eth_hdr *ethhdr;
+    struct eth_tx_queue *txq;
+    struct ip_addr dst_addr_;
 
-	ethhdr = rte_pktmbuf_mtod(pkt, struct eth_hdr *);
-	ethhdr->shost = CFG.mac;
-	ethhdr->type = hton16(ETHTYPE_IP);
+    ethhdr = rte_pktmbuf_mtod(pkt, struct eth_hdr *);
+    ethhdr->shost = CFG.mac;
+    ethhdr->type = hton16(ETHTYPE_IP);
 
-	if ((dst_addr->addr & CFG.mask) == (CFG.host_addr.addr & CFG.mask))
-		dst_addr_ = *dst_addr;
-	else
-		dst_addr_.addr = CFG.gateway_addr.addr;
+    if ((dst_addr->addr & CFG.mask) == (CFG.host_addr.addr & CFG.mask))
+        dst_addr_ = *dst_addr;
+    else
+        dst_addr_.addr = CFG.gateway_addr.addr;
 
-	ret = arp_lookup_mac(&dst_addr_, &ethhdr->dhost);
-	// printf("eth_dhost: %d, eth_shost: %d\n", ethhdr->dhost, ethhdr->shost);
-	if (unlikely(ret)) {
-		arp_add_pending_pkt(&dst_addr_, cur_fg, pkt, len);
-		return 0;
-	}
+    ret = arp_lookup_mac(&dst_addr_, &ethhdr->dhost);
+    // printf("eth_dhost: %d, eth_shost: %d\n", ethhdr->dhost, ethhdr->shost);
+    if (unlikely(ret)) {
+        arp_add_pending_pkt(&dst_addr_, cur_fg, pkt, len);
+        return 0;
+    }
 
-	txq = percpu_get(eth_txqs)[cur_fg->dev_idx];
+    txq = percpu_get(eth_txqs)[cur_fg->dev_idx];
 
-	pkt->data_len = len; 
-	pkt->pkt_len = len; 
-	// printf("ip_send_one: len %u, pkt %p, dst_addr is %x --> queue %d\n", len, pkt, dst_addr->addr, percpu_get(cpu_id));
-	// printf("@active_eth_port: %d, tx_buf: %d\n", active_eth_port, percpu_get(tx_buf));
-	ret = rte_eth_tx_buffer(active_eth_port, percpu_get(cpu_id), percpu_get(tx_buf), pkt);
+    pkt->data_len = len;
+    pkt->pkt_len = len;
+    // printf("ip_send_one: len %u, pkt %p, dst_addr is %x --> queue %d\n", len, pkt, dst_addr->addr, percpu_get(cpu_id));
+    // printf("@active_eth_port: %d, tx_buf: %d\n", active_eth_port, percpu_get(tx_buf));
+    ret = rte_eth_tx_buffer(active_eth_port, percpu_get(cpu_id), percpu_get(tx_buf), pkt);
 
-	if (unlikely(ret < 0)) {
-		printf("ip_send_one: tx ret is %d\n", ret);
-		return -EIO;
-	}
+    if (unlikely(ret < 0)) {
+        printf("ip_send_one: tx ret is %d\n", ret);
+        return -EIO;
+    }
 
-	return 0;
+    return 0;
 }

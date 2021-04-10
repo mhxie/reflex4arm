@@ -52,117 +52,102 @@
  * THE SOFTWARE.
  */
 
-
-#include <sys/socket.h>
-#include <rte_per_lcore.h>
-
+#include <ix/ethfg.h>
 #include <ix/mbuf.h>
 #include <ix/timer.h>
-#include <ix/ethfg.h>
-
-#include <net/ip.h>
-
 #include <lwip/memp.h>
 #include <lwip/pbuf.h>
-#include <ix/ethfg.h>
+#include <net/ip.h>
+#include <rte_per_lcore.h>
+#include <sys/socket.h>
 
 static struct netif {
-	char unused[32];
+    char unused[32];
 } netif;
 
-struct ip_globals
-{
-	char unused[20];
-	struct ip_addr current_iphdr_src;
-	struct ip_addr current_iphdr_dest;
+struct ip_globals {
+    char unused[20];
+    struct ip_addr current_iphdr_src;
+    struct ip_addr current_iphdr_dest;
 };
 
-void tcp_input(struct eth_fg *cur_fg,struct pbuf *p, struct ip_addr *src, struct ip_addr *dest);
+void tcp_input(struct eth_fg *cur_fg, struct pbuf *p, struct ip_addr *src, struct ip_addr *dest);
 
 //DEFINE_PERCPU(struct ip_globals, ip_data);
 
-
-struct netif *ip_route(struct ip_addr *dest)
-{
-	return &netif;
+struct netif *ip_route(struct ip_addr *dest) {
+    return &netif;
 }
 
-void tcp_input_tmp(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct ip_hdr *iphdr, void *tcphdr)
-{
-	struct pbuf *pbuf;
+void tcp_input_tmp(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct ip_hdr *iphdr, void *tcphdr) {
+    struct pbuf *pbuf;
 
-	pbuf = pbuf_alloc(PBUF_RAW, ntoh16(iphdr->len) - iphdr->header_len * 4, PBUF_ROM);
-	pbuf->payload = tcphdr;
-	pbuf->mbuf = pkt;
-//	percpu_get(ip_data).current_iphdr_dest.addr = iphdr->dst_addr.addr;
-//	percpu_get(ip_data).current_iphdr_src.addr = iphdr->src_addr.addr;
-	tcp_input(cur_fg, pbuf, &iphdr->src_addr, &iphdr->dst_addr);
+    pbuf = pbuf_alloc(PBUF_RAW, ntoh16(iphdr->len) - iphdr->header_len * 4, PBUF_ROM);
+    pbuf->payload = tcphdr;
+    pbuf->mbuf = pkt;
+    //	percpu_get(ip_data).current_iphdr_dest.addr = iphdr->dst_addr.addr;
+    //	percpu_get(ip_data).current_iphdr_src.addr = iphdr->src_addr.addr;
+    tcp_input(cur_fg, pbuf, &iphdr->src_addr, &iphdr->dst_addr);
 }
 
+static struct mempool_datastore pbuf_ds;
+static struct mempool_datastore pbuf_with_payload_ds;
+static struct mempool_datastore tcp_pcb_ds;
+static struct mempool_datastore tcp_seg_ds;
 
-static struct mempool_datastore  pbuf_ds;
-static struct mempool_datastore  pbuf_with_payload_ds;
-static struct mempool_datastore  tcp_pcb_ds;
-static struct mempool_datastore  tcp_seg_ds;
+RTE_DEFINE_PER_LCORE(struct mempool, pbuf_mempool __attribute__((aligned(64))));
+RTE_DEFINE_PER_LCORE(struct mempool, pbuf_with_payload_mempool __attribute__((aligned(64))));
+RTE_DEFINE_PER_LCORE(struct mempool, tcp_pcb_mempool __attribute__((aligned(64))));
+RTE_DEFINE_PER_LCORE(struct mempool, tcp_pcb_listen_mempool __attribute__((aligned(64))));
+RTE_DEFINE_PER_LCORE(struct mempool, tcp_seg_mempool __attribute__((aligned(64))));
 
-RTE_DEFINE_PER_LCORE(struct mempool, pbuf_mempool __attribute__ ((aligned (64))));
-RTE_DEFINE_PER_LCORE(struct mempool, pbuf_with_payload_mempool __attribute__ ((aligned (64))));
-RTE_DEFINE_PER_LCORE(struct mempool, tcp_pcb_mempool __attribute__ ((aligned (64))));
-RTE_DEFINE_PER_LCORE(struct mempool, tcp_pcb_listen_mempool __attribute__ ((aligned (64))));
-RTE_DEFINE_PER_LCORE(struct mempool, tcp_seg_mempool __attribute__ ((aligned (64))));
-
-#define MEMP_SIZE (256*1024)
-#define PBUF_CAPACITY (768*1024)
+#define MEMP_SIZE (256 * 1024)
+#define PBUF_CAPACITY (768 * 1024)
 
 #define PBUF_WITH_PAYLOAD_SIZE 4096
 
-static int init_mempool(struct mempool_datastore *m, int nr_elems, size_t elem_len, const char *prettyname)
-{
-	return mempool_create_datastore(m, nr_elems, elem_len, prettyname);
+static int init_mempool(struct mempool_datastore *m, int nr_elems, size_t elem_len, const char *prettyname) {
+    return mempool_create_datastore(m, nr_elems, elem_len, prettyname);
 }
 
-int memp_init(void)
-{
-	if (init_mempool(&pbuf_ds, PBUF_CAPACITY, memp_sizes[MEMP_PBUF],"pbuf"))
-		return 1;
+int memp_init(void) {
+    if (init_mempool(&pbuf_ds, PBUF_CAPACITY, memp_sizes[MEMP_PBUF], "pbuf"))
+        return 1;
 
-	if (init_mempool(&pbuf_with_payload_ds, MEMP_SIZE, PBUF_WITH_PAYLOAD_SIZE,"pbuf_payload"))
-		return 1;
+    if (init_mempool(&pbuf_with_payload_ds, MEMP_SIZE, PBUF_WITH_PAYLOAD_SIZE, "pbuf_payload"))
+        return 1;
 
-	if (init_mempool(&tcp_pcb_ds, MEMP_SIZE, memp_sizes[MEMP_TCP_PCB],"tcp_pcb"))
-		return 1;
+    if (init_mempool(&tcp_pcb_ds, MEMP_SIZE, memp_sizes[MEMP_TCP_PCB], "tcp_pcb"))
+        return 1;
 
-	if (init_mempool(&tcp_seg_ds, MEMP_SIZE, memp_sizes[MEMP_TCP_SEG],"tcp_seg"))
-		return 1;
-	return 0;
+    if (init_mempool(&tcp_seg_ds, MEMP_SIZE, memp_sizes[MEMP_TCP_SEG], "tcp_seg"))
+        return 1;
+    return 0;
 }
 
-int memp_init_cpu(void)
-{
-	int cpu = percpu_get(cpu_id);
+int memp_init_cpu(void) {
+    int cpu = percpu_get(cpu_id);
 
-	if (mempool_create(&percpu_get(pbuf_mempool),&pbuf_ds,MEMPOOL_SANITY_PERCPU, cpu))
-		return 1;
+    if (mempool_create(&percpu_get(pbuf_mempool), &pbuf_ds, MEMPOOL_SANITY_PERCPU, cpu))
+        return 1;
 
-	if (mempool_create(&percpu_get(pbuf_with_payload_mempool), &pbuf_with_payload_ds, MEMPOOL_SANITY_PERCPU, cpu))
-		return 1;
+    if (mempool_create(&percpu_get(pbuf_with_payload_mempool), &pbuf_with_payload_ds, MEMPOOL_SANITY_PERCPU, cpu))
+        return 1;
 
-	if (mempool_create(&percpu_get(tcp_pcb_mempool), &tcp_pcb_ds, MEMPOOL_SANITY_PERCPU, cpu))
-		return 1;
+    if (mempool_create(&percpu_get(tcp_pcb_mempool), &tcp_pcb_ds, MEMPOOL_SANITY_PERCPU, cpu))
+        return 1;
 
-	if (mempool_create(&percpu_get(tcp_seg_mempool), &tcp_seg_ds, MEMPOOL_SANITY_PERCPU, cpu))
-		return 1;
+    if (mempool_create(&percpu_get(tcp_seg_mempool), &tcp_seg_ds, MEMPOOL_SANITY_PERCPU, cpu))
+        return 1;
 
-	return 0;
+    return 0;
 }
 
-void *mem_malloc(size_t size)
-{
-	LWIP_ASSERT("mem_malloc", size <= PBUF_WITH_PAYLOAD_SIZE);
-	return mempool_alloc(&percpu_get(pbuf_with_payload_mempool));
+void *mem_malloc(size_t size) {
+    LWIP_ASSERT("mem_malloc", size <= PBUF_WITH_PAYLOAD_SIZE);
+    return mempool_alloc(&percpu_get(pbuf_with_payload_mempool));
 }
 
-void mem_free(void *ptr)
-{
-	mempool_free(&percpu_get(pbuf_with_payload_mempool), ptr);
+void mem_free(void *ptr) {
+    mempool_free(&percpu_get(pbuf_with_payload_mempool), ptr);
 }
