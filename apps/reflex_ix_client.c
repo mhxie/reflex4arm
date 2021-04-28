@@ -1,32 +1,33 @@
 /*
  * Copyright (c) 2015-2017, Stanford University
- *  
+ *
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
- *  * Redistributions of source code must retain the above copyright notice, 
+ *
+ *  * Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
- * 
+ *
  *  * Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
  *    and/or other materials provided with the distribution.
- * 
+ *
  *  * Neither the name of the copyright holder nor the names of its
  *    contributors may be used to endorse or promote products derived from
  *    this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
@@ -72,11 +73,12 @@
 
 #define BINARY_HEADER binary_header_blk_t
 
-#define ROUND_UP(num, multiple) ((((num) + (multiple)-1) / (multiple)) * (multiple))
+#define ROUND_UP(num, multiple) \
+    ((((num) + (multiple)-1) / (multiple)) * (multiple))
 
-#define MAKE_IP_ADDR(a, b, c, d)                 \
-    (((uint32_t)a << 24) | ((uint32_t)b << 16) | \
-     ((uint32_t)c << 8) | (uint32_t)d)
+#define MAKE_IP_ADDR(a, b, c, d)                                      \
+    (((uint32_t)a << 24) | ((uint32_t)b << 16) | ((uint32_t)c << 8) | \
+     (uint32_t)d)
 
 #define MAX_SECTORS_PER_ACCESS 64
 #define MAX_LATENCY 2000
@@ -90,7 +92,7 @@
 static const unsigned long sweep[NUM_TESTS] = {100000, 110000, 120000, 130000,
                                                132000, 134000, 136000, 138000};
 
-//FIXEME: hard-coding sector size for now
+// FIXEME: hard-coding sector size for now
 static int ns_sector_size = 512;
 static int log_ns_sector_size = 9;
 // static long ns_size = 0xE8E0DB6000;	// Samsung a801
@@ -161,7 +163,8 @@ int compare_ul(const void *a, const void *b) {
     return (*da > *db) - (*da < *db);
 }
 
-long get_percentile(unsigned long m[], unsigned long num_measure, unsigned long percentile) {
+long get_percentile(unsigned long m[], unsigned long num_measure,
+                    unsigned long percentile) {
     unsigned int i = 0;
     unsigned long tmp = 0;
 
@@ -179,19 +182,20 @@ struct nvme_req {
     struct ixev_nvme_req_ctx ctx;
     size_t size;
     struct pp_conn *conn;
-    struct ixev_ref ref;  //for zero-copy
+    struct ixev_ref ref;  // for zero-copy
     struct list_node link;
     unsigned long sent_time;
     void *remote_req_handle;
-    char *buf[MAX_PAGES_PER_ACCESS];  //nvme buffer to read/write data into
+    char *buf[MAX_PAGES_PER_ACCESS];  // nvme buffer to read/write data into
     int current_sgl_buf;
 };
 
 struct pp_conn {
     struct ixev_ctx ctx;
-    size_t rx_received;  //the amount of data received/sent for the current ReFlex request
+    size_t rx_received;  // the amount of data received/sent for the current
+                         // ReFlex request
     size_t tx_sent;
-    bool rx_pending;  //is there a ReFlex req currently being received/sent
+    bool rx_pending;  // is there a ReFlex req currently being received/sent
     bool tx_pending;
     bool alive;
     int nvme_pending;
@@ -199,9 +203,9 @@ struct pp_conn {
     long sent_pkts;
     long list_len;
     // bool receive_loop;
-    unsigned long last_count;  //aka seq_count when verify = 0
+    unsigned long last_count;  // aka seq_count when verify = 0
     struct list_head pending_requests;
-    long nvme_fg_handle;  //nvme flow group handle
+    long nvme_fg_handle;  // nvme flow group handle
     char data_send[sizeof(BINARY_HEADER)];
     char data_recv[sizeof(BINARY_HEADER)];
 };
@@ -212,8 +216,7 @@ static __thread struct mempool pp_conn_pool;
 static int parse_ip_addr(const char *str, uint32_t *addr) {
     unsigned char a, b, c, d;
 
-    if (sscanf(str, "%hhu.%hhu.%hhu.%hhu", &a, &b, &c, &d) != 4)
-        return -EINVAL;
+    if (sscanf(str, "%hhu.%hhu.%hhu.%hhu", &a, &b, &c, &d) != 4) return -EINVAL;
 
     *addr = MAKE_IP_ADDR(a, b, c, d);
     return 0;
@@ -226,8 +229,7 @@ static void receive_req(struct pp_conn *conn) {
     int measure_cond, report_cond, terminate_cond;
     int i;
     int num4k = num4k = (req_size * ns_sector_size) / 4096;
-    if (((req_size * ns_sector_size) % 4096) != 0)
-        num4k++;
+    if (((req_size * ns_sector_size) % 4096) != 0) num4k++;
 
     while (1) {
         if (!conn->rx_pending) {
@@ -249,11 +251,11 @@ static void receive_req(struct pp_conn *conn) {
             }
             if (conn->rx_received < sizeof(BINARY_HEADER))
                 return;
-            else  //received the header
+            else  // received the header
                 conn->rx_received = 0;
         }
 
-        //received the header && remaining payload bytes
+        // received the header && remaining payload bytes
         conn->rx_pending = true;
         header = (BINARY_HEADER *)&conn->data_recv[0];
         assert(header->magic == sizeof(BINARY_HEADER));
@@ -261,15 +263,21 @@ static void receive_req(struct pp_conn *conn) {
 
         if (header->opcode == CMD_GET) {
             while (conn->rx_received < req_size * ns_sector_size) {
-                // printf("Entering recv while, conn->rx_received is %d.\n", conn->rx_received);
-                int to_receive = min(PAGE_SIZE - (conn->rx_received % PAGE_SIZE),
-                                     req_size * ns_sector_size - conn->rx_received);
-                // printf("To receive is %d, offset is %d\n", to_receive, conn->rx_received % PAGE_SIZE);
-                // printf("----------- at %p & %p\n", req->buf[0], req->buf[1]);
-                // printf("----------- req->current_sgl_buf is %d\n", req->current_sgl_buf);
-                // printf("----------- at %p\n", &req->buf[req->current_sgl_buf][conn->rx_received % PAGE_SIZE]);
+                // printf("Entering recv while, conn->rx_received is %d.\n",
+                // conn->rx_received);
+                int to_receive =
+                    min(PAGE_SIZE - (conn->rx_received % PAGE_SIZE),
+                        req_size * ns_sector_size - conn->rx_received);
+                // printf("To receive is %d, offset is %d\n", to_receive,
+                // conn->rx_received % PAGE_SIZE); printf("----------- at %p &
+                // %p\n", req->buf[0], req->buf[1]); printf("-----------
+                // req->current_sgl_buf is %d\n", req->current_sgl_buf);
+                // printf("----------- at %p\n",
+                // &req->buf[req->current_sgl_buf][conn->rx_received %
+                // PAGE_SIZE]);
                 ret = ixev_recv(&conn->ctx,
-                                &req->buf[req->current_sgl_buf][conn->rx_received % PAGE_SIZE],
+                                &req->buf[req->current_sgl_buf]
+                                         [conn->rx_received % PAGE_SIZE],
                                 to_receive);
                 // printf("Ret is %d.\n", ret);
                 if (ret <= 0) {
@@ -294,17 +302,51 @@ static void receive_req(struct pp_conn *conn) {
                 //                 if (verify) {  // not working with 4k version
                 //                     if (strncmp(&req->buf[0],
                 //                                 last_req_buf,
-                //                                 req_size * ns_sector_size) == 0) {
+                //                                 req_size * ns_sector_size) ==
+                //                                 0) {
                 // #ifdef CLI_DEBUG
-                //                         printf("Request %d: verification passed (@%p).\n", sent, last_req_buf);
+                //                         printf("Request %d: verification
+                //                         passed (@%p).\n", sent,
+                //                         last_req_buf);
                 // #endif
                 //                     } else {
-                //                         printf("Request %d: got different data (@%p) from the server.\n", sent, last_req_buf);
+                //                         printf("Request %d: got different
+                //                         data (@%p) from the server.\n", sent,
+                //                         last_req_buf);
                 //                     }
                 //                 }
             }
             assert(req->current_sgl_buf <= header->lba_count * 8);
         } else if (header->opcode == CMD_SET) {
+        } else if (header->opcode == CMD_REG) {
+            char buf[1];
+            int rx_received = 0;
+            int num_to_recv = 1;
+
+            // expect one byte return code
+            while (rx_received < num_to_recv) {
+                ret = ixev_recv(&conn->ctx, buf, num_to_recv);
+                if (ret <= 0) {
+                    if (ret != -EAGAIN) {
+                        assert(0);
+                        if (!conn->nvme_pending) {
+                            printf("Connection close 7\n");
+                            if (conn->alive) {
+                                ixev_close(&conn->ctx);
+                                conn->alive = false;
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                rx_received += ret;
+            }
+            if (buf[0] == RESP_OK) {
+                printf("Flow registration accepted\n");
+            } else {
+                printf("Flow registration rejected\n");
+            }
         } else {
             printf("Received unsupported command, closing connection\n");
             if (conn->alive) {
@@ -317,10 +359,13 @@ static void receive_req(struct pp_conn *conn) {
         if (!SWEEP && qdepth) {
             measure_cond = 1;  // no sweeping and close-loop
         } else {
-            measure_cond = measure >= NUM_MEASURE && measure < NUM_MEASURE * 2;  // sweep or open loop, reach a mesure more than limit
+            measure_cond =
+                measure >= NUM_MEASURE &&
+                measure < NUM_MEASURE * 2;  // sweep or open loop, reach a
+                                            // mesure more than limit
             // measure_cond = false;
         }
-        //if (req->cmd == CMD_GET) { //only report read latency (not write)
+        // if (req->cmd == CMD_GET) { //only report read latency (not write)
         if (measure_cond) {
             // unsigned long now = rdtsc();
             unsigned long latency = (rdtsc() - req->sent_time) / cycles_per_us;
@@ -330,8 +375,7 @@ static void receive_req(struct pp_conn *conn) {
                 measurements[latency]++;
 
             avg += latency;
-            if (latency > max)
-                max = latency;
+            if (latency > max) max = latency;
 
             num_measured_reads++;
         }
@@ -346,11 +390,14 @@ static void receive_req(struct pp_conn *conn) {
         //                 if (strncmp(req->buf,
         //                             last_req_buf,
         //                             req_size * ns_sector_size) == 0) {
-        //                     printf("WARNING: writing same data (@%p) with last request (@%p).\n", req->buf, last_req_buf);
+        //                     printf("WARNING: writing same data (@%p) with
+        //                     last request (@%p).\n", req->buf,
+        //                     last_req_buf);
         //                 }
         // #endif
         //                 for (i = 0; i < num4k; i++) {
-        //                     mempool_free(&nvme_req_buf_pool, req->buf[i]);
+        //                     mempool_free(&nvme_req_buf_pool,
+        //                     req->buf[i]);
         //                 }
         //             }
         //             last_req_buf = req->buf;
@@ -366,10 +413,12 @@ static void receive_req(struct pp_conn *conn) {
 
         if (!SWEEP && qdepth) {
             time(&curr_time);
-            report_cond = difftime(curr_time, start_time) > run_time && tid == nr_threads - 1 && num_measured_reads != 0;
+            report_cond = difftime(curr_time, start_time) > run_time &&
+                          tid == nr_threads - 1 && num_measured_reads != 0;
             terminate_cond = difftime(curr_time, start_time) > run_time;
         } else {
-            report_cond = measure == NUM_MEASURE * 2 && num_measured_reads != 0;  //&& tid == nr_threads-1;
+            report_cond = measure == NUM_MEASURE * 2 &&
+                          num_measured_reads != 0;  //&& tid == nr_threads-1;
             terminate_cond = measure == NUM_MEASURE * 3;
             assert(measure < NUM_MEASURE * 3 + 1);
         }
@@ -389,27 +438,35 @@ static void receive_req(struct pp_conn *conn) {
                 target_IOPS = global_target_IOPS;
             }
 
-            guide_IOPS = nr_threads * (NUM_MEASURE * usecs) / ((rdtsc() - phase_start) / cycles_per_us);
-            printf("RqIOPS:\t IOPS:\t Avg:\t 10th:\t 20th:\t 30th:\t 40th:\t 50th:\t 60th:\t 70th:\t 80th:\t 90th:\t 95th:\t 99th:\t max:\t missed:\n");
-            printf("%lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\n",
-                   target_IOPS,
-                   guide_IOPS,
-                   avg / num_measured_reads,
-                   get_percentile(measurements, num_measured_reads, 10),
-                   get_percentile(measurements, num_measured_reads, 20),
-                   get_percentile(measurements, num_measured_reads, 30),
-                   get_percentile(measurements, num_measured_reads, 40),
-                   get_percentile(measurements, num_measured_reads, 50),
-                   get_percentile(measurements, num_measured_reads, 60),
-                   get_percentile(measurements, num_measured_reads, 70),
-                   get_percentile(measurements, num_measured_reads, 80),
-                   get_percentile(measurements, num_measured_reads, 90),
-                   get_percentile(measurements, num_measured_reads, 95),
-                   get_percentile(measurements, num_measured_reads, 99),
-                   max, missed_sends);
+            guide_IOPS = nr_threads * (NUM_MEASURE * usecs) /
+                         ((rdtsc() - phase_start) / cycles_per_us);
+            printf(
+                "RqIOPS:\t IOPS:\t Avg:\t 10th:\t 20th:\t 30th:\t 40th:\t "
+                "50th:\t 60th:\t 70th:\t 80th:\t 90th:\t 95th:\t 99th:\t "
+                "max:\t missed:\n");
+            printf(
+                "%lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t %lu\t "
+                "%lu\t "
+                "%lu\t %lu\t %lu\t %lu\t %lu\t %lu\n",
+                target_IOPS, guide_IOPS, avg / num_measured_reads,
+                get_percentile(measurements, num_measured_reads, 10),
+                get_percentile(measurements, num_measured_reads, 20),
+                get_percentile(measurements, num_measured_reads, 30),
+                get_percentile(measurements, num_measured_reads, 40),
+                get_percentile(measurements, num_measured_reads, 50),
+                get_percentile(measurements, num_measured_reads, 60),
+                get_percentile(measurements, num_measured_reads, 70),
+                get_percentile(measurements, num_measured_reads, 80),
+                get_percentile(measurements, num_measured_reads, 90),
+                get_percentile(measurements, num_measured_reads, 95),
+                get_percentile(measurements, num_measured_reads, 99), max,
+                missed_sends);
             run++;
             if ((double)target_IOPS / guide_IOPS > 2) {
-                printf("Got weird IOPS, the num of measured read is %lu, the measure is %lu, the sent is %lu.\n", num_measured_reads, measure, sent);
+                printf(
+                    "Got weird IOPS, the num of measured read is %lu, the "
+                    "measure is %lu, the sent is %lu.\n",
+                    num_measured_reads, measure, sent);
             }
         }
 
@@ -432,7 +489,7 @@ static void receive_req(struct pp_conn *conn) {
         }
 
         if (qdepth) {
-            //close loop: send another request
+            // close loop: send another request
             send_handler(&conn->ctx, 1);
         }
     }
@@ -449,7 +506,7 @@ int send_client_req(struct nvme_req *req) {
     assert(conn);
 
     if (!conn->tx_pending) {
-        //setup header
+        // setup header
         header = (BINARY_HEADER *)&conn->data_send[0];
         header->magic = sizeof(BINARY_HEADER);
         header->opcode = req->cmd;
@@ -478,7 +535,8 @@ int send_client_req(struct nvme_req *req) {
             conn->tx_sent += ret;
         }
         if (conn->tx_sent != sizeof(BINARY_HEADER)) {
-            printf("tx_sent is %d, header is %d, last ret is %d.\n", conn->tx_sent, sizeof(BINARY_HEADER), ret);
+            printf("tx_sent is %d, header is %d, last ret is %d.\n",
+                   conn->tx_sent, sizeof(BINARY_HEADER), ret);
         }
         assert(conn->tx_sent == sizeof(BINARY_HEADER));
         conn->tx_pending = true;
@@ -491,8 +549,10 @@ int send_client_req(struct nvme_req *req) {
             assert(req->lba_count * ns_sector_size);
             int to_send = min(PAGE_SIZE - (conn->tx_sent % PAGE_SIZE),
                               req_size * ns_sector_size - conn->tx_sent);
-            ret = ixev_send_zc(&conn->ctx, &req->buf[req->current_sgl_buf][conn->tx_sent % PAGE_SIZE],
-                               to_send);
+            ret = ixev_send_zc(
+                &conn->ctx,
+                &req->buf[req->current_sgl_buf][conn->tx_sent % PAGE_SIZE],
+                to_send);
             if (ret < 0) {
                 if (ret == -EAGAIN || ret == -ENOBUFS) {
                     printf("Send buf failed -2. %d.\n", ret);
@@ -507,8 +567,7 @@ int send_client_req(struct nvme_req *req) {
                 }
                 return -2;
             }
-            if (ret == 0)
-                printf("fhmm ret is zero\n");
+            if (ret == 0) printf("fhmm ret is zero\n");
 
             conn->tx_sent += ret;
             if ((conn->tx_sent % PAGE_SIZE) == 0) {
@@ -528,7 +587,8 @@ int send_pending_client_reqs(struct pp_conn *conn) {
     while (!list_empty(&conn->pending_requests)) {
         int ret;
         // assert(sent_reqs+conn->list_len == chksum); // checkpoint @4
-        struct nvme_req *req = list_top(&conn->pending_requests, struct nvme_req, link);
+        struct nvme_req *req =
+            list_top(&conn->pending_requests, struct nvme_req, link);
         // assert(req->conn); // checkpoint @5
         // assert(conn == req->conn); // checkpoint @6
         req->sent_time = rdtsc();
@@ -543,6 +603,40 @@ int send_pending_client_reqs(struct pp_conn *conn) {
     return sent_reqs;
 }
 
+int register_flow(struct pp_conn *conn, unsigned long latency_us_SLO,
+                  unsigned int IOPS_SLO, unsigned int rw_ratio_SLO) {
+    int ret;
+    BINARY_HEADER *header = (BINARY_HEADER *)&conn->data_send[0];
+    header->magic = sizeof(BINARY_HEADER);
+    header->opcode = CMD_REG;
+    header->lba = latency_us_SLO;
+    header->lba_count = latency_us_SLO << 7 + rw_ratio_SLO;
+    header->req_handle = NULL;
+
+    while (conn->tx_sent < sizeof(BINARY_HEADER)) {
+        ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent],
+                        sizeof(BINARY_HEADER) - conn->tx_sent);
+        if (ret == -EAGAIN || ret == -ENOBUFS) {
+            printf("Send buf failed -1. %d.\n", ret);
+            return -1;
+        } else if (ret < 0) {
+            printf("ixev_send - ret is %d.\n", ret);
+            if (!conn->nvme_pending) {
+                printf("[%d] Connection close 2\n", percpu_get(cpu_id));
+                if (conn->alive) {
+                    ixev_close(&conn->ctx);
+                    conn->alive = false;
+                }
+            }
+            return -2;
+            ret = 0;
+        }
+        conn->tx_sent += ret;
+    }
+    conn->tx_sent = 0;
+    return ret;
+}
+
 void send_handler(void *arg, int num_req) {
     struct nvme_req *req;
     struct ixev_ctx *ctx = (struct ixev_ctx *)arg;
@@ -554,44 +648,39 @@ void send_handler(void *arg, int num_req) {
 
     int num4k = (req_size * ns_sector_size) / PAGE_SIZE;
     assert(num4k <= MAX_PAGES_PER_ACCESS);
-    if (((req_size * ns_sector_size) % PAGE_SIZE) != 0)
-        num4k++;
+    if (((req_size * ns_sector_size) % PAGE_SIZE) != 0) num4k++;
 
     int send_cond;
     int measure_cond;  //
     if (!SWEEP && qdepth) {
         time(&curr_time);
-        if (difftime(curr_time, start_time) > run_time)
-            return;
+        if (difftime(curr_time, start_time) > run_time) return;
 
         send_cond = num_req;
         measure_cond = 1;
     } else {
-        if (sent == NUM_MEASURE * 3)
-            return;
-        if (((now = rdtsc()) - last_send) < (cycles_between_req))
-            return;
-        if (sent == NUM_MEASURE)
-            phase_start = now;
-        if (sent == 0)
-            bench_start = now;
+        if (sent == NUM_MEASURE * 3) return;
+        if (((now = rdtsc()) - last_send) < (cycles_between_req)) return;
+        if (sent == NUM_MEASURE) phase_start = now;
+        if (sent == 0) bench_start = now;
 
-        send_cond = ((now - bench_start) / cycles_between_req) >= sent && sent < (NUM_MEASURE * 3);
+        send_cond = ((now - bench_start) / cycles_between_req) >= sent &&
+                    sent < (NUM_MEASURE * 3);
         measure_cond = sent >= NUM_MEASURE && sent < NUM_MEASURE * 2;
     }
 
     while (send_cond) {
         ssents++;
         if (ssents > 32) {
-            //never send more than max batch size
+            // never send more than max batch size
             break;
         }
 
-        //setup next request
+        // setup next request
         req = mempool_alloc(&req_pool);
         if (!req) {
             receive_req(conn);
-            //limited qd, if we run out of req, try again later
+            // limited qd, if we run out of req, try again later
             failed_alloc_reqs++;
             break;
         }
@@ -610,13 +699,17 @@ void send_handler(void *arg, int num_req) {
                 assert(0);
             }
             req->buf[i] = req_buf_array[i];
-            // printf("req_buf_array[%d] is %p, expect next %x\n", i, req_buf_array[i], (uint64_t)(req_buf_array[i]) - 4096);
+            // printf("req_buf_array[%d] is %p, expect next %x\n", i,
+            // req_buf_array[i], (uint64_t)(req_buf_array[i]) - 4096);
         }
         // printf("req buf is %p\n", req->buf[0]);
-        // printf("req current_sgl_buf is %d(%p)\n", req->current_sgl_buf, &req->current_sgl_buf);
+        // printf("req current_sgl_buf is %d(%p)\n", req->current_sgl_buf,
+        // &req->current_sgl_buf);
 
-        const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWZYZ";
-        // if (verify || preconditioning) {  // generate random data to write
+        const char charset[] =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWZYZ";
+        // if (verify || preconditioning) {  // generate random data to
+        // write
         if (preconditioning) {
             int size = req_size * ns_sector_size;
             for (size_t i = 0; i < req_size; i++) {
@@ -632,14 +725,12 @@ void send_handler(void *arg, int num_req) {
             return NULL;
         }
 #endif
-
         if ((rand() % 99) < read_percentage)
             req->cmd = CMD_GET;
         else
             req->cmd = CMD_SET;
 
-        if (preconditioning)
-            req->cmd = CMD_SET;
+        if (preconditioning) req->cmd = CMD_SET;
 
         //         if (verify) {
         //             if (sent % 2) {
@@ -654,11 +745,11 @@ void send_handler(void *arg, int num_req) {
         //                 req->cmd = CMD_SET;
         //             }
         //         }
-        //only do aligned accesses
+        // only do aligned accesses
         if (!sequential) {
             // if (!(verify && sent % 2)) {
             req->lba = rand() % (ns_size >> log_ns_sector_size);
-            //align
+            // align
             req->lba = req->lba & ~7;
             // #ifdef CLI_DEBUG
             //                 printf("Requesting lba @%lu\n", req->lba);
@@ -678,15 +769,19 @@ void send_handler(void *arg, int num_req) {
                 req->lba %= (ns_size >> log_ns_sector_size);
                 conn->last_count = req->lba;
             }
-            if (sequential && (req->lba % (((ns_size >> log_ns_sector_size) / req_size) / 1000)) == 0)  // cross the 1/100 of ssd namespace
-                printf("CPU %d || lba %lu %lu %lu\n", percpu_get(cpu_id), req->lba, NUM_MEASURE, ns_size >> log_ns_sector_size);
+            if (sequential &&
+                (req->lba % (((ns_size >> log_ns_sector_size) / req_size) /
+                             1000)) == 0)  // cross the 1/100 of ssd namespace
+                printf("CPU %d || lba %lu %lu %lu\n", percpu_get(cpu_id),
+                       req->lba, NUM_MEASURE, ns_size >> log_ns_sector_size);
         }
         conn->list_len++;
         list_add_tail(&conn->pending_requests, &req->link);
 
-        // struct nvme_req *tmp_req = list_top(&conn->pending_requests, struct nvme_req, link);
-        // assert(tmp_req->conn); // checkpoint @2
-        // assert(conn == tmp_req->conn); // checkpoint @3
+        // struct nvme_req *tmp_req = list_top(&conn->pending_requests,
+        // struct nvme_req, link); assert(tmp_req->conn); // checkpoint @2
+        // assert(conn
+        // == tmp_req->conn); // checkpoint @3
 
         if (sent == NUM_MEASURE) {
             phase_start = rdtsc();
@@ -705,14 +800,16 @@ void send_handler(void *arg, int num_req) {
         if (!SWEEP && qdepth) {
             send_cond--;
         } else {
-            send_cond = ((now - bench_start) / cycles_between_req) >= sent && sent < (NUM_MEASURE * 3);
+            send_cond = ((now - bench_start) / cycles_between_req) >= sent &&
+                        sent < (NUM_MEASURE * 3);
         }
         // assert(req->conn); // checkpoint @3.5
     }
 
     int ret = send_pending_client_reqs(conn);
     // if (ret)
-    // 	printf("CPU %d | Sent %d batched requests.\n", percpu_get(cpu_id), ret);
+    // 	printf("CPU %d | Sent %d batched requests.\n",
+    // percpu_get(cpu_id), ret);
 }
 
 static void main_handler(struct ixev_ctx *ctx, unsigned int reason) {
@@ -722,7 +819,8 @@ static void main_handler(struct ixev_ctx *ctx, unsigned int reason) {
     if (reason == IXEVOUT) {
         ret = send_pending_client_reqs(conn);
         if (ret)
-            printf("IXEVOUT: CPU %d | Sent %d batched requests.\n", percpu_get(cpu_id), ret);
+            printf("IXEVOUT: CPU %d | Sent %d batched requests.\n",
+                   percpu_get(cpu_id), ret);
     } else if (reason == IXEVHUP) {
         printf("Connection close 5\n");
         if (conn->alive) {
@@ -744,6 +842,11 @@ static void pp_dialed(struct ixev_ctx *ctx, long ret) {
     conn_opened++;
     printf("Tenant %d is dialed. (conn_opened: %d).\n", tid, conn_opened);
 
+    // FIXME: avoid hardcoded latency SLOs
+    while (register_flow(conn, 200, global_target_IOPS, read_percentage)) {
+        printf("CMD_REG sent failed. Retrying...\n");
+    }
+
     while (rdtsc() < now + 1000000) {
     }
     return;
@@ -754,16 +857,17 @@ static void pp_release(struct ixev_ctx *ctx) {
     conn_opened--;
 #if CLI_DEBUG
     if (conn_opened == 0)
-        printf("Tid: %lx All connections released handle %lx open conns still %i\n", pthread_self(), conn->ctx.handle, conn_opened);
+        printf(
+            "Tid: %lx All connections released handle %lx open conns still "
+            "%i\n",
+            pthread_self(), conn->ctx.handle, conn_opened);
 #endif
     mempool_free(&pp_conn_pool, conn);
     terminate = true;
     running = false;
 }
 
-static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
-    return NULL;
-}
+static struct ixev_ctx *pp_accept(struct ip_tuple *id) { return NULL; }
 
 static struct ixev_conn_ops pp_conn_ops = {
     .accept = &pp_accept,
@@ -787,19 +891,22 @@ static void *receive_loop(void *arg) {
         return NULL;
     };
 
-    ret = mempool_create(&pp_conn_pool, &pp_conn_datastore, MEMPOOL_SANITY_GLOBAL, 0);
+    ret = mempool_create(&pp_conn_pool, &pp_conn_datastore,
+                         MEMPOOL_SANITY_GLOBAL, 0);
     if (ret) {
         fprintf(stderr, "unable to create mempool\n");
         return NULL;
     }
 
-    ret = mempool_create(&req_pool, &nvme_usr_datastore, MEMPOOL_SANITY_GLOBAL, 0);
+    ret = mempool_create(&req_pool, &nvme_usr_datastore, MEMPOOL_SANITY_GLOBAL,
+                         0);
     if (ret) {
         fprintf(stderr, "unable to create mempool\n");
         return NULL;
     }
 
-    ret = mempool_create(&nvme_req_buf_pool, &nvme_req_buf_datastore, MEMPOOL_SANITY_GLOBAL, 0);
+    ret = mempool_create(&nvme_req_buf_pool, &nvme_req_buf_datastore,
+                         MEMPOOL_SANITY_GLOBAL, 0);
     if (ret) {
         fprintf(stderr, "unable to create mempool\n");
         return NULL;
@@ -825,12 +932,15 @@ static void *receive_loop(void *arg) {
     conn->list_len = 0x0UL;
     // conn->receive_loop = true;
     srand(rdtsc());
-    conn->last_count = rand() % (ns_size >> log_ns_sector_size);  // random start, are they same for different threads?
-    conn->last_count = conn->last_count & ~7;                     // align
+    conn->last_count =
+        rand() %
+        (ns_size >> log_ns_sector_size);  // random start, are they same for
+                                          // different threads?
+    conn->last_count = conn->last_count & ~7;  // align
 
     ixev_ctx_init(&conn->ctx);
 
-    conn->nvme_fg_handle = 0;  //set to this for now
+    conn->nvme_fg_handle = 0;  // set to this for now
     conn->alive = true;
 
     flags = fcntl(STDIN_FILENO, F_GETFL, 0);
@@ -838,51 +948,56 @@ static void *receive_loop(void *arg) {
 
     sleep(tid * 1);  // try to serialize
     ixev_dial(&conn->ctx, ip_tuple[tid]);
-    if (preconditioning)
-        SWEEP = 0;
+    if (preconditioning) SWEEP = 0;
     if (!SWEEP)
         num_tests = 1;
     else
         num_tests = NUM_TESTS;
-    while (!running)
-        ixev_wait();
+    while (!running) ixev_wait();
+
     for (i = 0; i < num_tests; i++) {
         terminate = false;
         assert(sent == 0);
         assert(measure == 0);
         if (SWEEP) {
-            cycles_between_req = (((unsigned long)cycles_per_us * 1000UL * 1000UL) / (sweep[i] / nr_threads));
+            cycles_between_req =
+                (((unsigned long)cycles_per_us * 1000UL * 1000UL) /
+                 (sweep[i] / nr_threads));
             NUM_MEASURE = sweep[i] * DURATION / nr_threads;
         } else {
-            cycles_between_req = ((unsigned long)cycles_per_us * 1000UL * 1000UL * nr_threads) / global_target_IOPS;
+            cycles_between_req =
+                ((unsigned long)cycles_per_us * 1000UL * 1000UL * nr_threads) /
+                global_target_IOPS;
             NUM_MEASURE = global_target_IOPS * DURATION / nr_threads;
         }
         assert(NUM_MEASURE <= MAX_NUM_MEASURE);
-        if (preconditioning)  //write each lba once
+        if (preconditioning)  // write each lba once
             NUM_MEASURE = (ns_size / ns_sector_size) / req_size;
 #ifdef CLI_DEBUG
         if (tid == 0)
-            printf("Test round %d: cycles between requests is %lu(%d us/request, DDL: %lu), NUM_MEASURE is %d.\n", i, cycles_between_req, cycles_between_req / cycles_per_us, cycles_between_req + cycles_between_req / 10, NUM_MEASURE);
+            printf(
+                "Test round %d: cycles between requests is %lu(%d "
+                "us/request, "
+                "DDL: %lu), NUM_MEASURE is %d.\n",
+                i, cycles_between_req, cycles_between_req / cycles_per_us,
+                cycles_between_req + cycles_between_req / 10, NUM_MEASURE);
 #endif
         pthread_barrier_wait(&barrier);  // caution
 
         time(&start_time);
         //---
+
         if (!SWEEP && qdepth) {
-            if (running)
-                send_handler(&conn->ctx, qdepth);
+            if (running) send_handler(&conn->ctx, qdepth);
             while (1) {
                 ixev_wait();
-                if (terminate)
-                    break;
+                if (terminate) break;
             }
         } else {
             while (1) {
-                if (running)
-                    send_handler(&conn->ctx, 0);
+                if (running) send_handler(&conn->ctx, 0);
                 ixev_wait();
-                if (terminate)
-                    break;
+                if (terminate) break;
             }
         }
         //---
@@ -896,8 +1011,7 @@ static void *receive_loop(void *arg) {
         running = false;
     }
 
-    while (running)
-        ixev_wait();
+    while (running) ixev_wait();
 
     return NULL;
 }
@@ -936,7 +1050,9 @@ int reflex_client_main(int argc, char *argv[]) {
                     sequential = 0;
                 else {
                     sequential = 0;
-                    printf("WARNING: invalid workload type, use random by default\n");
+                    printf(
+                        "WARNING: invalid workload type, use random by "
+                        "default\n");
                 }
                 break;
             case 'T':
@@ -954,7 +1070,10 @@ int reflex_client_main(int argc, char *argv[]) {
             case 'R':
                 req_size_bytes = atoi(optarg);
                 if (req_size_bytes % ns_sector_size != 0) {
-                    printf("WARNING: request size should be multiple of sector size\n");
+                    printf(
+                        "WARNING: request size should be multiple of "
+                        "sector "
+                        "size\n");
                 }
                 req_size = req_size_bytes / ns_sector_size;
                 break;
@@ -979,11 +1098,13 @@ int reflex_client_main(int argc, char *argv[]) {
                         "-T  number of threads (default=1)\n"
                         "-i  target IOPS for open-loop test (default=50000)\n"
                         "-r  percentage of read requests (default=100)\n"
-                        "-S  sweep multiple target IOPS for open-loop test (default=1)\n"
+                        "-S  sweep multiple target IOPS for open-loop test "
+                        "(default=1)\n"
                         "-R  request size in bytes (default=1024)\n"
                         "-P  precondition (default=0)\n"
                         "-d  queue depth for closed-loop test (default=0)\n"
-                        "-t  execution time in seconds for closed-loop test (default=0)\n");
+                        "-t  execution time in seconds for closed-loop test "
+                        "(default=0)\n");
                 exit(1);
             default:
                 fprintf(stderr, "invalid command option\n");
@@ -991,10 +1112,16 @@ int reflex_client_main(int argc, char *argv[]) {
         }
     }
 
-    printf("DEBUG: ip=%s, port=%d, seq=%d, nr_threads=%d, global=%d, read=%d, SWEEP=%d, req_size_bytes=%d, preconditioning=%d, qdepth=%d, run_time=%d\n", ip, port, sequential, nr_threads, global_target_IOPS, read_percentage, SWEEP, req_size_bytes, preconditioning, qdepth, run_time);
+    printf(
+        "DEBUG: ip=%s, port=%d, seq=%d, nr_threads=%d, global=%d, read=%d, "
+        "SWEEP=%d, req_size_bytes=%d, preconditioning=%d, qdepth=%d, "
+        "run_time=%d\n",
+        ip, port, sequential, nr_threads, global_target_IOPS, read_percentage,
+        SWEEP, req_size_bytes, preconditioning, qdepth, run_time);
 
     if (ip == NULL) {
-        fprintf(stderr, "missing server IP address, enter -s [ip] to specify\n");
+        fprintf(stderr,
+                "missing server IP address, enter -s [ip] to specify\n");
         exit(1);
     }
     if (port == -1) {
@@ -1011,8 +1138,7 @@ int reflex_client_main(int argc, char *argv[]) {
 
     for (i = 0; i < nr_threads; i++) {
         ip_tuple[i] = malloc(sizeof(struct ip_tuple[i]));
-        if (!ip_tuple[i])
-            exit(-1);
+        if (!ip_tuple[i]) exit(-1);
 
         if (parse_ip_addr(ip, &ip_tuple[i]->dst_ip)) {
             fprintf(stderr, "Bad IP address '%s'", ip);
@@ -1027,10 +1153,13 @@ int reflex_client_main(int argc, char *argv[]) {
     }
 
     free(ip);
-    cycles_between_req = ((unsigned long)cycles_per_us * 1000UL * 1000UL * nr_threads) / global_target_IOPS;
+    cycles_between_req =
+        ((unsigned long)cycles_per_us * 1000UL * 1000UL * nr_threads) /
+        global_target_IOPS;
     NUM_MEASURE = global_target_IOPS * DURATION / nr_threads;
     pp_conn_pool_entries = 16 * 4096;
-    pp_conn_pool_entries = ROUND_UP(pp_conn_pool_entries, MEMPOOL_DEFAULT_CHUNKSIZE);
+    pp_conn_pool_entries =
+        ROUND_UP(pp_conn_pool_entries, MEMPOOL_DEFAULT_CHUNKSIZE);
     ixev_init(&pp_conn_ops);
     ret = mempool_create_datastore(&pp_conn_datastore, pp_conn_pool_entries,
                                    sizeof(struct pp_conn), "pp_conn");
@@ -1039,8 +1168,7 @@ int reflex_client_main(int argc, char *argv[]) {
         return ret;
     }
 
-    ret = mempool_create_datastore(&nvme_usr_datastore,
-                                   outstanding_reqs * 2,
+    ret = mempool_create_datastore(&nvme_usr_datastore, outstanding_reqs * 2,
                                    sizeof(struct nvme_req), "nvme_req_1");
     if (ret) {
         fprintf(stderr, "unable to create datastore\n");
@@ -1049,18 +1177,20 @@ int reflex_client_main(int argc, char *argv[]) {
 
     ret = mempool_create_datastore_align(&nvme_req_buf_datastore,
                                          // *2 avoids out-of-mem error
-                                         outstanding_reqs * 2,
-                                         PAGE_SIZE, "nvme_req_2");
+                                         outstanding_reqs * 2, PAGE_SIZE,
+                                         "nvme_req_2");
     if (ret) {
         fprintf(stderr, "unable to create datastore\n");
         return ret;
     }
 
     for (i = 1; i < nr_cpu; i++) {
-        //ret = pthread_create(&tid, NULL, start_cpu, (void *)(unsigned long) i);
+        // ret = pthread_create(&tid, NULL, start_cpu, (void *)(unsigned
+        // long) i);
         log_info("rte_eal_remote_launch...receive_loop\n");
         tid[i] = i;
-        // ret = rte_eal_remote_launch(receive_loop, (void *)(unsigned long) i, i);
+        // ret = rte_eal_remote_launch(receive_loop, (void *)(unsigned long)
+        // i, i);
         ret = rte_eal_remote_launch(receive_loop, &tid[i], i);
 
         if (ret) {
