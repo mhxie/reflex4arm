@@ -423,6 +423,40 @@ static void nvme_registered_flow_cb(long fg_handle, struct ixev_ctx *ctx,
 
     struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
     conn->nvme_fg_handle = fg_handle;
+    // printf("nvme fg_handle is %d.\n", fg_handle);
+
+    BINARY_HEADER *header;
+    
+    header = (BINARY_HEADER *)&conn->data_send[0];
+    header->magic = sizeof(BINARY_HEADER); // RESP_PKT;
+    header->opcode = CMD_REG;
+    // header->lba = req->lba;
+    header->lba_count = RESP_OK; // CMD_REG
+    // header->req_handle = req->remote_req_handle;
+
+    while (conn->tx_sent < (sizeof(BINARY_HEADER))) {
+        ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent],
+                        sizeof(BINARY_HEADER) - conn->tx_sent);
+        if (ret == -ENOBUFS) {
+            failed_header_sents_0++;
+        } else if (ret == -EAGAIN) {
+            failed_header_sents_1++;
+        } else if (ret < 0) {
+            failed_other_sents_0++;
+        }
+
+        if (ret < 0) {
+            if (!conn->nvme_pending) {
+                log_err("ixev_send ret < 0, then ivev_close.\n");
+                ixev_close(&conn->ctx);
+                return -2;
+            }
+            return -1;
+            ret = 0;
+        }
+        conn->tx_sent += ret;
+    }
+    conn->tx_sent = 0;
 }
 
 static void nvme_unregistered_flow_cb(long flow_group_id, long ret) {
@@ -477,29 +511,13 @@ static void receive_req(struct pp_conn *conn) {
             if (header->opcode == CMD_REG) {
                 unsigned long cookie = (unsigned long)&conn->ctx;
                 unsigned long IOPS_SLO = header->lba;
-                unsigned int latency_us_SLO =
-                    (header->lba_count & 0xffffff00) >> 8;
-                int rd_wr_ratio_SLO = header->lba_count & 0x000000ff;
-                printf(
-                    "Received reg header: IOPS_SLO-%ld, latency_SLO-%d, "
-                    "rw_SLO-%d\n",
-                    IOPS_SLO, latency_us_SLO, rd_wr_ratio_SLO);
+                unsigned int latency_us_SLO = header->lba_count >> 7;
+                int rw_ratio_SLO = header->lba_count & 0x0000007f;
+
                 ixev_nvme_register_flow(conn->conn_fg_handle, cookie,
                                         latency_us_SLO, IOPS_SLO,
-                                        rd_wr_ratio_SLO);
+                                        rw_ratio_SLO);
 
-                uint8_t reply = RESP_OK;
-                ret = ixev_send(&conn->ctx, &reply, sizeof(reply));
-
-                if (ret < 0) {
-                    if (!conn->nvme_pending) {
-                        log_err("ixev_send ret < 0, then ivev_close.\n");
-                        ixev_close(&conn->ctx);
-                        return -2;
-                    }
-                    return -1;
-                    ret = 0;
-                }
                 conn->rx_received = 0;
                 continue;
             }
@@ -711,7 +729,7 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
     conn->conn_fg_handle = id->src_port;  // tenant id
     cookie = (unsigned long)&conn->ctx;
 
-    printf("pp_accept: src-(%d:%d:%d:%d, %d); dst-(%d);\n", id->src_ip >> 24,
+    printf("pp_accept: src-%d.%d.%d.%d:%d dst-%d\n", id->src_ip >> 24,
            (id->src_ip << 8) >> 24, (id->src_ip << 16) >> 24,
            (id->src_ip << 24) >> 24, id->src_port, id->dst_port);
     // ixev_nvme_register_flow(conn->conn_fg_handle, cookie, 0, 1000, 100);
