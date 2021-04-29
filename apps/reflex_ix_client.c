@@ -259,7 +259,24 @@ static void receive_req(struct pp_conn *conn) {
         conn->rx_pending = true;
         header = (BINARY_HEADER *)&conn->data_recv[0];
         assert(header->magic == sizeof(BINARY_HEADER));
+
+        if (!running) {
+            assert(header->opcode == CMD_REG);
+            if (header->lba_count == RESP_OK) {
+                printf("Registration accepted.\n");
+                running = true;
+            } else {
+                printf("Registration rejected.\n");
+                ixev_close(&conn->ctx);
+                conn->alive = false;
+            }
+            conn->rx_pending = false;
+            conn->rx_received = 0;
+            break;
+        }
+
         req = header->req_handle;  // NVMe Req Handler
+        assert(req);
 
         if (header->opcode == CMD_GET) {
             while (conn->rx_received < req_size * ns_sector_size) {
@@ -319,36 +336,11 @@ static void receive_req(struct pp_conn *conn) {
             assert(req->current_sgl_buf <= header->lba_count * 8);
         } else if (header->opcode == CMD_SET) {
         } else if (header->opcode == CMD_REG) {
-            char buf[1];
-            int rx_received = 0;
-            int num_to_recv = 1;
-
-            // expect one byte return code
-            while (rx_received < num_to_recv) {
-                ret = ixev_recv(&conn->ctx, buf, num_to_recv);
-                if (ret <= 0) {
-                    if (ret != -EAGAIN) {
-                        assert(0);
-                        if (!conn->nvme_pending) {
-                            printf("Connection close 7\n");
-                            if (conn->alive) {
-                                ixev_close(&conn->ctx);
-                                conn->alive = false;
-                            }
-                        }
-                    }
-                    return;
-                }
-
-                rx_received += ret;
-            }
-            if (buf[0] == RESP_OK) {
-                printf("Flow registration accepted\n");
-            } else {
-                printf("Flow registration rejected\n");
-            }
-        } else {
-            printf("Received unsupported command, closing connection\n");
+            printf("Got CMD_REG again.\n");
+            return;
+        }
+        else {
+            printf("Received unsupported command %d, closing connection\n", header->opcode);
             if (conn->alive) {
                 ixev_close(&conn->ctx);
                 conn->alive = false;
@@ -603,38 +595,28 @@ int send_pending_client_reqs(struct pp_conn *conn) {
     return sent_reqs;
 }
 
-int register_flow(struct pp_conn *conn, unsigned long latency_us_SLO,
-                  unsigned int IOPS_SLO, unsigned int rw_ratio_SLO) {
+void register_flow(struct pp_conn *conn, unsigned int latency_us_SLO,
+                  unsigned long IOPS_SLO, unsigned int rw_ratio_SLO) {
     int ret;
     BINARY_HEADER *header = (BINARY_HEADER *)&conn->data_send[0];
     header->magic = sizeof(BINARY_HEADER);
     header->opcode = CMD_REG;
-    header->lba = latency_us_SLO;
-    header->lba_count = latency_us_SLO << 7 + rw_ratio_SLO;
+    header->lba = IOPS_SLO;
+    header->lba_count = latency_us_SLO << 7;
+    header->lba_count += rw_ratio_SLO;
     header->req_handle = NULL;
 
+    printf("registering a new flow: IOPS_SLO-%ld, latency_SLO-%d, rw_ratio-%d\n",
+            IOPS_SLO, latency_us_SLO, rw_ratio_SLO);
+
     while (conn->tx_sent < sizeof(BINARY_HEADER)) {
-        ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent],
+        ret = ixev_send(&conn->ctx, header,
                         sizeof(BINARY_HEADER) - conn->tx_sent);
-        if (ret == -EAGAIN || ret == -ENOBUFS) {
-            printf("Send buf failed -1. %d.\n", ret);
-            return -1;
-        } else if (ret < 0) {
-            printf("ixev_send - ret is %d.\n", ret);
-            if (!conn->nvme_pending) {
-                printf("[%d] Connection close 2\n", percpu_get(cpu_id));
-                if (conn->alive) {
-                    ixev_close(&conn->ctx);
-                    conn->alive = false;
-                }
-            }
-            return -2;
-            ret = 0;
-        }
+        if (ret < 0)
+            printf("ixev_send failed - ret is %d.\n", ret);
         conn->tx_sent += ret;
     }
     conn->tx_sent = 0;
-    return ret;
 }
 
 void send_handler(void *arg, int num_req) {
@@ -837,15 +819,12 @@ static void pp_dialed(struct ixev_ctx *ctx, long ret) {
     unsigned long now = rdtsc();
 
     ixev_set_handler(&conn->ctx, IXEVIN | IXEVOUT | IXEVHUP, &main_handler);
-    running = true;
-
     conn_opened++;
     printf("Tenant %d is dialed. (conn_opened: %d).\n", tid, conn_opened);
 
     // FIXME: avoid hardcoded latency SLOs
-    while (register_flow(conn, 200, global_target_IOPS, read_percentage)) {
-        printf("CMD_REG sent failed. Retrying...\n");
-    }
+    register_flow(conn, 500, global_target_IOPS, read_percentage);
+    receive_req(conn);
 
     while (rdtsc() < now + 1000000) {
     }
@@ -953,6 +932,8 @@ static void *receive_loop(void *arg) {
         num_tests = 1;
     else
         num_tests = NUM_TESTS;
+    
+    
     while (!running) ixev_wait();
 
     for (i = 0; i < num_tests; i++) {

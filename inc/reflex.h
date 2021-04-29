@@ -67,7 +67,7 @@ typedef struct __attribute__((__packed__)) {
     void *req_handle;
     // IOPS_SLO
     unsigned long lba;
-    // 0xffffff80: latency_SLO; 0x0000007f: rd_wr_ratio_SLO
+    // 0xffffff80: latency_SLO; 0x0000007f: rw_ratio_SLO
     unsigned int lba_count;
 } binary_header_blk_t;
 
