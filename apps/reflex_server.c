@@ -1,32 +1,33 @@
 /*
  * Copyright (c) 2015-2017, Stanford University
- *  
+ *
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
- *  * Redistributions of source code must retain the above copyright notice, 
+ *
+ *  * Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
- * 
+ *
  *  * Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
  *    and/or other materials provided with the distribution.
- * 
+ *
  *  * Neither the name of the copyright holder nor the names of its
  *    contributors may be used to endorse or promote products derived from
  *    this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
@@ -66,7 +67,8 @@
 
 #include "reflex.h"
 
-#define ROUND_UP(num, multiple) ((((num) + (multiple)-1) / (multiple)) * (multiple))
+#define ROUND_UP(num, multiple) \
+    ((((num) + (multiple)-1) / (multiple)) * (multiple))
 #define BATCH_DEPTH 512
 #define NAMESPACE 0
 
@@ -74,7 +76,7 @@
 
 #define BINARY_HEADER binary_header_blk_t
 
-// #define NVME_ENABLE
+#define NVME_ENABLE
 
 #define MAX_PAGES_PER_ACCESS 256  // max 1MB per req
 #define PAGE_SIZE 4096
@@ -85,7 +87,7 @@
 #define TIMER_RESOLUTION_CYCLES 250ULL /* around 2 us at 125Mhz */
 
 static int outstanding_reqs = 4096 * 64;
-static int outstanding_req_bufs = 4096 * 64;  //4096 * 64;
+static int outstanding_req_bufs = 4096 * 64;  // 4096 * 64;
 static unsigned long ns_size;
 static unsigned long ns_sector_size = 512;  // use for now
 
@@ -101,7 +103,8 @@ static __thread unsigned long local_avg = 0;  // warm-up needed
 static __thread unsigned long send_avg = 0;   // warm-up needed
 static __thread unsigned long tem_avg = 0;    // warm-up needed
 static __thread unsigned long num_requests = 0;
-static __thread struct rte_timer send_timer;  // only for single connection per thread
+static __thread struct rte_timer
+    send_timer;  // only for single connection per thread
 static __thread long cycles_between_resend = 100000;
 static __thread long failed_header_sents_0 = 0;
 static __thread long failed_header_sents_1 = 0;
@@ -120,18 +123,18 @@ struct nvme_req {
     uint16_t opcode;
     struct pp_conn *conn;
     struct list_node link;
-    struct ixev_ref ref;  //for zero-copy
+    struct ixev_ref ref;  // for zero-copy
     unsigned long timestamp;
     void *remote_req_handle;
-    char *buf[MAX_PAGES_PER_ACCESS];  //nvme buffer to read/write data into
+    char *buf[MAX_PAGES_PER_ACCESS];  // nvme buffer to read/write data into
     int current_sgl_buf;
 };
 
 struct pp_conn {
     struct ixev_ctx ctx;
-    size_t rx_received;  //bytes received for the current ReFlex request
+    size_t rx_received;  // bytes received for the current ReFlex request
     size_t tx_sent;
-    bool rx_pending;  //if a ReFlex req is currently being received
+    bool rx_pending;  // if a ReFlex req is currently being received
     bool tx_pending;
     int nvme_pending;
     long in_flight_pkts;
@@ -139,11 +142,11 @@ struct pp_conn {
     long list_len;
     unsigned long req_received;
     struct list_head pending_requests;
-    long nvme_fg_handle;  //nvme flow group handle
-    long conn_fg_handle;  //set for src_port for now
+    long nvme_fg_handle;  // nvme flow group handle
+    long conn_fg_handle;  // set for src_port for now
     struct nvme_req *current_req;
-    char data_send[sizeof(BINARY_HEADER)];  //use zero-copy for payload
-    char data_recv[sizeof(BINARY_HEADER)];  //use zero-copy for payload
+    char data_send[sizeof(BINARY_HEADER)];  // use zero-copy for payload
+    char data_recv[sizeof(BINARY_HEADER)];  // use zero-copy for payload
 };
 
 static struct mempool_datastore pp_conn_datastore;
@@ -154,13 +157,16 @@ static __thread unsigned long last_sent_time = 0;
 
 static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason);
 
-static void send_again_cb(__attribute__((unused)) struct rte_timer *tim, void *arg) {
+static void send_again_cb(__attribute__((unused)) struct rte_timer *tim,
+                          void *arg) {
     struct pp_conn *conn = arg;
     int sent_reqs = 0;
 
-    // printf("Thread [%d]: Send again is called back at %lu, %d requests left.\n", rte_lcore_id(), rte_rdtsc(), conn->list_len);
+    // printf("Thread [%d]: Send again is called back at %lu, %d requests
+    // left.\n", rte_lcore_id(), rte_rdtsc(), conn->list_len);
     while (!list_empty(&conn->pending_requests)) {
-        struct nvme_req *req = list_top(&conn->pending_requests, struct nvme_req, link);
+        struct nvme_req *req =
+            list_top(&conn->pending_requests, struct nvme_req, link);
         int ret = send_req(req);
         if (!ret) {
             list_pop(&conn->pending_requests, struct nvme_req, link);
@@ -169,8 +175,9 @@ static void send_again_cb(__attribute__((unused)) struct rte_timer *tim, void *a
         } else {
             // printf("Send failed again, but sent %d this time.\n", sent_reqs);
             // if (!sent_reqs) { // stop retrying if nothing more to be sent
-            // 	if (rte_timer_reset(tim, cycles_between_resend, SINGLE, rte_lcore_id(), send_again_cb, conn) != 0)
-            // 		rte_exit(EXIT_FAILURE, "Send_again_cb setup failure.\n");
+            // 	if (rte_timer_reset(tim, cycles_between_resend, SINGLE,
+            // rte_lcore_id(), send_again_cb, conn) != 0)
+            // rte_exit(EXIT_FAILURE, "Send_again_cb setup failure.\n");
             // }
             return;
         }
@@ -183,12 +190,12 @@ static void send_completed_cb(struct ixev_ref *ref) {
     struct nvme_req *req = container_of(ref, struct nvme_req, ref);
     struct pp_conn *conn = req->conn;
     int i, num4k;
-    unsigned long curr_sent_time = (rte_rdtsc() - req->timestamp) / cycles_per_us;
+    unsigned long curr_sent_time =
+        (rte_rdtsc() - req->timestamp) / cycles_per_us;
     send_avg += curr_sent_time;
 
     num4k = (req->lba_count * ns_sector_size) / 4096;
-    if (((req->lba_count * ns_sector_size) % 4096) != 0)
-        num4k++;
+    if (((req->lba_count * ns_sector_size) % 4096) != 0) num4k++;
     for (i = 0; i < num4k; i++) {
         mempool_free(&nvme_req_buf_pool, req->buf[i]);
     }
@@ -206,10 +213,10 @@ int send_req(struct nvme_req *req) {
     BINARY_HEADER *header;
 
     if (!conn->tx_pending) {
-        //setup header
+        // setup header
         // printf("Now req->opcode is %d\n", req->opcode);
         header = (BINARY_HEADER *)&conn->data_send[0];
-        header->magic = sizeof(BINARY_HEADER);  //RESP_PKT;
+        header->magic = sizeof(BINARY_HEADER);  // RESP_PKT;
         header->opcode = req->opcode;
         header->lba = req->lba;
 
@@ -222,7 +229,8 @@ int send_req(struct nvme_req *req) {
         assert(header->req_handle);
 
         while (conn->tx_sent < (sizeof(BINARY_HEADER))) {
-            ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent], sizeof(BINARY_HEADER) - conn->tx_sent);
+            ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent],
+                            sizeof(BINARY_HEADER) - conn->tx_sent);
             if (ret == -ENOBUFS) {
                 failed_header_sents_0++;
             } else if (ret == -EAGAIN) {
@@ -249,14 +257,17 @@ int send_req(struct nvme_req *req) {
     ret = 0;
     // printf("break point: opcode is %d\n", req->opcode);
     if (req->opcode == CMD_GET) {
-        // printf("Sending GET payloads of %d bytes\n", req->lba_count * ns_sector_size);
+        // printf("Sending GET payloads of %d bytes\n", req->lba_count *
+        // ns_sector_size);
         while (conn->tx_sent < req->lba_count * ns_sector_size) {
-            int to_send = min(PAGE_SIZE - (conn->tx_sent % PAGE_SIZE),             // for more than one page left
-                              (req->lba_count * ns_sector_size) - conn->tx_sent);  // for less than one page left
+            int to_send =
+                min(PAGE_SIZE - (conn->tx_sent % PAGE_SIZE),
+                    (req->lba_count * ns_sector_size) - conn->tx_sent);
 
-            ret = ixev_send_zc(&conn->ctx,
-                               &req->buf[req->current_sgl_buf][conn->tx_sent % PAGE_SIZE],
-                               to_send);
+            ret = ixev_send_zc(
+                &conn->ctx,
+                &req->buf[req->current_sgl_buf][conn->tx_sent % PAGE_SIZE],
+                to_send);
             if (ret < 0) {
                 if (ret == -ENOBUFS) {
                     failed_payload_sents_0++;
@@ -272,30 +283,28 @@ int send_req(struct nvme_req *req) {
 
                 return -2;
             }
-            if (ret == 0)
-                log_err("fhmm ret is zero\n");
+            if (ret == 0) log_err("fhmm ret is zero\n");
 
             conn->tx_sent += ret;
-            if ((conn->tx_sent % PAGE_SIZE) == 0)
-                req->current_sgl_buf++;
+            if ((conn->tx_sent % PAGE_SIZE) == 0) req->current_sgl_buf++;
         }
         assert(req->current_sgl_buf <= req->lba_count);
         req->ref.cb = &send_completed_cb;
         req->ref.send_pos = req->lba_count * ns_sector_size;
         ixev_add_sent_cb(&conn->ctx, &req->ref);
-    } else {  //PUT
+    } else {  // PUT
         int i, num4k;
         num4k = (req->lba_count * ns_sector_size) / 4096;
-        if (((req->lba_count * ns_sector_size) % 4096) != 0)
-            num4k++;
+        if (((req->lba_count * ns_sector_size) % 4096) != 0) num4k++;
         for (i = 0; i < num4k; i++) {
             mempool_free(&nvme_req_buf_pool, req->buf[i]);
         }
         mempool_free(&nvme_req_pool, req);
         reqs_allocated--;
-        unsigned long curr_sent_time = (rte_rdtsc() - req->timestamp) / cycles_per_us;
+        unsigned long curr_sent_time =
+            (rte_rdtsc() - req->timestamp) / cycles_per_us;
         send_avg += curr_sent_time;
-        //conn->sent_pkts--;
+        // conn->sent_pkts--;
     }
     conn->list_len--;
     conn->tx_sent = 0;
@@ -306,25 +315,29 @@ int send_req(struct nvme_req *req) {
 int send_pending_reqs(struct pp_conn *conn) {
     int sent_reqs = 0;
 
-    // if (rte_timer_stop(&send_timer) == -1) // FIXME: bind to the specific conn
+    // if (rte_timer_stop(&send_timer) == -1) // FIXME: bind to the specific
+    // conn
     // {
     // 	printf("Core %d: Timer is running", percpu_get(cpu_id));
     // }
 
     while (!list_empty(&conn->pending_requests)) {
-        struct nvme_req *req = list_top(&conn->pending_requests, struct nvme_req, link);
+        struct nvme_req *req =
+            list_top(&conn->pending_requests, struct nvme_req, link);
         int ret = send_req(req);
         if (!ret) {
             sent_reqs++;
             list_pop(&conn->pending_requests, struct nvme_req, link);
             tem_avg += (rte_rdtsc() - req->timestamp) / cycles_per_us;
         } else {
-            // printf("Core %d || Send attempt failed (sent: %d/list_len: %d/in_flight: %d/sent_pkts: %d).\n", percpu_get(cpu_id), sent_reqs, conn->list_len, conn->in_flight_pkts, conn->sent_pkts);
-            // exit(-1);
-            // failed_resend_attempts++;
+            // printf("Core %d || Send attempt failed (sent: %d/list_len:
+            // %d/in_flight: %d/sent_pkts: %d).\n", percpu_get(cpu_id),
+            // sent_reqs, conn->list_len, conn->in_flight_pkts,
+            // conn->sent_pkts); exit(-1); failed_resend_attempts++;
             // rte_timer_init(&send_timer); // FIXME: bind to the specific conn
             // // printf("Init a timer for thread %d\n", rte_lcore_id());
-            // if (rte_timer_reset(&send_timer, cycles_between_resend, PERIODICAL, rte_lcore_id(), send_again_cb, conn) != 0)
+            // if (rte_timer_reset(&send_timer, cycles_between_resend,
+            // PERIODICAL, rte_lcore_id(), send_again_cb, conn) != 0)
             // 	rte_exit(EXIT_FAILURE, "Send_again_cb setup failure.\n");
             return sent_reqs;
         }
@@ -332,24 +345,23 @@ int send_pending_reqs(struct pp_conn *conn) {
     return sent_reqs;
 }
 
-static void nvme_written_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason) {
+static void nvme_written_cb(struct ixev_nvme_req_ctx *ctx,
+                            unsigned int reason) {
     struct nvme_req *req = container_of(ctx, struct nvme_req, ctx);
     struct pp_conn *conn = req->conn;
     /*
-	int num_bytes = req->lba_count * 512;
-	int num_4kbufs = num_bytes /4096 + 1;
-	printf("\n***WRITTEN: num_bytes %d, lba_count %u \n", num_bytes, req->lba_count);
-    int i, j;
-	for (i =0; i < num_4kbufs; i++){
-		for (j=0; j < 4096; j++){
-			if (num_bytes > i*4096 + j) {
-				//printf("%x ", *(req->buf[i]+j));
-				printf("%c", *(req->buf[i]+j));
-			}
-		}
-	}
-	printf("\n");
-	*/
+        int num_bytes = req->lba_count * 512;
+        int num_4kbufs = num_bytes /4096 + 1;
+        printf("\n***WRITTEN: num_bytes %d, lba_count %u \n", num_bytes,
+    req->lba_count); int i, j; for (i =0; i < num_4kbufs; i++){ for (j=0; j <
+    4096; j++){ if (num_bytes > i*4096 + j) {
+                                //printf("%x ", *(req->buf[i]+j));
+                                printf("%c", *(req->buf[i]+j));
+                        }
+                }
+        }
+        printf("\n");
+        */
     conn->list_len++;
     conn->in_flight_pkts--;
     conn->sent_pkts++;
@@ -360,27 +372,26 @@ static void nvme_written_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason) 
     return;
 }
 
-static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason) {
+static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx,
+                             unsigned int reason) {
     struct nvme_req *req = container_of(ctx, struct nvme_req, ctx);
     struct pp_conn *conn = req->conn;
 
     /*
-	int num_bytes = req->lba_count * 512;
-	int num_4kbufs = num_bytes /4096 + 1;
-	printf("\n****READ: num_bytes %d, lba_count %u \n", num_bytes, req->lba_count);
-    int i, j;
-	for (i =0; i < num_4kbufs; i++){
-		for (j=0; j < 4096; j++){
-			if (num_bytes > i*4096 + j) {
-				//printf("%x ", *(req->buf[i]+j));
-				printf("%c-", *(req->buf[i]+j));
-			}
-			else{
-				printf("\n i is %d, j %d\n", i, j);
-				break;
-			}
-		}
-	}
+        int num_bytes = req->lba_count * 512;
+        int num_4kbufs = num_bytes /4096 + 1;
+        printf("\n****READ: num_bytes %d, lba_count %u \n", num_bytes,
+    req->lba_count); int i, j; for (i =0; i < num_4kbufs; i++){ for (j=0; j <
+    4096; j++){ if (num_bytes > i*4096 + j) {
+                                //printf("%x ", *(req->buf[i]+j));
+                                printf("%c-", *(req->buf[i]+j));
+                        }
+                        else{
+                                printf("\n i is %d, j %d\n", i, j);
+                                break;
+                        }
+                }
+        }
 */
     conn->list_len++;
     conn->in_flight_pkts--;
@@ -388,12 +399,14 @@ static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx, unsigned int reason)
     list_add_tail(&conn->pending_requests, &req->link);
     local_avg += (rte_rdtsc() - req->timestamp) / cycles_per_us;
     num_requests++;
-    // printf("This request costs %lu us locally\n", (rte_rdtsc() - req->timestamp) / cycles_per_us);
+    // printf("This request costs %lu us locally\n", (rte_rdtsc() -
+    // req->timestamp) / cycles_per_us);
     send_pending_reqs(conn);
     return;
 }
 
-static void nvme_opened_cb(hqu_t _handle, unsigned long _ns_size, unsigned long _ns_sector_size) {
+static void nvme_opened_cb(hqu_t _handle, unsigned long _ns_size,
+                           unsigned long _ns_sector_size) {
     ns_size = _ns_size;
     ns_sector_size = _ns_sector_size;
     if (ns_size) {
@@ -401,14 +414,49 @@ static void nvme_opened_cb(hqu_t _handle, unsigned long _ns_size, unsigned long 
     }
 }
 
-static void nvme_registered_flow_cb(long fg_handle, struct ixev_ctx *ctx, long ret) {
+static void nvme_registered_flow_cb(long fg_handle, struct ixev_ctx *ctx,
+                                    long ret) {
     if (ret < 0) {
         log_err("ERROR: couldn't register flow\n");
-        //probably signifies you need a less strict SLO
+        // probably signifies you need a less strict SLO
     }
 
     struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
     conn->nvme_fg_handle = fg_handle;
+    // printf("nvme fg_handle is %d.\n", fg_handle);
+
+    BINARY_HEADER *header;
+    
+    header = (BINARY_HEADER *)&conn->data_send[0];
+    header->magic = sizeof(BINARY_HEADER); // RESP_PKT;
+    header->opcode = CMD_REG;
+    // header->lba = req->lba;
+    header->lba_count = RESP_OK; // CMD_REG
+    // header->req_handle = req->remote_req_handle;
+
+    while (conn->tx_sent < (sizeof(BINARY_HEADER))) {
+        ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent],
+                        sizeof(BINARY_HEADER) - conn->tx_sent);
+        if (ret == -ENOBUFS) {
+            failed_header_sents_0++;
+        } else if (ret == -EAGAIN) {
+            failed_header_sents_1++;
+        } else if (ret < 0) {
+            failed_other_sents_0++;
+        }
+
+        if (ret < 0) {
+            if (!conn->nvme_pending) {
+                log_err("ixev_send ret < 0, then ivev_close.\n");
+                ixev_close(&conn->ctx);
+                return -2;
+            }
+            return -1;
+            ret = 0;
+        }
+        conn->tx_sent += ret;
+    }
+    conn->tx_sent = 0;
 }
 
 static void nvme_unregistered_flow_cb(long flow_group_id, long ret) {
@@ -447,56 +495,48 @@ static void receive_req(struct pp_conn *conn) {
             } else
                 conn->rx_received += ret;
 
-            if (conn->rx_received < sizeof(BINARY_HEADER))
-                return;
+            if (conn->rx_received < sizeof(BINARY_HEADER)) return;
 
-            //received the header
+            // received the header
             header = (BINARY_HEADER *)&conn->data_recv[0];
 
             if (header->magic != sizeof(BINARY_HEADER))
-                printf("The stored magic(%d) is not as expected(%d). cpu_nr: %d, cpu_id: %d\n",
-                       header->magic, sizeof(BINARY_HEADER), percpu_get(cpu_nr), percpu_get(cpu_id));
+                printf(
+                    "The stored magic(%d) is not as expected(%d). cpu_nr: %d, "
+                    "cpu_id: %d\n",
+                    header->magic, sizeof(BINARY_HEADER), percpu_get(cpu_nr),
+                    percpu_get(cpu_id));
             assert(header->magic == sizeof(BINARY_HEADER));
 
             if (header->opcode == CMD_REG) {
                 unsigned long cookie = (unsigned long)&conn->ctx;
                 unsigned long IOPS_SLO = header->lba;
-                unsigned int latency_us_SLO = (header->lba_count & 0xffffff00) >> 8;
-                int rd_wr_ratio_SLO = header->lba_count & 0x000000ff;
-                printf("Received reg header: IOPS_SLO-%ld, latency_SLO-%d, rw_SLO-%d\n",
-                       IOPS_SLO, latency_us_SLO, rd_wr_ratio_SLO);
-                // FIXME: rewrite the flow id mapping from network to storage
-                ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
+                unsigned int latency_us_SLO = header->lba_count >> 7;
+                int rw_ratio_SLO = header->lba_count & 0x0000007f;
 
-                uint8_t reply = RESP_OK;
-                ret = ixev_send(&conn->ctx, &reply, sizeof(reply));
+                ixev_nvme_register_flow(conn->conn_fg_handle, cookie,
+                                        latency_us_SLO, IOPS_SLO,
+                                        rw_ratio_SLO);
 
-                if (ret < 0) {
-                    if (!conn->nvme_pending) {
-                        log_err("ixev_send ret < 0, then ivev_close.\n");
-                        ixev_close(&conn->ctx);
-                        return -2;
-                    }
-                    return -1;
-                    ret = 0;
-                }
                 conn->rx_received = 0;
                 continue;
             }
 
-            //allocate nvme req
+            // allocate nvme req
             conn->current_req = mempool_alloc(&nvme_req_pool);
             if (!conn->current_req) {
-                printf("Cannot allocate nvme_usr req. In flight requests: %lu sent req %lu . list len %lu \n", conn->in_flight_pkts, conn->sent_pkts, conn->list_len);
+                printf(
+                    "Cannot allocate nvme_usr req. In flight requests: %lu "
+                    "sent req %lu . list len %lu \n",
+                    conn->in_flight_pkts, conn->sent_pkts, conn->list_len);
                 return;
             }
             conn->current_req->current_sgl_buf = 0;
 
-            //allocate lba_count sector sized nvme bufs
+            // allocate lba_count sector sized nvme bufs
             num4k = (header->lba_count * ns_sector_size) / 4096;
             assert(num4k <= MAX_PAGES_PER_ACCESS);
-            if (((header->lba_count * ns_sector_size) % 4096) != 0)
-                num4k++;
+            if (((header->lba_count * ns_sector_size) % 4096) != 0) num4k++;
 
             for (i = 0; i < num4k; i++) {
                 conn->current_req->buf[i] = mempool_alloc(&nvme_req_buf_pool);
@@ -505,7 +545,8 @@ static void receive_req(struct pp_conn *conn) {
                     assert(0);
                 }
                 // printf("conn->current_req->buf[%d] is %p, expect next %x\n",
-                //        i, conn->current_req->buf[i], (uint64_t)(conn->current_req->buf[i]) - 4096);
+                //        i, conn->current_req->buf[i],
+                //        (uint64_t)(conn->current_req->buf[i]) - 4096);
             }
             // printf("req buf is %p\n", conn->current_req->buf[0]);
 
@@ -523,16 +564,17 @@ static void receive_req(struct pp_conn *conn) {
 
         if (header->opcode == CMD_SET) {
             while (conn->rx_received < header->lba_count * ns_sector_size) {
-                int to_receive = min(PAGE_SIZE - (conn->rx_received % PAGE_SIZE),
-                                     (header->lba_count * ns_sector_size) - conn->rx_received);
+                int to_receive = min(
+                    PAGE_SIZE - (conn->rx_received % PAGE_SIZE),
+                    (header->lba_count * ns_sector_size) - conn->rx_received);
 
                 ret = ixev_recv(&conn->ctx,
-                                &req->buf[req->current_sgl_buf][conn->rx_received % PAGE_SIZE],
+                                &req->buf[req->current_sgl_buf]
+                                         [conn->rx_received % PAGE_SIZE],
                                 to_receive);
 
                 if (ret < 0) {
-                    if (ret == -EAGAIN)
-                        return;
+                    if (ret == -EAGAIN) return;
 
                     if (!conn->nvme_pending) {
                         printf("Connection close 3\n");
@@ -546,9 +588,8 @@ static void receive_req(struct pp_conn *conn) {
                     req->current_sgl_buf++;
                 }
             }
-            //4KB sgl bufs should match number of 512B sectors
+            // 4KB sgl bufs should match number of 512B sectors
             assert(req->current_sgl_buf <= header->lba_count * 8);
-
         } else if (header->opcode == CMD_GET) {
         } else {
             printf("Received unsupported command, closing connection\n");
@@ -566,37 +607,43 @@ static void receive_req(struct pp_conn *conn) {
 
         nvme_addr = (void *)(header->lba << 9);
         if (nvme_addr >= ns_size) {
-            printf("nvme_addr: %lu is larger than ns_size: %lu.\n", (unsigned long)nvme_addr, ns_size);
+            printf("nvme_addr: %lu is larger than ns_size: %lu.\n",
+                   (unsigned long)nvme_addr, ns_size);
         }
         assert((unsigned long)nvme_addr < ns_size);
 
         conn->in_flight_pkts++;
         num4k = (header->lba_count * ns_sector_size) / PAGE_SIZE;
-        if (((header->lba_count * ns_sector_size) % PAGE_SIZE) != 0)
-            num4k++;
+        if (((header->lba_count * ns_sector_size) % PAGE_SIZE) != 0) num4k++;
 
         req->timestamp = rte_rdtsc();
         switch (header->opcode) {
             case CMD_SET:
-                ixev_set_nvme_handler(&req->ctx, IXEV_NVME_WR, &nvme_written_cb);
+                ixev_set_nvme_handler(&req->ctx, IXEV_NVME_WR,
+                                      &nvme_written_cb);
 #ifndef NVME_ENABLE
                 nvme_written_cb(&req->ctx, IXEV_NVME_WR);
 #else
-                //ixev_nvme_write(conn->nvme_fg_handle, req->buf[0], header->lba, header->lba_count, (unsigned long)&req->ctx);
-                ixev_nvme_writev(conn->nvme_fg_handle, (void **)&req->buf[0], num4k,
-                                 header->lba, header->lba_count, (unsigned long)&req->ctx);
+                // ixev_nvme_write(conn->nvme_fg_handle, req->buf[0],
+                // header->lba, header->lba_count, (unsigned long)&req->ctx);
+                ixev_nvme_writev(conn->nvme_fg_handle, (void **)&req->buf[0],
+                                 num4k, header->lba, header->lba_count,
+                                 (unsigned long)&req->ctx);
 #endif
                 conn->nvme_pending++;
                 break;
             case CMD_GET:
-                ixev_set_nvme_handler(&req->ctx, IXEV_NVME_RD, &nvme_response_cb);
+                ixev_set_nvme_handler(&req->ctx, IXEV_NVME_RD,
+                                      &nvme_response_cb);
 #ifndef NVME_ENABLE
                 // printf("Received GET msg - early reply\n");
                 nvme_response_cb(&req->ctx, IXEV_NVME_RD);
 #else
-                // ixev_nvme_read(conn->nvme_fg_handle, req->buf[0], header->lba, header->lba_count, (unsigned long)&req->ctx);
-                ixev_nvme_readv(conn->nvme_fg_handle, (void **)&req->buf[0], num4k,
-                                header->lba, header->lba_count, (unsigned long)&req->ctx);
+                // ixev_nvme_read(conn->nvme_fg_handle, req->buf[0],
+                // header->lba, header->lba_count, (unsigned long)&req->ctx);
+                ixev_nvme_readv(conn->nvme_fg_handle, (void **)&req->buf[0],
+                                num4k, header->lba, header->lba_count,
+                                (unsigned long)&req->ctx);
 #endif
                 conn->nvme_pending++;
                 break;
@@ -604,7 +651,8 @@ static void receive_req(struct pp_conn *conn) {
                 log_err("Should not see this choice here.\n");
                 break;
             default:
-                printf("Received illegal msg (opcode-%d) - dropping msg\n", header->opcode);
+                printf("Received illegal msg (opcode-%d) - dropping msg\n",
+                       header->opcode);
                 mempool_free(&nvme_req_pool, req);
                 reqs_allocated--;
         }
@@ -616,22 +664,26 @@ static void receive_req(struct pp_conn *conn) {
 static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
     struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
 
-    //Lets always try to send
+    // Lets always try to send
     if (true || reason == IXEVOUT) {
         send_pending_reqs(conn);
     }
     if (reason == IXEVHUP) {
         ixev_nvme_unregister_flow(conn->nvme_fg_handle);
         if (num_requests > 0) {
-            printf("Thread %d: IXEVHUP: Connection closed.\nAvg nvme latency was %luus, avg payload send latency was %luus, avg wait latency was %lu us.\n",
-                   percpu_get(cpu_id),
-                   local_avg / num_requests,
-                   (send_avg - tem_avg) / num_requests,
-                   (tem_avg - local_avg) / num_requests);
-            printf("Failed sent: header - %lu/%lu | payload - %lu/%lu | others - %lu/%lu\n",
-                   failed_header_sents_0, failed_header_sents_1,
-                   failed_payload_sents_0, failed_payload_sents_1,
-                   failed_other_sents_0, failed_other_sents_1);
+            printf(
+                "Thread %d: IXEVHUP: Connection closed.\nAvg nvme latency was "
+                "%luus, avg payload send latency was %luus, avg wait latency "
+                "was %lu us.\n",
+                percpu_get(cpu_id), local_avg / num_requests,
+                (send_avg - tem_avg) / num_requests,
+                (tem_avg - local_avg) / num_requests);
+            printf(
+                "Failed sent: header - %lu/%lu | payload - %lu/%lu | others - "
+                "%lu/%lu\n",
+                failed_header_sents_0, failed_header_sents_1,
+                failed_payload_sents_0, failed_payload_sents_1,
+                failed_other_sents_0, failed_other_sents_1);
         }
 
         local_avg = 0;
@@ -673,12 +725,14 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
     ixev_set_handler(&conn->ctx, IXEVIN | IXEVOUT | IXEVHUP, &pp_main_handler);
     conn_opened++;
 
-    conn->nvme_fg_handle = 0;  //set to this for now
-    conn->conn_fg_handle = id->src_port;
+    conn->nvme_fg_handle = 0;
+    conn->conn_fg_handle = id->src_port;  // tenant id
     cookie = (unsigned long)&conn->ctx;
 
-    printf("The id->dst_port is %d, id->src_port is %d.\n", id->dst_port, id->src_port);
-    // ixev_nvme_register_flow(conn->conn_fg_handle, cookie, latency_us_SLO, IOPS_SLO, rd_wr_ratio_SLO);
+    printf("pp_accept: src-%d.%d.%d.%d:%d dst-%d\n", id->src_ip >> 24,
+           (id->src_ip << 8) >> 24, (id->src_ip << 16) >> 24,
+           (id->src_ip << 24) >> 24, id->src_port, id->dst_port);
+    // ixev_nvme_register_flow(conn->conn_fg_handle, cookie, 0, 1000, 100);
 
     return &conn->ctx;
 }
@@ -707,7 +761,8 @@ static struct launch_req *launch_reqs;
 void *pp_main(void *arg) {
     int ret;
     conn_opened = 0;
-    printf("pp_main on cpu %d, thread self is %x\n", percpu_get(cpu_nr), pthread_self());
+    printf("pp_main on cpu %d, thread self is %x\n", percpu_get(cpu_nr),
+           pthread_self());
     struct launch_req *req;
     uint64_t prev_tsc = 0, cur_tsc, diff_tsc;
 
@@ -717,19 +772,22 @@ void *pp_main(void *arg) {
         return NULL;
     };
 
-    ret = mempool_create(&nvme_req_pool, &nvme_req_datastore, MEMPOOL_SANITY_GLOBAL, 0);
+    ret = mempool_create(&nvme_req_pool, &nvme_req_datastore,
+                         MEMPOOL_SANITY_GLOBAL, 0);
     if (ret) {
         fprintf(stderr, "unable to create mempool\n");
         return NULL;
     }
 
-    ret = mempool_create(&nvme_req_buf_pool, &nvme_req_buf_datastore, MEMPOOL_SANITY_GLOBAL, 0);
+    ret = mempool_create(&nvme_req_buf_pool, &nvme_req_buf_datastore,
+                         MEMPOOL_SANITY_GLOBAL, 0);
     if (ret) {
         fprintf(stderr, "unable to create mempool\n");
         return NULL;
     }
 
-    ret = mempool_create(&pp_conn_pool, &pp_conn_datastore, MEMPOOL_SANITY_GLOBAL, 0);
+    ret = mempool_create(&pp_conn_pool, &pp_conn_datastore,
+                         MEMPOOL_SANITY_GLOBAL, 0);
     if (ret) {
         fprintf(stderr, "unable to create mempool\n");
         return NULL;
@@ -737,7 +795,8 @@ void *pp_main(void *arg) {
 
     ixev_nvme_open(NAMESPACE, 1);
 
-    printf("%lu cycles / seconds, will resend responses after %lu cycles\n", rte_get_timer_hz(), cycles_between_resend);
+    printf("%lu cycles / seconds, will resend responses after %lu cycles\n",
+           rte_get_timer_hz(), cycles_between_resend);
 
     while (1) {
         ixev_wait();
@@ -764,9 +823,9 @@ int reflex_server_main(int argc, char *argv[]) {
         exit(-1);
     }
 
-    ret = mempool_create_datastore(&nvme_req_datastore,
-                                   outstanding_reqs,
-                                   sizeof(struct nvme_req), "nvme_req_datastore");
+    ret =
+        mempool_create_datastore(&nvme_req_datastore, outstanding_reqs,
+                                 sizeof(struct nvme_req), "nvme_req_datastore");
     if (ret) {
         fprintf(stderr, "unable to create datastore\n");
         return ret;
@@ -779,15 +838,16 @@ int reflex_server_main(int argc, char *argv[]) {
         fprintf(stderr, "failed to initialize ixev nvme\n");
         return ret;
     }
-    ret = mempool_create_datastore(&pp_conn_datastore, pp_conn_pool_entries, sizeof(struct pp_conn), "pp_conn");
+    ret = mempool_create_datastore(&pp_conn_datastore, pp_conn_pool_entries,
+                                   sizeof(struct pp_conn), "pp_conn");
     if (ret) {
         fprintf(stderr, "unable to create mempool\n");
         return ret;
     }
 
     ret = mempool_create_datastore_align(&nvme_req_buf_datastore,
-                                         outstanding_req_bufs,
-                                         PAGE_SIZE, "nvme_req_buf_datastore");
+                                         outstanding_req_bufs, PAGE_SIZE,
+                                         "nvme_req_buf_datastore");
 
     if (ret) {
         fprintf(stderr, "unable to create datastore\n");
@@ -795,7 +855,8 @@ int reflex_server_main(int argc, char *argv[]) {
     }
 
     for (i = 1; i < nr_cpu; i++) {
-        //ret = pthread_create(&tid, NULL, start_cpu, (void *)(unsigned long) i);
+        // ret = pthread_create(&tid, NULL, start_cpu, (void *)(unsigned long)
+        // i);
         log_info("rte_eal_remote_launch...pp_main\n");
         ret = rte_eal_remote_launch(pp_main, (void *)(unsigned long)i, i);
 
