@@ -99,10 +99,6 @@ static __thread struct mempool nvme_req_pool;
 static __thread int conn_opened;
 static __thread long reqs_allocated = 0;
 // static __thread unsigned long measurements[MAX_LATENCY];
-static __thread unsigned long local_avg = 0;  // warm-up needed
-static __thread unsigned long send_avg = 0;   // warm-up needed
-static __thread unsigned long tem_avg = 0;    // warm-up needed
-static __thread unsigned long num_requests = 0;
 static __thread struct rte_timer
     send_timer;  // only for single connection per thread
 static __thread long cycles_between_resend = 100000;
@@ -142,8 +138,12 @@ struct pp_conn {
     long list_len;
     unsigned long req_received;
     struct list_head pending_requests;
-    long nvme_fg_handle;  // nvme flow group handle
-    long conn_fg_handle;  // set for src_port for now
+    long nvme_fg_handle;       // nvme flow group handle
+    long conn_fg_handle;       // set for src_port for now
+    unsigned long recv_time;   // from NIC to be processed
+    unsigned long nvme_time;   // from parsed to nvme_cb
+    unsigned long queue_time;  // from nvme_cb to start sending
+    unsigned long send_time;   // from start sending to actual sent
     struct nvme_req *current_req;
     char data_send[sizeof(BINARY_HEADER)];  // use zero-copy for payload
     char data_recv[sizeof(BINARY_HEADER)];  // use zero-copy for payload
@@ -190,9 +190,7 @@ static void send_completed_cb(struct ixev_ref *ref) {
     struct nvme_req *req = container_of(ref, struct nvme_req, ref);
     struct pp_conn *conn = req->conn;
     int i, num4k;
-    unsigned long curr_sent_time =
-        (rte_rdtsc() - req->timestamp) / cycles_per_us;
-    send_avg += curr_sent_time;
+    conn->send_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
 
     num4k = (req->lba_count * ns_sector_size) / 4096;
     if (((req->lba_count * ns_sector_size) % 4096) != 0) num4k++;
@@ -301,9 +299,6 @@ int send_req(struct nvme_req *req) {
         }
         mempool_free(&nvme_req_pool, req);
         reqs_allocated--;
-        unsigned long curr_sent_time =
-            (rte_rdtsc() - req->timestamp) / cycles_per_us;
-        send_avg += curr_sent_time;
         // conn->sent_pkts--;
     }
     conn->list_len--;
@@ -324,11 +319,11 @@ int send_pending_reqs(struct pp_conn *conn) {
     while (!list_empty(&conn->pending_requests)) {
         struct nvme_req *req =
             list_top(&conn->pending_requests, struct nvme_req, link);
+        conn->queue_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
         int ret = send_req(req);
         if (!ret) {
             sent_reqs++;
             list_pop(&conn->pending_requests, struct nvme_req, link);
-            tem_avg += (rte_rdtsc() - req->timestamp) / cycles_per_us;
         } else {
             // printf("Core %d || Send attempt failed (sent: %d/list_len:
             // %d/in_flight: %d/sent_pkts: %d).\n", percpu_get(cpu_id),
@@ -365,9 +360,8 @@ static void nvme_written_cb(struct ixev_nvme_req_ctx *ctx,
     conn->list_len++;
     conn->in_flight_pkts--;
     conn->sent_pkts++;
+    conn->nvme_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
     list_add_tail(&conn->pending_requests, &req->link);
-    local_avg += (rte_rdtsc() - req->timestamp) / cycles_per_us;
-    num_requests++;
     send_pending_reqs(conn);
     return;
 }
@@ -396,9 +390,8 @@ static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx,
     conn->list_len++;
     conn->in_flight_pkts--;
     conn->sent_pkts++;
+    conn->nvme_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
     list_add_tail(&conn->pending_requests, &req->link);
-    local_avg += (rte_rdtsc() - req->timestamp) / cycles_per_us;
-    num_requests++;
     // printf("This request costs %lu us locally\n", (rte_rdtsc() -
     // req->timestamp) / cycles_per_us);
     send_pending_reqs(conn);
@@ -506,6 +499,7 @@ static void receive_req(struct pp_conn *conn) {
 
             // allocate nvme req
             conn->current_req = mempool_alloc(&nvme_req_pool);
+            conn->current_req->timestamp = rte_rdtsc();
             if (!conn->current_req) {
                 printf(
                     "Cannot allocate nvme_usr req. In flight requests: %lu "
@@ -598,7 +592,8 @@ static void receive_req(struct pp_conn *conn) {
         num4k = (header->lba_count * ns_sector_size) / PAGE_SIZE;
         if (((header->lba_count * ns_sector_size) % PAGE_SIZE) != 0) num4k++;
 
-        req->timestamp = rte_rdtsc();
+        // req->timestamp = rte_rdtsc();
+        conn->recv_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
         switch (header->opcode) {
             case CMD_SET:
                 ixev_set_nvme_handler(&req->ctx, IXEV_NVME_WR,
@@ -652,14 +647,15 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
     }
     if (reason == IXEVHUP) {
         ixev_nvme_unregister_flow(conn->nvme_fg_handle);
-        if (num_requests > 0) {
+        if (conn->sent_pkts > 0) {
+            printf("Thread %d: IXEVHUP: Connection closed.\n", percpu_get(cpu_id));
             printf(
-                "Thread %d: IXEVHUP: Connection closed.\nAvg nvme latency was "
-                "%luus, avg payload send latency was %luus, avg wait latency "
-                "was %lu us.\n",
-                percpu_get(cpu_id), local_avg / num_requests,
-                (send_avg - tem_avg) / num_requests,
-                (tem_avg - local_avg) / num_requests);
+                "Avg recv latency was %luus, nvme latency was %lu us,"
+                "avg wait latency was %lu us, avg payload send latency was %lu us.\n",
+                conn->recv_time / conn->sent_pkts,
+                (conn->nvme_time - conn->recv_time) / conn->sent_pkts,
+                (conn->queue_time - conn->nvme_time) / conn->sent_pkts,
+                (conn->send_time - conn->queue_time) / conn->sent_pkts);
             printf(
                 "Failed sent: header - %lu/%lu | payload - %lu/%lu | others - "
                 "%lu/%lu\n",
@@ -668,10 +664,6 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
                 failed_other_sents_0, failed_other_sents_1);
         }
 
-        local_avg = 0;
-        send_avg = 0;
-        num_requests = 0;
-        tem_avg = 0;
         failed_header_sents_0 = failed_header_sents_1 = 0;
         failed_payload_sents_0 = failed_payload_sents_1 = 0;
         failed_other_sents_0 = failed_header_sents_1 = 0;
@@ -703,6 +695,10 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
     conn->sent_pkts = 0x0UL;
     conn->list_len = 0x0UL;
     conn->req_received = 0;
+    conn->recv_time = 0;
+    conn->nvme_time = 0;
+    conn->queue_time = 0;
+    conn->send_time = 0;
     ixev_ctx_init(&conn->ctx);
     ixev_set_handler(&conn->ctx, IXEVIN | IXEVOUT | IXEVHUP, &pp_main_handler);
     conn_opened++;
