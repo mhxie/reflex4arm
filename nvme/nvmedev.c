@@ -339,23 +339,23 @@ int init_nvmeqp_cpu(void) {
         nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd];
     struct spdk_nvme_io_qpair_opts opts;
 
-    // spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
-    // printf("Deafult io qpair opts: %d, %d, %d\n", opts.qprio,
-    // opts.io_queue_size, opts.io_queue_requests); opts.qprio = 0;
-    // opts.io_queue_size = DEFAULT_IO_QUEUE_SIZE;
-    // opts.io_queue_requests = opts.io_queue_size * 2;
+    spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
+    printf("Deafult io qpair opts: %d, %d, %d\n", opts.qprio, opts.io_queue_size, opts.io_queue_requests);
+    // opts.qprio = 0;
+    opts.io_queue_size = DEFAULT_IO_QUEUE_SIZE * 4;
+    opts.io_queue_requests = opts.io_queue_size * 2;
 
     // while (opts.io_queue_size >= 1) {
     //     // FIXME: naive mapping from CPU to SSDs
-    //     percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts,
-    //     sizeof(opts)); if percpu_get (qpair) {
-    //         printf("Successfully allocate qpair with io_queue_size %d\n",
-    //         opts.io_queue_size); break;
+    percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
+    //     if percpu_get (qpair) {
+    //         printf("Successfully allocate qpair with io_queue_size %d\n", opts.io_queue_size);
+    //         break;
     //     }
     //     opts.io_queue_size /= 2;
     // }
     // if (percpu_get(qpair) == NULL)
-    percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, NULL, 0);
+    // percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, NULL, 0);
     assert(percpu_get(qpair));
 
     return 0;
@@ -836,6 +836,7 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
         log_err("error: exceeded max (%d) nvme flow groups!\n",
                 MAX_NVME_FLOW_GROUPS);
     }
+    // printf("fg_handle is %ld, already registered? %d\n", fg_handle, already_registered_flow);
 
     nvme_fg = &nvme_fgs[fg_handle];
 
@@ -850,32 +851,37 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
          * with the new one
          *
          */
-        if (nvme_fg->latency_us_SLO != latency_us_SLO) {
-            // best-effort tenant -> latency-critical tenant
-            if (!nvme_fg->latency_critical_flag && latency_us_SLO > 0) {
-                thread_tenant_manager->num_best_effort_tenants--;
-            } else if (nvme_fg->latency_critical_flag && latency_us_SLO == 0) {
-                thread_tenant_manager->num_best_effort_tenants++;
-            }
-        }
-        if ((nvme_fg->IOPS_SLO != IOPS_SLO) ||
+        if ((nvme_fg->latency_us_SLO != latency_us_SLO) ||
+            (nvme_fg->IOPS_SLO != IOPS_SLO) ||
             (nvme_fg->rw_ratio_SLO != rw_ratio_SLO)) {
+            bsys_nvme_unregister_flow(fg_handle);
             printf(
                 "WARNING: tenant connection registered different SLO, will "
                 "overwrite previous SLO for all of this tenant's connections. "
                 "1 SLO per tenant.\n");
         }
     }
+    nvme_fg->flow_group_id = flow_group_id;
+    nvme_fg->cookie = cookie;
+    nvme_fg->latency_us_SLO = latency_us_SLO;
+    nvme_fg->IOPS_SLO = IOPS_SLO;
+    nvme_fg->rw_ratio_SLO = rw_ratio_SLO;
+    nvme_fg->tid = RTE_PER_LCORE(cpu_nr);
+    nvme_fg->scaled_IOPS_limit =
+        scaled_IOPS(IOPS_SLO, rw_ratio_SLO) / (double)1E6;
+
     if (latency_us_SLO == 0) {
         nvme_fg->latency_critical_flag = false;
         printf(
-            "Register tenant %ld (port id: %ld). Managed by thread %ld. "
-            "Best-effort tenant. \n",
-            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
+            "Register BE-tenant %ld (flow_group: %ld). Managed by thread %ld.\n"
+            "IOPS_SLO: %lu, r/w %d, scaled_IOPS: %lu tokens/s, latency "
+            "SLO: %lu us. \n",
+            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr), IOPS_SLO,
+            rw_ratio_SLO, nvme_fg->scaled_IOPS_limit, latency_us_SLO);
     } else {
         nvme_fg->latency_critical_flag = true;
         printf(
-            "Register tenant %ld (port id: %ld). Managed by thread %ld. "
+            "Register LC-tenant %ld (flow_group: %ld). Managed by thread %ld.\n"
             "IOPS_SLO: %lu, r/w %d, scaled_IOPS: %lu tokens/s, latency "
             "SLO: %lu us. \n",
             fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr), IOPS_SLO,
@@ -888,31 +894,23 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
         return -RET_CANTMEETSLO;
     }
 
-    nvme_fg->flow_group_id = flow_group_id;
-    nvme_fg->cookie = cookie;
-    nvme_fg->latency_us_SLO = latency_us_SLO;
-    nvme_fg->IOPS_SLO = IOPS_SLO;
-    nvme_fg->rw_ratio_SLO = rw_ratio_SLO;
-    nvme_fg->tid = RTE_PER_LCORE(cpu_nr);
-    nvme_fg->scaled_IOPS_limit =
-        scaled_IOPS(IOPS_SLO, rw_ratio_SLO) / (double)1E6;
-
-    if (already_registered_flow == 0) {
-        swq = alloc_local_nvme_swq();
-        if (swq == NULL) {
-            log_err("error: can't allocate nvme_swq for flow group\n");
-            return -RET_NOMEM;
-        }
-        nvme_fg->nvme_swq = swq;
-        nvme_sw_queue_init(swq, fg_handle);
-        thread_tenant_manager = &percpu_get(nvme_tenant_manager);
-        list_add(&thread_tenant_manager->tenant_swq, &swq->list);
-        thread_tenant_manager->num_tenants++;
-        percpu_get(roundrobin_start) = 0;
-        nvme_fg->conn_ref_count = 0;
-        if (latency_us_SLO == 0) {
-            thread_tenant_manager->num_best_effort_tenants++;
-        }
+    // if (already_registered_flow == 0)
+    // printf("allocating local nvme swq.\n");
+    swq = alloc_local_nvme_swq();
+    if (swq == NULL) {
+        log_err("error: can't allocate nvme_swq for flow group\n");
+        return -RET_NOMEM;
+    }
+    nvme_fg->nvme_swq = swq;
+    nvme_sw_queue_init(swq, fg_handle);
+    // printf("swq %lx inited to fg_handle: %ld.\n", nvme_fg->nvme_swq, fg_handle);
+    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+    list_add(&thread_tenant_manager->tenant_swq, &swq->list);
+    thread_tenant_manager->num_tenants++;
+    percpu_get(roundrobin_start) = 0;
+    nvme_fg->conn_ref_count = 0;
+    if (latency_us_SLO == 0) {
+        thread_tenant_manager->num_best_effort_tenants++;
     }
     nvme_fg->conn_ref_count++;
 
@@ -1218,6 +1216,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
 
         // add to SW queue
         struct nvme_sw_queue *swq = nvme_fgs[fg_handle].nvme_swq;
+        // printf("swq %lx accessed from fg_handle: %ld", swq, fg_handle);
         ret = nvme_sw_queue_push_back(swq, ctx);
         if (ret != 0) {
             free_local_nvme_ctx(ctx);

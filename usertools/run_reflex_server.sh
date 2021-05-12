@@ -15,5 +15,5 @@ $REFLEX_HOME/spdk/dpdk/usertools/dpdk-devbind.py --bind=igb_uio $ETH_PCI
 # mount -t hugetlbfs nodev /mnt/huge
 sh -c 'for i in /sys/devices/system/node/node*/hugepages/hugepages-2048kB/nr_hugepages; do echo 4096 > $i; done'
 
-$REFLEX_HOME/build/dp
+# $REFLEX_HOME/build/dp
 # ./dp/ix -- ./apps/reflex_server
