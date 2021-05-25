@@ -340,17 +340,19 @@ int init_nvmeqp_cpu(void) {
     struct spdk_nvme_io_qpair_opts opts;
 
     spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
-    printf("Deafult io qpair opts: %d, %d, %d\n", opts.qprio, opts.io_queue_size, opts.io_queue_requests);
+    printf("Deafult io qpair opts: %d, %d, %d\n", opts.qprio,
+           opts.io_queue_size, opts.io_queue_requests);
     // opts.qprio = 0;
     opts.io_queue_size = DEFAULT_IO_QUEUE_SIZE * 4;
     opts.io_queue_requests = opts.io_queue_size * 2;
 
     // while (opts.io_queue_size >= 1) {
     //     // FIXME: naive mapping from CPU to SSDs
-    percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
+    percpu_get(qpair) =
+        spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
     //     if percpu_get (qpair) {
-    //         printf("Successfully allocate qpair with io_queue_size %d\n", opts.io_queue_size);
-    //         break;
+    //         printf("Successfully allocate qpair with io_queue_size %d\n",
+    //         opts.io_queue_size); break;
     //     }
     //     opts.io_queue_size /= 2;
     // }
@@ -836,7 +838,8 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
         log_err("error: exceeded max (%d) nvme flow groups!\n",
                 MAX_NVME_FLOW_GROUPS);
     }
-    // printf("fg_handle is %ld, already registered? %d\n", fg_handle, already_registered_flow);
+    // printf("fg_handle is %ld, already registered? %d\n", fg_handle,
+    // already_registered_flow);
 
     nvme_fg = &nvme_fgs[fg_handle];
 
@@ -903,7 +906,8 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
     }
     nvme_fg->nvme_swq = swq;
     nvme_sw_queue_init(swq, fg_handle);
-    // printf("swq %lx inited to fg_handle: %ld.\n", nvme_fg->nvme_swq, fg_handle);
+    // printf("swq %lx inited to fg_handle: %ld.\n", nvme_fg->nvme_swq,
+    // fg_handle);
     thread_tenant_manager = &percpu_get(nvme_tenant_manager);
     list_add(&thread_tenant_manager->tenant_swq, &swq->list);
     thread_tenant_manager->num_tenants++;

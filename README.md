@@ -66,7 +66,7 @@ ARM Server: TBD
 2. Install library dependencies:
 
    ```
-   sudo apt-get update && sudo apt-get install libconfig-dev libnuma-dev libpciaccess-dev libaio-dev libevent-dev g++-multilib libcunit1-dev libssl-dev uuid-dev python3-pip net-tools
+   sudo apt-get update && sudo apt-get install libconfig-dev libpciaccess-dev net-tools
    sudo ./spdk/scripts/pkgdep.sh
    ```
 
