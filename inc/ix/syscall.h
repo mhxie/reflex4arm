@@ -703,7 +703,8 @@ extern long bsys_nvme_open(long dev_id, long ns_id);
 extern long bsys_nvme_close(long dev_id, long ns_id, hqu_t handle);
 extern long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
                                     unsigned int latency_us_SLO,
-                                    unsigned long IOPS_SLO, int rw_ratio_SLO);
+                                    unsigned int IOPS_SLO,
+                                    unsigned short rw_ratio_SLO);
 extern long bsys_nvme_unregister_flow(long flow_group_id);
 extern long bsys_nvme_write(hqu_t priority, void *buf, unsigned long lba,
                             unsigned int lba_count, unsigned long cookie);

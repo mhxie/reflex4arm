@@ -13,8 +13,8 @@ RUN git submodule update --init --recursive
 RUN ./spdk/scripts/pkgdep.sh
 RUN sed -i 's|mempool/ring|mempool/ring net/ena|g' spdk/dpdkbuild/Makefile
 RUN sed -i 's|false|true|g' spdk/dpdk/lib/librte_timer/meson.build
-RUN cd spdk && ./configure --with-igb-uio-driver && make && cd ..
-# RUN cd spdk && ./configure && make && cd ..
+# RUN cd spdk && ./configure --with-igb-uio-driver && make && cd ..
+RUN cd spdk && ./configure && make && cd ..
 
 RUN meson build && meson compile -C build
 
@@ -35,5 +35,5 @@ COPY --from=build /reflex4arm/spdk/dpdk/usertools/dpdk-devbind.py /home
 COPY --from=build /reflex4arm/usertools/conf_setup.sh /home
 COPY --from=build /reflex4arm/usertools/start.sh /home
 
-WORKDIR /home
-CMD ["./start.sh"]
+# WORKDIR /home
+# CMD ["./start.sh"]

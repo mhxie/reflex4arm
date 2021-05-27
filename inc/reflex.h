@@ -62,13 +62,25 @@ struct msg_header {
 #define MAX_KEY_LEN 8
 
 typedef struct __attribute__((__packed__)) {
+    uint32_t IOPS_SLO;
+    uint8_t rw_ratio_SLO;
+    uint8_t latency_SLO_hi;
+    uint16_t latency_SLO_lo;
+} slo_t;
+
+typedef struct __attribute__((__packed__)) {
     uint16_t magic;
     uint16_t opcode;
     void *req_handle;
-    // IOPS_SLO
-    unsigned long lba;
-    // 0xffffff80: latency_SLO; 0x0000007f: rw_ratio_SLO
-    unsigned int lba_count;
+    union {
+        uint64_t lba;
+        slo_t SLO;
+        int64_t SLO_val;
+    };
+    union {
+        uint32_t lba_count;
+        uint32_t flow_priority;
+    };
 } binary_header_blk_t;
 
 void *pp_main(void *arg);

@@ -419,12 +419,12 @@ static void nvme_registered_flow_cb(long fg_handle, struct ixev_ctx *ctx,
     // printf("nvme fg_handle is %d.\n", fg_handle);
 
     BINARY_HEADER *header;
-    
+
     header = (BINARY_HEADER *)&conn->data_send[0];
-    header->magic = sizeof(BINARY_HEADER); // RESP_PKT;
+    header->magic = sizeof(BINARY_HEADER);  // RESP_PKT;
     header->opcode = CMD_REG;
     // header->lba = req->lba;
-    header->lba_count = RESP_OK; // CMD_REG
+    header->lba_count = RESP_OK;  // CMD_REG
     // header->req_handle = req->remote_req_handle;
 
     while (conn->tx_sent < (sizeof(BINARY_HEADER))) {
@@ -503,13 +503,12 @@ static void receive_req(struct pp_conn *conn) {
 
             if (header->opcode == CMD_REG) {
                 unsigned long cookie = (unsigned long)&conn->ctx;
-                unsigned long IOPS_SLO = header->lba;
-                unsigned int latency_us_SLO = header->lba_count >> 7;
-                int rw_ratio_SLO = header->lba_count & 0x0000007f;
+                slo_t SLO = header->SLO;
+                uint32_t latency_SLO = SLO.latency_SLO_hi << 16;
+                latency_SLO += SLO.latency_SLO_lo;
 
-                ixev_nvme_register_flow(conn->conn_fg_handle, cookie,
-                                        latency_us_SLO, IOPS_SLO,
-                                        rw_ratio_SLO);
+                ixev_nvme_register_flow(header->SLO_val, cookie, latency_SLO,
+                                        SLO.IOPS_SLO, SLO.rw_ratio_SLO);
 
                 conn->rx_received = 0;
                 continue;
@@ -666,10 +665,12 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
     if (reason == IXEVHUP) {
         ixev_nvme_unregister_flow(conn->nvme_fg_handle);
         if (conn->sent_pkts > 0) {
-            printf("Thread %d: IXEVHUP: Connection closed.\n", percpu_get(cpu_id));
+            printf("Thread %d: IXEVHUP: Connection closed.\n",
+                   percpu_get(cpu_id));
             printf(
                 "Avg recv latency was %luus, nvme latency was %lu us,"
-                "avg wait latency was %lu us, avg payload send latency was %lu us.\n",
+                "avg wait latency was %lu us, avg payload send latency was %lu "
+                "us.\n",
                 conn->recv_time / conn->sent_pkts,
                 (conn->nvme_time - conn->recv_time) / conn->sent_pkts,
                 (conn->queue_time - conn->nvme_time) / conn->sent_pkts,

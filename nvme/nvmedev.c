@@ -555,7 +555,8 @@ long bsys_nvme_close(long dev_id, long ns_id, hqu_t handle) {
     return RET_OK;
 }
 
-int set_nvme_flow_group_id(long flow_group_id, long *fg_handle_to_set) {
+int set_nvme_flow_group_id(long flow_group_id, long *fg_handle_to_set,
+                           unsigned long cookie) {
     int i;
     int next_avail = 0;
     // first check if already registered this flow
@@ -567,7 +568,10 @@ int set_nvme_flow_group_id(long flow_group_id, long *fg_handle_to_set) {
                 nvme_fgs[i].tid == RTE_PER_LCORE(cpu_nr)) {
                 *fg_handle_to_set = i;
                 spin_unlock(&nvme_bitmap_lock);
+                // if (nvme_fgs[i].cookie == cookie)
                 return 1;
+                // else
+                //     return 2;
             }
         } else {
             if (next_avail == 0) {
@@ -824,54 +828,22 @@ int recalculate_weights_remove(long flow_group_idx) {
 // TODO: consider implementing separate per-thread lists for BE and LC tenants
 // (will simplify some code for scheduler)
 long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
-                             unsigned int latency_us_SLO,
-                             unsigned long IOPS_SLO, int rw_ratio_SLO) {
+                             unsigned int latency_us_SLO, unsigned int IOPS_SLO,
+                             unsigned short rw_ratio_SLO) {
     long fg_handle = 0;
     struct nvme_flow_group *nvme_fg;
     int ret = 0;
-    int already_registered_flow = 0;
+    int flow_state = 0;
     struct nvme_tenant_mgmt *thread_tenant_manager;
     struct nvme_sw_queue *swq;
 
-    already_registered_flow = set_nvme_flow_group_id(flow_group_id, &fg_handle);
+    flow_state = set_nvme_flow_group_id(flow_group_id, &fg_handle, cookie);
     if (fg_handle < 0) {
         log_err("error: exceeded max (%d) nvme flow groups!\n",
                 MAX_NVME_FLOW_GROUPS);
     }
-    // printf("fg_handle is %ld, already registered? %d\n", fg_handle,
-    // already_registered_flow);
 
     nvme_fg = &nvme_fgs[fg_handle];
-
-    if (already_registered_flow == 1) {
-        /*
-         * A tenant is a logical grouping for an app's connections that want the
-         * *same* SLO so if a tenant is trying to register different SLOs across
-         * connections, give warning should register these connections as
-         * separate tenants
-         *
-         * Default way to procede here is to overwrite the whole tenant's SLO
-         * with the new one
-         *
-         */
-        if ((nvme_fg->latency_us_SLO != latency_us_SLO) ||
-            (nvme_fg->IOPS_SLO != IOPS_SLO) ||
-            (nvme_fg->rw_ratio_SLO != rw_ratio_SLO)) {
-            bsys_nvme_unregister_flow(fg_handle);
-            printf(
-                "WARNING: tenant connection registered different SLO, will "
-                "overwrite previous SLO for all of this tenant's connections. "
-                "1 SLO per tenant.\n");
-        }
-    }
-    nvme_fg->flow_group_id = flow_group_id;
-    nvme_fg->cookie = cookie;
-    nvme_fg->latency_us_SLO = latency_us_SLO;
-    nvme_fg->IOPS_SLO = IOPS_SLO;
-    nvme_fg->rw_ratio_SLO = rw_ratio_SLO;
-    nvme_fg->tid = RTE_PER_LCORE(cpu_nr);
-    nvme_fg->scaled_IOPS_limit =
-        scaled_IOPS(IOPS_SLO, rw_ratio_SLO) / (double)1E6;
 
     if (latency_us_SLO == 0) {
         nvme_fg->latency_critical_flag = false;
@@ -891,30 +863,61 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
             rw_ratio_SLO, nvme_fg->scaled_IOPS_limit, latency_us_SLO);
     }
 
-    ret = recalculate_weights_add(fg_handle);
-    if (ret < 0) {
-        printf("WARNING: cannot satisfy SLO\n");
-        return -RET_CANTMEETSLO;
+    if (flow_state == 2) {
+        // Old connection with new SLO
+        /* FIXME: currently not support registering different SLO for the same
+         * conn, consider implement a bitmap per flow group to test when receive
+         * CMD_REG within the same connection
+         */
+        bsys_nvme_unregister_flow(fg_handle);
+        printf(
+            "WARNING: tenant connection registered different SLO, will "
+            "overwrite previous SLO for all of this tenant's connections. "
+            "1 SLO per tenant.\n");
+        flow_state = 0;
     }
+    if (flow_state == 1) {
+        // New connection with old SLO
+        nvme_fg->scaled_IOPS_limit +=
+            scaled_IOPS(IOPS_SLO, rw_ratio_SLO) / (double)1E6;
+        ret = recalculate_weights_add(fg_handle);
+        if (ret < 0) {
+            printf("WARNING: cannot satisfy SLO\n");
+            return -RET_CANTMEETSLO;
+        }
+    } else if (flow_state == 0) {
+        // New connection with new SLO
+        nvme_fg->flow_group_id = flow_group_id;
+        // nvme_fg->cookie = cookie;
+        nvme_fg->latency_us_SLO = latency_us_SLO;
+        nvme_fg->IOPS_SLO = IOPS_SLO;
+        nvme_fg->rw_ratio_SLO = rw_ratio_SLO;
+        nvme_fg->tid = RTE_PER_LCORE(cpu_nr);
 
-    // if (already_registered_flow == 0)
-    // printf("allocating local nvme swq.\n");
-    swq = alloc_local_nvme_swq();
-    if (swq == NULL) {
-        log_err("error: can't allocate nvme_swq for flow group\n");
-        return -RET_NOMEM;
-    }
-    nvme_fg->nvme_swq = swq;
-    nvme_sw_queue_init(swq, fg_handle);
-    // printf("swq %lx inited to fg_handle: %ld.\n", nvme_fg->nvme_swq,
-    // fg_handle);
-    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
-    list_add(&thread_tenant_manager->tenant_swq, &swq->list);
-    thread_tenant_manager->num_tenants++;
-    percpu_get(roundrobin_start) = 0;
-    nvme_fg->conn_ref_count = 0;
-    if (latency_us_SLO == 0) {
-        thread_tenant_manager->num_best_effort_tenants++;
+        nvme_fg->scaled_IOPS_limit =
+            scaled_IOPS(IOPS_SLO, rw_ratio_SLO) / (double)1E6;
+        ret = recalculate_weights_add(fg_handle);
+        if (ret < 0) {
+            printf("WARNING: cannot satisfy SLO\n");
+            return -RET_CANTMEETSLO;
+        }
+
+        swq = alloc_local_nvme_swq();
+        if (swq == NULL) {
+            log_err("error: can't allocate nvme_swq for flow group\n");
+            return -RET_NOMEM;
+        }
+        nvme_fg->nvme_swq = swq;
+        nvme_sw_queue_init(swq, fg_handle);
+
+        thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+        list_add(&thread_tenant_manager->tenant_swq, &swq->list);
+        thread_tenant_manager->num_tenants++;
+        percpu_get(roundrobin_start) = 0;
+        nvme_fg->conn_ref_count = 0;
+        if (latency_us_SLO == 0) {
+            thread_tenant_manager->num_best_effort_tenants++;
+        }
     }
     nvme_fg->conn_ref_count++;
 
@@ -925,17 +928,25 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
 
 long bsys_nvme_unregister_flow(long fg_handle) {
     struct nvme_tenant_mgmt *thread_tenant_manager;
+    struct nvme_flow_group *nvme_fg;
 
-    nvme_fgs[fg_handle].conn_ref_count--;
-    if (nvme_fgs[fg_handle].conn_ref_count == 0) {
+    nvme_fg = &nvme_fgs[fg_handle];
+    nvme_fg->conn_ref_count--;
+    nvme_fg->scaled_IOPS_limit -=
+        scaled_IOPS(nvme_fg->IOPS_SLO, nvme_fg->rw_ratio_SLO) / (double)1E6;
+    if (nvme_fg->scaled_IOPS_limit < 0) {
+        printf("Unexpected unregisteration (handle: %ld)\n", fg_handle);
+    }
+    recalculate_weights_remove(fg_handle);
+
+    if (nvme_fg->conn_ref_count == 0) {
         thread_tenant_manager = &percpu_get(nvme_tenant_manager);
-        if (!nvme_fgs[fg_handle].latency_critical_flag) {
+        if (!nvme_fg->latency_critical_flag) {
             thread_tenant_manager->num_best_effort_tenants--;
         }
-        list_del(&nvme_fgs[fg_handle].nvme_swq->list);
-        free_local_nvme_swq(nvme_fgs[fg_handle].nvme_swq);
+        list_del(&nvme_fg->nvme_swq->list);
+        free_local_nvme_swq(nvme_fg->nvme_swq);
         thread_tenant_manager->num_tenants--;
-        recalculate_weights_remove(fg_handle);
 
         spin_lock(&nvme_bitmap_lock);
         bitmap_clear(nvme_fgs_bitmap, fg_handle);
