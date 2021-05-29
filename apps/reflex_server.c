@@ -72,8 +72,6 @@
 #define BATCH_DEPTH 512
 #define NAMESPACE 0
 
-// #define rte_rdtsc() 0
-
 #define BINARY_HEADER binary_header_blk_t
 
 #define NVME_ENABLE
@@ -82,7 +80,8 @@
 #define PAGE_SIZE 4096
 
 #define MAX_NUM_CONTIG_ALLOC_RETRIES 5
-// #define MAX_LATENCY 2000
+#define MAX_REQ_COUNT 10 * 1024  // 10s * 1024 IOPS
+#define MAX_CONN_COUNT 512
 
 #define TIMER_RESOLUTION_CYCLES 250ULL /* around 2 us at 125Mhz */
 
@@ -98,7 +97,14 @@ static struct mempool_datastore nvme_req_datastore;
 static __thread struct mempool nvme_req_pool;
 static __thread int conn_opened;
 static __thread long reqs_allocated = 0;
-// static __thread unsigned long measurements[MAX_LATENCY];
+static __thread unsigned long conn_accepted = 0;
+static __thread unsigned long measurements[MAX_CONN_COUNT][4][MAX_REQ_COUNT];
+/*
+    unsigned long recv_time;   // from NIC to be processed
+    unsigned long nvme_time;   // from parsed to nvme_cb
+    unsigned long queue_time;  // from nvme_cb to start sending
+    unsigned long send_time;   // from start sending to actual sent
+*/
 static __thread struct rte_timer
     send_timer;  // only for single connection per thread
 static __thread long cycles_between_resend = 100000;
@@ -109,8 +115,6 @@ static __thread long failed_payload_sents_1 = 0;
 static __thread long failed_other_sents_0 = 0;
 static __thread long failed_other_sents_1 = 0;
 // static __thread long successful_resend_attempts = 0;
-// static __thread long cycles_between_resend = 100000;
-// static __thread long cycles_between_resend = 50000;
 
 struct nvme_req {
     struct ixev_nvme_req_ctx ctx;
@@ -121,6 +125,7 @@ struct nvme_req {
     struct list_node link;
     struct ixev_ref ref;  // for zero-copy
     unsigned long timestamp;
+    unsigned long service_time;
     void *remote_req_handle;
     char *buf[MAX_PAGES_PER_ACCESS];  // nvme buffer to read/write data into
     int current_sgl_buf;
@@ -136,14 +141,11 @@ struct pp_conn {
     long in_flight_pkts;
     long sent_pkts;
     long list_len;
-    unsigned long req_received;
+    unsigned long req_measured;
+    unsigned long conn_id;
     struct list_head pending_requests;
-    long nvme_fg_handle;       // nvme flow group handle
-    long conn_fg_handle;       // set for src_port for now
-    unsigned long recv_time;   // from NIC to be processed
-    unsigned long nvme_time;   // from parsed to nvme_cb
-    unsigned long queue_time;  // from nvme_cb to start sending
-    unsigned long send_time;   // from start sending to actual sent
+    long nvme_fg_handle;  // nvme flow group handle
+    long conn_fg_handle;  // set for src_port for now
     struct nvme_req *current_req;
     char data_send[sizeof(BINARY_HEADER)];  // use zero-copy for payload
     char data_recv[sizeof(BINARY_HEADER)];  // use zero-copy for payload
@@ -163,7 +165,7 @@ static void send_again_cb(__attribute__((unused)) struct rte_timer *tim,
     int sent_reqs = 0;
 
     // printf("Thread [%d]: Send again is called back at %lu, %d requests
-    // left.\n", rte_lcore_id(), rte_rdtsc(), conn->list_len);
+    // left.\n", rte_lcore_id(), timer_now(), conn->list_len);
     while (!list_empty(&conn->pending_requests)) {
         struct nvme_req *req =
             list_top(&conn->pending_requests, struct nvme_req, link);
@@ -190,7 +192,13 @@ static void send_completed_cb(struct ixev_ref *ref) {
     struct nvme_req *req = container_of(ref, struct nvme_req, ref);
     struct pp_conn *conn = req->conn;
     int i, num4k;
-    conn->send_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
+    measurements[conn->conn_id][3][conn->req_measured] =
+        timer_now() - req->timestamp;  // send_time
+    conn->req_measured++;
+    if (conn->req_measured > MAX_REQ_COUNT) {
+        fprintf(stderr, "too many requests for connection-%d\n", conn->conn_id);
+        return -1;
+    }
 
     num4k = (req->lba_count * ns_sector_size) / 4096;
     if (((req->lba_count * ns_sector_size) % 4096) != 0) num4k++;
@@ -216,12 +224,8 @@ int send_req(struct nvme_req *req) {
         header = (BINARY_HEADER *)&conn->data_send[0];
         header->magic = sizeof(BINARY_HEADER);  // RESP_PKT;
         header->opcode = req->opcode;
-        header->lba = req->lba;
-
-        if (req->opcode == CMD_GET)
-            header->lba_count = req->lba_count;
-        else  // CMD_SET
-            header->lba_count = RESP_OK;
+        header->service_time = req->service_time;
+        header->resp_code = RESP_OK;
         header->req_handle = req->remote_req_handle;
 
         assert(header->req_handle);
@@ -229,13 +233,13 @@ int send_req(struct nvme_req *req) {
         while (conn->tx_sent < (sizeof(BINARY_HEADER))) {
             ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent],
                             sizeof(BINARY_HEADER) - conn->tx_sent);
-            if (ret == -ENOBUFS) {
-                failed_header_sents_0++;
-            } else if (ret == -EAGAIN) {
-                failed_header_sents_1++;
-            } else if (ret < 0) {
-                failed_other_sents_0++;
-            }
+            // if (ret == -ENOBUFS) {
+            //     failed_header_sents_0++;
+            // } else if (ret == -EAGAIN) {
+            //     failed_header_sents_1++;
+            // } else if (ret < 0) {
+            //     failed_other_sents_0++;
+            // }
 
             if (ret < 0) {
                 if (!conn->nvme_pending) {
@@ -267,13 +271,13 @@ int send_req(struct nvme_req *req) {
                 &req->buf[req->current_sgl_buf][conn->tx_sent % PAGE_SIZE],
                 to_send);
             if (ret < 0) {
-                if (ret == -ENOBUFS) {
-                    failed_payload_sents_0++;
-                } else if (ret == -EAGAIN) {
-                    failed_payload_sents_1++;
-                } else if (ret < 0) {
-                    failed_other_sents_1++;
-                }
+                // if (ret == -ENOBUFS) {
+                //     failed_payload_sents_0++;
+                // } else if (ret == -EAGAIN) {
+                //     failed_payload_sents_1++;
+                // } else if (ret < 0) {
+                //     failed_other_sents_1++;
+                // }
                 if (!conn->nvme_pending) {
                     log_err("Connection close 3\n");
                     ixev_close(&conn->ctx);
@@ -319,7 +323,9 @@ int send_pending_reqs(struct pp_conn *conn) {
     while (!list_empty(&conn->pending_requests)) {
         struct nvme_req *req =
             list_top(&conn->pending_requests, struct nvme_req, link);
-        conn->queue_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
+        req->service_time = timer_now() - req->timestamp;
+        measurements[conn->conn_id][2][conn->req_measured] =
+            req->service_time;  // queue_time
         int ret = send_req(req);
         if (!ret) {
             sent_reqs++;
@@ -360,7 +366,8 @@ static void nvme_written_cb(struct ixev_nvme_req_ctx *ctx,
     conn->list_len++;
     conn->in_flight_pkts--;
     conn->sent_pkts++;
-    conn->nvme_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
+    measurements[conn->conn_id][1][conn->req_measured] =
+        timer_now() - req->timestamp;  // nvme_time
     list_add_tail(&conn->pending_requests, &req->link);
     send_pending_reqs(conn);
     return;
@@ -390,10 +397,9 @@ static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx,
     conn->list_len++;
     conn->in_flight_pkts--;
     conn->sent_pkts++;
-    conn->nvme_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
+    measurements[conn->conn_id][1][conn->req_measured] =
+        timer_now() - req->timestamp;  // nvme_time
     list_add_tail(&conn->pending_requests, &req->link);
-    // printf("This request costs %lu us locally\n", (rte_rdtsc() -
-    // req->timestamp) / cycles_per_us);
     send_pending_reqs(conn);
     return;
 }
@@ -423,20 +429,14 @@ static void nvme_registered_flow_cb(long fg_handle, struct ixev_ctx *ctx,
     header = (BINARY_HEADER *)&conn->data_send[0];
     header->magic = sizeof(BINARY_HEADER);  // RESP_PKT;
     header->opcode = CMD_REG;
-    // header->lba = req->lba;
-    header->lba_count = RESP_OK;  // CMD_REG
-    // header->req_handle = req->remote_req_handle;
+    header->flow_handle = ctx;  // support control plane flow management
+    header->token.supply = 0;
+    header->token.assigned = 0;
+    header->resp_code = RESP_OK;  // CMD_REG
 
     while (conn->tx_sent < (sizeof(BINARY_HEADER))) {
         ret = ixev_send(&conn->ctx, &conn->data_send[conn->tx_sent],
                         sizeof(BINARY_HEADER) - conn->tx_sent);
-        if (ret == -ENOBUFS) {
-            failed_header_sents_0++;
-        } else if (ret == -EAGAIN) {
-            failed_header_sents_1++;
-        } else if (ret < 0) {
-            failed_other_sents_0++;
-        }
 
         if (ret < 0) {
             if (!conn->nvme_pending) {
@@ -502,13 +502,21 @@ static void receive_req(struct pp_conn *conn) {
             assert(header->magic == sizeof(BINARY_HEADER));
 
             if (header->opcode == CMD_REG) {
-                unsigned long cookie = (unsigned long)&conn->ctx;
-                slo_t SLO = header->SLO;
-                uint32_t latency_SLO = SLO.latency_SLO_hi << 16;
-                latency_SLO += SLO.latency_SLO_lo;
+                if (header->token_demand == 0) {
+                    unsigned long cookie = (unsigned long)&conn->ctx;
+                    slo_t SLO = header->SLO;
+                    uint32_t latency_SLO = SLO.latency_SLO_hi << 16;
+                    latency_SLO += SLO.latency_SLO_lo;
 
-                ixev_nvme_register_flow(header->SLO_val, cookie, latency_SLO,
-                                        SLO.IOPS_SLO, SLO.rw_ratio_SLO);
+                    ixev_nvme_register_flow(header->SLO_val, cookie,
+                                            latency_SLO, SLO.IOPS_SLO,
+                                            SLO.rw_ratio_SLO);
+                } else {
+                    // Update token demands from clients
+                    // TODO: add a function call for flow adjustment
+                    unsigned long cookie = (unsigned long)header->flow_handle;
+                    // ixev_adjust_flow();
+                }
 
                 conn->rx_received = 0;
                 continue;
@@ -516,7 +524,7 @@ static void receive_req(struct pp_conn *conn) {
 
             // allocate nvme req
             conn->current_req = mempool_alloc(&nvme_req_pool);
-            conn->current_req->timestamp = rte_rdtsc();
+            conn->current_req->timestamp = timer_now();
             if (!conn->current_req) {
                 printf(
                     "Cannot allocate nvme_usr req. In flight requests: %lu "
@@ -609,8 +617,8 @@ static void receive_req(struct pp_conn *conn) {
         num4k = (header->lba_count * ns_sector_size) / PAGE_SIZE;
         if (((header->lba_count * ns_sector_size) % PAGE_SIZE) != 0) num4k++;
 
-        // req->timestamp = rte_rdtsc();
-        conn->recv_time += (rte_rdtsc() - req->timestamp) / cycles_per_us;
+        measurements[conn->conn_id][0][conn->req_measured] =
+            timer_now() - req->timestamp;  // recv_time
         switch (header->opcode) {
             case CMD_SET:
                 ixev_set_nvme_handler(&req->ctx, IXEV_NVME_WR,
@@ -667,25 +675,18 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
         if (conn->sent_pkts > 0) {
             printf("Thread %d: IXEVHUP: Connection closed.\n",
                    percpu_get(cpu_id));
-            printf(
-                "Avg recv latency was %luus, nvme latency was %lu us,"
-                "avg wait latency was %lu us, avg payload send latency was %lu "
-                "us.\n",
-                conn->recv_time / conn->sent_pkts,
-                (conn->nvme_time - conn->recv_time) / conn->sent_pkts,
-                (conn->queue_time - conn->nvme_time) / conn->sent_pkts,
-                (conn->send_time - conn->queue_time) / conn->sent_pkts);
-            printf(
-                "Failed sent: header - %lu/%lu | payload - %lu/%lu | others - "
-                "%lu/%lu\n",
-                failed_header_sents_0, failed_header_sents_1,
-                failed_payload_sents_0, failed_payload_sents_1,
-                failed_other_sents_0, failed_other_sents_1);
+            // printf(
+            //     "Failed sent: header - %lu/%lu | payload - %lu/%lu | others -
+            //     "
+            //     "%lu/%lu\n",
+            //     failed_header_sents_0, failed_header_sents_1,
+            //     failed_payload_sents_0, failed_payload_sents_1,
+            //     failed_other_sents_0, failed_other_sents_1);
         }
 
-        failed_header_sents_0 = failed_header_sents_1 = 0;
-        failed_payload_sents_0 = failed_payload_sents_1 = 0;
-        failed_other_sents_0 = failed_header_sents_1 = 0;
+        // failed_header_sents_0 = failed_header_sents_1 = 0;
+        // failed_payload_sents_0 = failed_payload_sents_1 = 0;
+        // failed_other_sents_0 = failed_header_sents_1 = 0;
         // failed_resend_attempts = 0;
         // successful_resend_attempts = 0;
         ixev_close(&conn->ctx);
@@ -695,11 +696,6 @@ static void pp_main_handler(struct ixev_ctx *ctx, unsigned int reason) {
 }
 
 static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
-    unsigned long cookie;
-    // unsigned int latency_us_SLO = 0;
-    // unsigned long IOPS_SLO = 0;
-    // int rd_wr_ratio_SLO = 100;
-
     struct pp_conn *conn = mempool_alloc(&pp_conn_pool);
     if (!conn) {
         printf("MEMPOOL ALLOC FAILED !\n");
@@ -713,23 +709,19 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
     conn->in_flight_pkts = 0x0UL;
     conn->sent_pkts = 0x0UL;
     conn->list_len = 0x0UL;
-    conn->req_received = 0;
-    conn->recv_time = 0;
-    conn->nvme_time = 0;
-    conn->queue_time = 0;
-    conn->send_time = 0;
+    conn->req_measured = 0;
     ixev_ctx_init(&conn->ctx);
     ixev_set_handler(&conn->ctx, IXEVIN | IXEVOUT | IXEVHUP, &pp_main_handler);
     conn_opened++;
 
     conn->nvme_fg_handle = 0;
     conn->conn_fg_handle = id->src_port;  // tenant id
-    cookie = (unsigned long)&conn->ctx;
+    conn->conn_id = conn_accepted;
 
-    printf("pp_accept: src-%d.%d.%d.%d:%d dst-%d\n", id->src_ip >> 24,
-           (id->src_ip << 8) >> 24, (id->src_ip << 16) >> 24,
+    printf("pp_accept: id-%d, src-%d.%d.%d.%d:%d dst-%d\n", conn_accepted,
+           id->src_ip >> 24, (id->src_ip << 8) >> 24, (id->src_ip << 16) >> 24,
            (id->src_ip << 24) >> 24, id->src_port, id->dst_port);
-    // ixev_nvme_register_flow(conn->conn_fg_handle, cookie, 0, 1000, 100);
+    conn_accepted++;
 
     return &conn->ctx;
 }
@@ -797,7 +789,7 @@ void *pp_main(void *arg) {
 
     while (1) {
         ixev_wait();
-        // cur_tsc = rte_rdtsc();
+        // cur_tsc = timer_now();
         // diff_tsc = cur_tsc - prev_tsc;
         // if (diff_tsc > TIMER_RESOLUTION_CYCLES) {
         // 	rte_timer_manage();

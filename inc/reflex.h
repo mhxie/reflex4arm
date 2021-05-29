@@ -69,17 +69,33 @@ typedef struct __attribute__((__packed__)) {
 } slo_t;
 
 typedef struct __attribute__((__packed__)) {
+    uint32_t supply;
+    uint32_t assigned;
+} token_t;
+
+typedef struct __attribute__((__packed__)) {
     uint16_t magic;
     uint16_t opcode;
-    void *req_handle;
     union {
-        uint64_t lba;
-        slo_t SLO;
-        int64_t SLO_val;
+        void *req_handle;
+        void *flow_handle;
     };
     union {
-        uint32_t lba_count;
-        uint32_t flow_priority;
+        // CMD_GET or CMD_SET
+        uint64_t lba;           // request
+        uint64_t service_time;  // response
+        // CMD_REG
+        slo_t SLO;        // request
+        int64_t SLO_val;  // request
+        token_t token;    // response
+    };
+    union {
+        // CMD_GET or CMD_SET
+        uint32_t lba_count;  // request
+        // CMD_REG
+        int32_t token_demand;  // request
+        // CMD_GET or CMD_SET or CMD_REG
+        uint32_t resp_code;  // response
     };
 } binary_header_blk_t;
 
