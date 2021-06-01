@@ -98,6 +98,7 @@ static __thread struct mempool nvme_req_pool;
 static __thread int conn_opened;
 static __thread long reqs_allocated = 0;
 static __thread unsigned long conn_accepted = 0;
+static __thread unsigned long conn_flushed = 0;
 static __thread unsigned long measurements[MAX_CONN_COUNT][4][MAX_REQ_COUNT];
 /*
     unsigned long recv_time;   // from NIC to be processed
@@ -196,8 +197,11 @@ static void send_completed_cb(struct ixev_ref *ref) {
         timer_now() - req->timestamp;  // send_time
     conn->req_measured++;
     if (conn->req_measured > MAX_REQ_COUNT) {
-        fprintf(stderr, "too many requests for connection-%d\n", conn->conn_id);
-        return -1;
+        fprintf(
+            stderr,
+            "finished requests for connection-%d\n exceeds logging capability",
+            conn->conn_id);
+        conn->req_measured = 0;
     }
 
     num4k = (req->lba_count * ns_sector_size) / 4096;
@@ -722,13 +726,32 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
            id->src_ip >> 24, (id->src_ip << 8) >> 24, (id->src_ip << 16) >> 24,
            (id->src_ip << 24) >> 24, id->src_port, id->dst_port);
     conn_accepted++;
+    if (conn_accepted > MAX_CONN_COUNT) {
+        conn_accepted -= MAX_CONN_COUNT;
+    }
 
     return &conn->ctx;
 }
 
 static void pp_release(struct ixev_ctx *ctx) {
     struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
+    FILE *f;
+
     conn_opened--;
+    if (conn_opened == 0) {
+        // flush
+        f = fopen("stats.txt", "a");
+        for (int i = conn_flushed; i < conn_accepted + 1; i++) {
+            fprintf(f, "Connection-%d\n", i);
+            for (int j = 0; j < MAX_REQ_COUNT; j++) {
+                fprintf(f, "%ld %ld %ld %ld\n", measurements[i][0][j],
+                        measurements[i][1][j], measurements[i][2][j],
+                        measurements[i][3][j]);
+            }
+        }
+        fclose(f);
+        conn_flushed = conn_accepted + 1;
+    }
 
     mempool_free(&pp_conn_pool, conn);
 }
@@ -842,6 +865,11 @@ int reflex_server_main(int argc, char *argv[]) {
         fprintf(stderr, "unable to create datastore\n");
         return ret;
     }
+
+    if (remove("stats.txt") == 0)
+        log_info("Deleted last stats successfully\n");
+    else
+        log_info("Unable to delete the stats\n");
 
     for (i = 1; i < nr_cpu; i++) {
         // ret = pthread_create(&tid, NULL, start_cpu, (void *)(unsigned long)
