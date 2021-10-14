@@ -93,6 +93,16 @@ struct cfg_parameters CFG;
 extern int net_cfg(void);
 extern int arp_insert(struct ip_addr *addr, struct eth_addr *mac);
 
+// defined in the header
+unsigned long MAX_DEV_TOKEN_RATE;
+int g_nvme_dev_model;
+bool g_nvme_sched_flag;
+struct lat_tokenrate_pair g_dev_models[128];
+int g_dev_model_size;
+
+int g_cores_active;
+int g_dpdk_mem_channel;
+
 static config_t cfg;
 static config_t cfg_devmodel;
 static char config_file[256];
@@ -482,7 +492,7 @@ static int parse_nvme_device_model(void) {
 
     devs = config_lookup(&cfg, "nvme_device_model");
     if (!devs) {
-        nvme_dev_model = DEFAULT_FLASH;
+        g_nvme_dev_model = DEFAULT_FLASH;
         MAX_DEV_TOKEN_RATE = UINT_MAX;
         return 0;
     }
@@ -490,22 +500,22 @@ static int parse_nvme_device_model(void) {
     dev_model_ = config_setting_get_string(devs);
     if (!strcmp(dev_model_, "fake")) {
         log_info("NVMe device model: FAKE_FLASH (fake I/O completion events)\n");
-        nvme_dev_model = FAKE_FLASH;
+        g_nvme_dev_model = FAKE_FLASH;
         NVME_READ_COST = 100;    // default read cost
         NVME_WRITE_COST = 2000;  // default write cost
         return 0;
     }
     if (!strcmp(dev_model_, "default")) {
         log_info("NVMe device model: DEFAULT_FLASH (no limit)\n");
-        nvme_dev_model = DEFAULT_FLASH;
+        g_nvme_dev_model = DEFAULT_FLASH;
         return 0;
     }
 
-    nvme_dev_model = FLASH_DEV_MODEL;
+    g_nvme_dev_model = FLASH_DEV_MODEL;
 
     strncpy(devmodel_file, dev_model_, sizeof(devmodel_file));
     devmodel_file[sizeof(devmodel_file) - 1] = '\0';
-    dev_model_size = 1;
+    g_dev_model_size = 1;
 
     config_init(&cfg_devmodel);
     if (!config_read_file(&cfg_devmodel, devmodel_file)) {
@@ -548,8 +558,8 @@ static int parse_nvme_device_model(void) {
         return 0;
     }
 
-    dev_model_size = config_setting_length(token_limits);
-    assert(dev_model_size < 128);  // if this fails, increase size of dev_model array in cfg.h
+    g_dev_model_size = config_setting_length(token_limits);
+    assert(g_dev_model_size < 128);  // if this fails, increase size of dev_model array in cfg.h
 
     for (i = 0; i < config_setting_length(token_limits); ++i) {
         int lat = 0;
@@ -561,17 +571,17 @@ static int parse_nvme_device_model(void) {
         if (!lat || !token_rate_limit)
             return -EINVAL;
 
-        dev_model[i].p95_tail_latency = lat;
-        dev_model[i].token_rate_limit = (unsigned long)token_rate_limit;
+        g_dev_models[i].p95_tail_latency = lat;
+        g_dev_models[i].token_rate_limit = (unsigned long)token_rate_limit;
 
         if (!token_rdonly_rate_limit) {
-            dev_model[i].token_rdonly_rate_limit = (unsigned long)token_rate_limit;
+            g_dev_models[i].token_rdonly_rate_limit = (unsigned long)token_rate_limit;
         } else {
-            dev_model[i].token_rdonly_rate_limit = (unsigned long)token_rdonly_rate_limit;
+            g_dev_models[i].token_rdonly_rate_limit = (unsigned long)token_rdonly_rate_limit;
         }
     }
     // sort dev_model array for easy lookup during runtime
-    qsort(dev_model, dev_model_size, sizeof(struct lat_tokenrate_pair), &compare_lat_tokenrate);
+    qsort(g_dev_models, g_dev_model_size, sizeof(struct lat_tokenrate_pair), &compare_lat_tokenrate);
 
     //log_info("WARNING: only support 1 device type for now\n");
     return 0;
@@ -584,21 +594,21 @@ static int parse_scheduler_mode(void) {
     sched = config_lookup(&cfg, "scheduler");
 
     if (!sched) {
-        nvme_sched_flag = true;
+        g_nvme_sched_flag = true;
         return 0;
     }
     sched_mode = config_setting_get_string(sched);
     if (sched_mode) {
         if (!strcmp(sched_mode, "on")) {
-            nvme_sched_flag = true;
+            g_nvme_sched_flag = true;
             log_info("I/O Scheduler: ON\n");
         } else if (!strcmp(sched_mode, "off")) {
-            nvme_dev_model = DEFAULT_FLASH;
-            nvme_sched_flag = false;
+            g_nvme_dev_model = DEFAULT_FLASH;
+            g_nvme_sched_flag = false;
             log_info("I/O Scheduler: OFF (and using DEFAULT FLASH)\n");
         } else {
             log_info("Default: scheduler on\n");
-            nvme_sched_flag = true;
+            g_nvme_sched_flag = true;
         }
         return 0;
     }
@@ -633,7 +643,7 @@ static int parse_cpu(void) {
         return -EINVAL;
     }
     if (!config_setting_get_elem(cpus, 0)) {
-        cores_active = 1;
+        g_cores_active = 1;
         cpu = config_setting_get_int(cpus);
         return add_cpu(cpu);
     }
@@ -645,7 +655,7 @@ static int parse_cpu(void) {
         }
     }
 
-    cores_active = config_setting_length(cpus);
+    g_cores_active = config_setting_length(cpus);
 
     return 0;
 }
@@ -656,7 +666,7 @@ int cfg_parse_mem(void) {
     if (!mem_channel || mem_channel < -1) {
         return -EINVAL;
     }
-    dpdk_mem_channel = mem_channel;
+    g_dpdk_mem_channel = mem_channel;
     return 0;
 }
 

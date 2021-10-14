@@ -44,6 +44,14 @@
 #include <spdk/nvme.h>
 #include <sys/socket.h>
 
+// extern from ix/cfg.h
+int NVME_READ_COST;
+int NVME_WRITE_COST;
+
+// extern from nvmedev.h
+DEFINE_BITMAP(g_ioq_bitmap, MAX_NUM_IO_QUEUES);
+DEFINE_BITMAP(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS);
+
 // #define NO_SCHED
 
 static struct spdk_nvme_ctrlr *nvme_ctrlr[CFG_MAX_NVMEDEV] = {NULL};
@@ -266,7 +274,7 @@ static void attach_cb(void *cb_ctx, struct spdk_pci_device *dev,
     //     return;
     // }
 
-    bitmap_init(ioq_bitmap, MAX_NUM_IO_QUEUES, 0);
+    bitmap_init(g_ioq_bitmap, MAX_NUM_IO_QUEUES, 0);
     if (active_nvme_devices < CFG_MAX_NVMEDEV) {
         nvme_ctrlr[active_nvme_devices++] = ctrlr;
     } else {
@@ -303,14 +311,14 @@ int init_nvmedev(void) {
     // devices\n");
     if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0) {
         return 0;
-    } else if (CFG.num_nvmedev > cores_active) {
+    } else if (CFG.num_nvmedev > g_cores_active) {
         // panic("ERROR: cores are fewer than SSDs\n");
         printf("WARNING: %d nvme devices are not available.\n",
-               CFG.num_nvmedev - cores_active);
+               CFG.num_nvmedev - g_cores_active);
     }
 
     cpu_per_ssd =
-        ceil((double)cores_active /
+        ceil((double)g_cores_active /
              CFG.num_nvmedev);  // #core should be a multiple of #nvme devices
     printf("Each SSD will be processed by %d cores.", cpu_per_ssd);
     // int i;
@@ -374,8 +382,8 @@ int allocate_nvme_ioq(void) {
 
     spin_lock(&nvme_bitmap_lock);
     for (q = 1; q < MAX_NUM_IO_QUEUES; q++) {
-        if (bitmap_test(ioq_bitmap, q)) continue;
-        bitmap_set(ioq_bitmap, q);
+        if (bitmap_test(g_ioq_bitmap, q)) continue;
+        bitmap_set(g_ioq_bitmap, q);
         break;
     }
     spin_unlock(&nvme_bitmap_lock);
@@ -529,7 +537,7 @@ long bsys_nvme_open(long dev_id, long ns_id) {
     if (ioq < 0) {
         return -RET_NOBUFS;
     }
-    bitmap_init(nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS, 0);
+    bitmap_init(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS, 0);
 
     percpu_get(open_ev[percpu_get(open_ev_ptr)++]) = ioq;
     // FIXME: naive mapping from CPU to SSDs
@@ -550,7 +558,7 @@ long bsys_nvme_close(long dev_id, long ns_id, hqu_t handle) {
     // 	panic("ERROR: only support 1 namespace with ns_id = 1\n");
     // 	return -RET_INVAL;
     // }
-    bitmap_clear(ioq_bitmap, handle);
+    bitmap_clear(g_ioq_bitmap, handle);
     usys_nvme_closed(handle, 0);
     return RET_OK;
 }
@@ -562,7 +570,7 @@ int set_nvme_flow_group_id(long flow_group_id, long *fg_handle_to_set,
     // first check if already registered this flow
     spin_lock(&nvme_bitmap_lock);
     for (i = 1; i < MAX_NVME_FLOW_GROUPS; i++) {
-        if (bitmap_test(nvme_fgs_bitmap, i)) {
+        if (bitmap_test(g_nvme_fgs_bitmap, i)) {
             // if already registered this flow group, return its index
             if (nvme_fgs[i].flow_group_id == flow_group_id &&
                 nvme_fgs[i].tid == RTE_PER_LCORE(cpu_nr)) {
@@ -585,7 +593,7 @@ int set_nvme_flow_group_id(long flow_group_id, long *fg_handle_to_set,
         return -ENOMEM;
     }
 
-    bitmap_set(nvme_fgs_bitmap, next_avail);
+    bitmap_set(g_nvme_fgs_bitmap, next_avail);
     spin_unlock(&nvme_bitmap_lock);
 
     *fg_handle_to_set = next_avail;
@@ -604,36 +612,36 @@ static unsigned long find_token_limit_from_devmodel(unsigned int lat_SLO) {
     unsigned long y0, y1, x0, x1;
     double y;
 
-    for (i = 0; i < dev_model_size; i++) {
-        if (lat_SLO < dev_model[i].p95_tail_latency) {
+    for (i = 0; i < g_dev_model_size; i++) {
+        if (lat_SLO < g_dev_models[i].p95_tail_latency) {
             break;
         }
     }
     if (i > 0) {
         if (global_readonly_flag) {
-            if (i == dev_model_size) {
-                return dev_model[i - 1].token_rdonly_rate_limit;
+            if (i == g_dev_model_size) {
+                return g_dev_models[i - 1].token_rdonly_rate_limit;
             }
             // linear interpolation of token limits provided in devmodel config
             // file
-            y0 = dev_model[i - 1].token_rdonly_rate_limit;
-            y1 = dev_model[i].token_rdonly_rate_limit;
-            x0 = dev_model[i - 1].p95_tail_latency;
-            x1 = dev_model[i].p95_tail_latency;
+            y0 = g_dev_models[i - 1].token_rdonly_rate_limit;
+            y1 = g_dev_models[i].token_rdonly_rate_limit;
+            x0 = g_dev_models[i - 1].p95_tail_latency;
+            x1 = g_dev_models[i].p95_tail_latency;
             assert(x1 - x0 != 0);
             y = y0 + ((y1 - y0) * (lat_SLO - x0) / (double)(x1 - x0));
             return (unsigned long)y;
 
         } else {
-            if (i == dev_model_size) {
-                return dev_model[i - 1].token_rate_limit;
+            if (i == g_dev_model_size) {
+                return g_dev_models[i - 1].token_rate_limit;
             }
             // linear interpolation of token limits provided in devmodel config
             // file
-            y0 = dev_model[i - 1].token_rate_limit;
-            y1 = dev_model[i].token_rate_limit;
-            x0 = dev_model[i - 1].p95_tail_latency;
-            x1 = dev_model[i].p95_tail_latency;
+            y0 = g_dev_models[i - 1].token_rate_limit;
+            y1 = g_dev_models[i].token_rate_limit;
+            x0 = g_dev_models[i - 1].p95_tail_latency;
+            x1 = g_dev_models[i].p95_tail_latency;
             y = y0 + ((y1 - y0) * (lat_SLO - x0) / (double)(x1 - x0));
             assert(x1 - x0 != 0);
             return (unsigned long)y;
@@ -641,13 +649,13 @@ static unsigned long find_token_limit_from_devmodel(unsigned int lat_SLO) {
     }
     printf("WARNING: provide dev model info for latency SLO %d\n", lat_SLO);
     if (global_readonly_flag) {
-        return dev_model[0].token_rdonly_rate_limit;
+        return g_dev_models[0].token_rdonly_rate_limit;
     }
-    return dev_model[0].token_rate_limit;
+    return g_dev_models[0].token_rate_limit;
 }
 
 unsigned long lookup_device_token_rate(unsigned int lat_SLO) {
-    switch (nvme_dev_model) {
+    switch (g_nvme_dev_model) {
         case DEFAULT_FLASH:
             return UINT_MAX;
         case FAKE_FLASH:
@@ -683,7 +691,7 @@ unsigned long scaled_IOPS(unsigned long IOPS, int rw_ratio_100) {
 static void readjust_lc_tenant_token_limits(void) {
     int i, j = 0;
     for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
-        if (bitmap_test(nvme_fgs_bitmap, i)) {
+        if (bitmap_test(g_nvme_fgs_bitmap, i)) {
             if (nvme_fgs[i].latency_critical_flag) {
                 nvme_fgs[i].scaled_IOPuS_limit =
                     (nvme_fgs[i].scaled_IOPS_limit + global_lc_boost_no_BE) /
@@ -777,7 +785,7 @@ int recalculate_weights_remove(long flow_group_idx) {
         // find new strictest latency SLO
         global_readonly_flag = true;
         for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
-            if (bitmap_test(nvme_fgs_bitmap, i) && i != flow_group_idx) {
+            if (bitmap_test(g_nvme_fgs_bitmap, i) && i != flow_group_idx) {
                 if (nvme_fgs[i].latency_critical_flag) {
                     if (nvme_fgs[i].latency_us_SLO < strictest_latency_SLO) {
                         strictest_latency_SLO = nvme_fgs[i].latency_us_SLO;
@@ -949,7 +957,7 @@ long bsys_nvme_unregister_flow(long fg_handle) {
         thread_tenant_manager->num_tenants--;
 
         spin_lock(&nvme_bitmap_lock);
-        bitmap_clear(nvme_fgs_bitmap, fg_handle);
+        bitmap_clear(g_nvme_fgs_bitmap, fg_handle);
         spin_unlock(&nvme_bitmap_lock);
     }
 
@@ -1011,7 +1019,7 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
         */
     paddr = vaddr;
 
-    if (nvme_sched_flag) {
+    if (g_nvme_sched_flag) {
         // Store all info in ctx before add to software queue
         ctx->tid = RTE_PER_LCORE(cpu_nr);
         ctx->fg_handle = fg_handle;
@@ -1074,7 +1082,7 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
 
     ctx->user_buf.buf = vaddr;
 
-    if (nvme_sched_flag) {
+    if (g_nvme_sched_flag) {
         // Store all info in ctx before add to software queue
         ctx->tid = RTE_PER_LCORE(cpu_nr);
         ctx->fg_handle = fg_handle;
@@ -1167,7 +1175,7 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
     ctx->user_buf.sgl_buf.sgl = buf;
     ctx->user_buf.sgl_buf.num_sgls = num_sgls;
 
-    if (nvme_sched_flag) {
+    if (g_nvme_sched_flag) {
         // Store all info in ctx before add to software queue
         ctx->tid = percpu_get(cpu_nr);
         ctx->fg_handle = fg_handle;
@@ -1218,7 +1226,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     ctx->user_buf.sgl_buf.sgl = buf;
     ctx->user_buf.sgl_buf.num_sgls = num_sgls;
 
-    if (nvme_sched_flag) {
+    if (g_nvme_sched_flag) {
         // Store all info in ctx before add to software queue
         ctx->tid = RTE_PER_LCORE(cpu_nr);
         ctx->fg_handle = fg_handle;
@@ -1276,7 +1284,7 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
     int ret;
 
     // don't schedule request on flash if FAKE_FLASH test
-    if (nvme_dev_model == FAKE_FLASH) {
+    if (g_nvme_dev_model == FAKE_FLASH) {
         if (ctx->cmd == NVME_CMD_READ) {
             usys_nvme_response(ctx->cookie, ctx->user_buf.buf, RET_OK);
             percpu_get(received_nvme_completions)++;

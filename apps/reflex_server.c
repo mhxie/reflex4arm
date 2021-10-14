@@ -82,6 +82,7 @@
 #define MAX_NUM_CONTIG_ALLOC_RETRIES 5
 #define MAX_REQ_COUNT 10 * 1024  // 10s * 1024 IOPS
 #define MAX_CONN_COUNT 512
+// #define MAX_PORT_RANGE 65535
 
 #define TIMER_RESOLUTION_CYCLES 250ULL /* around 2 us at 125Mhz */
 
@@ -100,6 +101,7 @@ static __thread long reqs_allocated = 0;
 static __thread unsigned long conn_accepted = 0;
 static __thread unsigned long conn_flushed = 0;
 static __thread unsigned long measurements[MAX_CONN_COUNT][4][MAX_REQ_COUNT];
+// static __thread unsigned long SLO_handles[MAX_PORT_RANGE];
 /*
     unsigned long recv_time;   // from NIC to be processed
     unsigned long nvme_time;   // from parsed to nvme_cb
@@ -136,6 +138,7 @@ struct pp_conn {
     struct ixev_ctx ctx;
     size_t rx_received;  // bytes received for the current ReFlex request
     size_t tx_sent;
+    bool registered;
     bool rx_pending;  // if a ReFlex req is currently being received
     bool tx_pending;
     int nvme_pending;
@@ -328,10 +331,11 @@ int send_pending_reqs(struct pp_conn *conn) {
         struct nvme_req *req =
             list_top(&conn->pending_requests, struct nvme_req, link);
         req->service_time = timer_now() - req->timestamp;
-        measurements[conn->conn_id][2][conn->req_measured] =
-            req->service_time;  // queue_time
+
         int ret = send_req(req);
         if (!ret) {
+            measurements[conn->conn_id][2][conn->req_measured] =
+                timer_now() - req->timestamp;  // queue_time
             sent_reqs++;
             list_pop(&conn->pending_requests, struct nvme_req, link);
         } else {
@@ -426,6 +430,7 @@ static void nvme_registered_flow_cb(long fg_handle, struct ixev_ctx *ctx,
 
     struct pp_conn *conn = container_of(ctx, struct pp_conn, ctx);
     conn->nvme_fg_handle = fg_handle;
+    conn->registered = true;
     // printf("nvme fg_handle is %d.\n", fg_handle);
 
     BINARY_HEADER *header;
@@ -505,12 +510,14 @@ static void receive_req(struct pp_conn *conn) {
                     percpu_get(cpu_id));
             assert(header->magic == sizeof(BINARY_HEADER));
 
+            // rely on client-side register, otherwise we need drop initial pkts
             if (header->opcode == CMD_REG) {
                 if (header->token_demand == 0) {
                     unsigned long cookie = (unsigned long)&conn->ctx;
                     slo_t SLO = header->SLO;
                     uint32_t latency_SLO = SLO.latency_SLO_hi << 16;
                     latency_SLO += SLO.latency_SLO_lo;
+                    conn->conn_fg_handle = header->SLO_val;  // update handle
 
                     ixev_nvme_register_flow(header->SLO_val, cookie,
                                             latency_SLO, SLO.IOPS_SLO,
@@ -719,8 +726,8 @@ static struct ixev_ctx *pp_accept(struct ip_tuple *id) {
     conn_opened++;
 
     conn->nvme_fg_handle = 0;
-    conn->conn_fg_handle = id->src_port;  // tenant id
     conn->conn_id = conn_accepted;
+    conn->registered = false;
 
     printf("pp_accept: id-%d, src-%d.%d.%d.%d:%d dst-%d\n", conn_accepted,
            id->src_ip >> 24, (id->src_ip << 8) >> 24, (id->src_ip << 16) >> 24,

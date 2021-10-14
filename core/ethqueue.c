@@ -140,8 +140,8 @@ int eth_process_poll(void) {
         for (i = 0; i < percpu_get(eth_num_queues); i++) {
             //burst 1 because check queues round-robin
             //  Note: Using percpu_get(cpu_id) requires one queue to one core and identical cpu and queue numbering.
-            // log_info("Now the active_eth_port is %d\n", active_eth_port);
-            ret = rte_eth_rx_burst(active_eth_port, percpu_get(cpu_id), &rx_pkts[i], 1);
+            // log_info("Now the g_active_eth_port is %d\n", g_active_eth_port);
+            ret = rte_eth_rx_burst(g_active_eth_port, percpu_get(cpu_id), &rx_pkts[i], 1);
             if (ret && i > MAX_NUM_IO_QUEUES)
                 printf("Out of boundary.\n");
             if (ret) {
@@ -328,7 +328,7 @@ int ethdev_init_cpu(void) {
 
     tx_buffer = rte_zmalloc_socket("tx_buffer",
                                    RTE_ETH_TX_BUFFER_SIZE(eth_rx_max_batch), 0,
-                                   rte_eth_dev_socket_id(active_eth_port));
+                                   rte_eth_dev_socket_id(g_active_eth_port));
     printf("The size of RTE_ETH_TX_BUFFER_SIZE (eth_rx_max_batch) is %ld\n.", RTE_ETH_TX_BUFFER_SIZE(eth_rx_max_batch));
     if (tx_buffer == NULL) {
         log_err("ERROR: cannot allocate buffer for tx \n");
@@ -365,7 +365,7 @@ void eth_process_send(void) {
     for (i = 0; i < percpu_get(eth_num_queues); i++) {
         // NOTE: rte_eth_tx_buffer_flush appears to flush all queues regardless of the parameter given.
         // Currently incompatible with multiple queues per CPU core due to cpu_id being queue number.
-        rte_eth_tx_buffer_flush(active_eth_port, percpu_get(cpu_id), percpu_get(tx_buf));
+        rte_eth_tx_buffer_flush(g_active_eth_port, percpu_get(cpu_id), percpu_get(tx_buf));
     }
 }
 

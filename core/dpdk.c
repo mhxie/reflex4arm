@@ -100,12 +100,12 @@ int dpdk_init(void) {
     opts.mem_size = -1;
     opts.master_core = -1;
 
-    int core_num = pow(2, cores_active) - 1;  // from cfg
+    int core_num = pow(2, g_cores_active) - 1;  // from cfg
     char mask[3];
     sprintf(mask, "%x", core_num);
     opts.core_mask = mask;
     // opts->mem_channel = SPDK_ENV_DPDK_DEFAULT_MEM_CHANNEL;
-    opts.mem_channel = dpdk_mem_channel;  // from cfg
+    opts.mem_channel = g_dpdk_mem_channel;  // from cfg
 
     spdk_env_init(&opts);
 

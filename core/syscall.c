@@ -222,7 +222,7 @@ again:
     }
 
     //schedule
-    if (nvme_sched_flag) {
+    if (g_nvme_sched_flag) {
         nvme_sched();
     }
 

@@ -50,8 +50,8 @@
 #define NVME_MAX_COMPLETIONS 64
 
 #define MAX_NVME_FLOW_GROUPS 16384  // 16
-DEFINE_BITMAP(ioq_bitmap, MAX_NUM_IO_QUEUES);
-DEFINE_BITMAP(nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS);
+extern DEFINE_BITMAP(g_ioq_bitmap, MAX_NUM_IO_QUEUES);
+extern DEFINE_BITMAP(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS);
 RTE_DECLARE_PER_LCORE(struct spdk_nvme_qpair *, qpair);
 
 struct nvme_ctx {

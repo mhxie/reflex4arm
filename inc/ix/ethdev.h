@@ -96,7 +96,7 @@
 #include <net/ethernet.h>
 
 /* keep track of active ethernet port */
-int active_eth_port;
+extern int g_active_eth_port;
 
 /* FIXME: figure out the right size for this */
 #define RTE_ETHDEV_QUEUE_STAT_CNTRS 16

@@ -107,12 +107,12 @@ struct cfg_parameters {
 
 extern struct cfg_parameters CFG;
 
-int nvme_dev_model;
-bool nvme_sched_flag;
+extern int g_nvme_dev_model;
+extern bool g_nvme_sched_flag;
 
-int NVME_READ_COST;
-int NVME_WRITE_COST;
-unsigned long MAX_DEV_TOKEN_RATE;
+extern int NVME_READ_COST;
+extern int NVME_WRITE_COST;
+extern unsigned long MAX_DEV_TOKEN_RATE;
 
 struct lat_tokenrate_pair {
     uint32_t p95_tail_latency;
@@ -120,10 +120,10 @@ struct lat_tokenrate_pair {
     uint64_t token_rdonly_rate_limit;
 };
 
-struct lat_tokenrate_pair dev_model[128];
-int dev_model_size;
+extern struct lat_tokenrate_pair g_dev_models[128];
+extern int g_dev_model_size;
 
 extern int cfg_init(int argc, char *argv[], int *args_parsed);
 
-int cores_active;
-int dpdk_mem_channel;
+extern int g_cores_active;
+extern int g_dpdk_mem_channel;

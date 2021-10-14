@@ -697,7 +697,7 @@ static void remove_fdir_filter(struct ip_tuple *id) {
     filter.action.behavior = RTE_ETH_FDIR_ACCEPT;
     filter.action.report_status = RTE_ETH_FDIR_REPORT_ID;
 
-    ret = rte_eth_dev_filter_ctrl(active_eth_port, RTE_ETH_FILTER_FDIR, RTE_ETH_FILTER_DELETE, &filter);
+    ret = rte_eth_dev_filter_ctrl(g_active_eth_port, RTE_ETH_FILTER_FDIR, RTE_ETH_FILTER_DELETE, &filter);
     if (ret < 0) {
         log_err("cfg: failed to remove FDIR rule, ret %d.\n", ret);
         return ret;
@@ -710,7 +710,7 @@ static struct eth_fg *get_port_with_fdir(struct ip_tuple *id) {
     struct ix_rte_eth_dev *dev;
     struct eth_rx_queue *queue;
 
-    ret = rte_eth_dev_filter_supported(active_eth_port, RTE_ETH_FILTER_FDIR);
+    ret = rte_eth_dev_filter_supported(g_active_eth_port, RTE_ETH_FILTER_FDIR);
     if (ret < 0) {
         printf("WARNING: flow director not supported on this device!\n");
         return NULL;
@@ -726,7 +726,7 @@ static struct eth_fg *get_port_with_fdir(struct ip_tuple *id) {
     filter.action.behavior = RTE_ETH_FDIR_ACCEPT;
     filter.action.report_status = RTE_ETH_FDIR_REPORT_ID;
 
-    ret = rte_eth_dev_filter_ctrl(active_eth_port, RTE_ETH_FILTER_FDIR, RTE_ETH_FILTER_ADD, &filter);
+    ret = rte_eth_dev_filter_ctrl(g_active_eth_port, RTE_ETH_FILTER_FDIR, RTE_ETH_FILTER_ADD, &filter);
     if (ret < 0) {
         log_err("cfg: failed to add FDIR rule, ret %d.\n", ret);
         return ret;

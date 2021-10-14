@@ -345,7 +345,7 @@ static void init_port(uint8_t port_id, struct eth_addr *mac_addr) {
                (uint32_t)link.link_speed,
                (link.link_duplex == ETH_LINK_FULL_DUPLEX) ? ("full-duplex") : ("half-duplex"));
         rte_eth_macaddr_get(port_id, mac_addr);
-        active_eth_port = port_id;
+        g_active_eth_port = port_id;
     }
 }
 

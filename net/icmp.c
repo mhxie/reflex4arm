@@ -74,6 +74,8 @@
 
 #include "net.h"
 
+int g_active_eth_port;
+
 static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip_icmp_hdr *hdr, int len) {
     struct eth_hdr *ethhdr = mbuf_mtod(pkt, struct eth_hdr *);
     struct ip_hdr *iphdr = mbuf_nextd(ethhdr, struct ip_hdr *);
@@ -95,8 +97,8 @@ static int icmp_reflect(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip
     pkt->data_len = rte_pktmbuf_pkt_len(pkt);
 
     printf("icmp_reflect: len %u, pkt %p, dst_addr is %x --> queue %d\n", len, pkt, iphdr->dst_addr, percpu_get(cpu_id));
-    printf("@active_eth_port: %d, tx_buf: %d\n", active_eth_port, percpu_get(tx_buf));
-    ret = rte_eth_tx_buffer(active_eth_port, 0, percpu_get(tx_buf), pkt);
+    printf("@g_active_eth_port: %d, tx_buf: %d\n", g_active_eth_port, percpu_get(tx_buf));
+    ret = rte_eth_tx_buffer(g_active_eth_port, 0, percpu_get(tx_buf), pkt);
 
     //if (unlikely(ret < 1)) {
     if (unlikely(ret < 0)) {
