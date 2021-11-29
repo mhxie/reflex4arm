@@ -856,19 +856,15 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
     if (latency_us_SLO == 0) {
         nvme_fg->latency_critical_flag = false;
         printf(
-            "Register BE-tenant %ld (flow_group: %ld). Managed by thread %ld.\n"
-            "IOPS_SLO: %lu, r/w %d, scaled_IOPS: %lu tokens/s, latency "
-            "SLO: %lu us. \n",
-            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr), IOPS_SLO,
-            rw_ratio_SLO, nvme_fg->scaled_IOPS_limit, latency_us_SLO);
+            "Register BE-tenant %ld (flow_group: %ld). Managed by thread "
+            "%ld.\n",
+            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
     } else {
         nvme_fg->latency_critical_flag = true;
         printf(
-            "Register LC-tenant %ld (flow_group: %ld). Managed by thread %ld.\n"
-            "IOPS_SLO: %lu, r/w %d, scaled_IOPS: %lu tokens/s, latency "
-            "SLO: %lu us. \n",
-            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr), IOPS_SLO,
-            rw_ratio_SLO, nvme_fg->scaled_IOPS_limit, latency_us_SLO);
+            "Register LC-tenant %ld (flow_group: %ld). Managed by thread "
+            "%ld.\n",
+            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
     }
 
     if (flow_state == 2) {
@@ -881,13 +877,14 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
         printf(
             "WARNING: tenant connection registered different SLO, will "
             "overwrite previous SLO for all of this tenant's connections. "
-            "1 SLO per tenant.\n");
+            "supporting only 1 SLO per tenant.\n");
         flow_state = 0;
+    } else {
+        nvme_fg->scaled_IOPS_limit = scaled_IOPS(IOPS_SLO, rw_ratio_SLO);
+        nvme_fg->scaled_IOPuS_limit = nvme_fg->scaled_IOPS_limit / (double)1E6;
     }
     if (flow_state == 1) {
         // New connection with old SLO
-        nvme_fg->scaled_IOPS_limit +=
-            scaled_IOPS(IOPS_SLO, rw_ratio_SLO) / (double)1E6;
         ret = recalculate_weights_add(fg_handle);
         if (ret < 0) {
             printf("WARNING: cannot satisfy SLO\n");
@@ -902,8 +899,6 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
         nvme_fg->rw_ratio_SLO = rw_ratio_SLO;
         nvme_fg->tid = RTE_PER_LCORE(cpu_nr);
 
-        nvme_fg->scaled_IOPS_limit =
-            scaled_IOPS(IOPS_SLO, rw_ratio_SLO) / (double)1E6;
         ret = recalculate_weights_add(fg_handle);
         if (ret < 0) {
             printf("WARNING: cannot satisfy SLO\n");
@@ -927,6 +922,11 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
             thread_tenant_manager->num_best_effort_tenants++;
         }
     }
+    printf(
+        "IOPS SLO: %lu, r/w SLO %d, latency SLO: %lu us, scaled IOPS: %lf "
+        "tokens/s, \n",
+        IOPS_SLO, rw_ratio_SLO, latency_us_SLO, nvme_fg->scaled_IOPS_limit);
+
     nvme_fg->conn_ref_count++;
 
     usys_nvme_registered_flow(fg_handle, cookie, RET_OK);
