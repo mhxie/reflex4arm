@@ -75,6 +75,7 @@
 #define BINARY_HEADER binary_header_blk_t
 
 #define NVME_ENABLE
+// #define FINE_MEASURE
 
 #define MAX_PAGES_PER_ACCESS 256  // max 1MB per req
 #define PAGE_SIZE 4096
@@ -100,7 +101,9 @@ static __thread int conn_opened;
 static __thread long reqs_allocated = 0;
 static __thread unsigned long conn_accepted = 0;
 static __thread unsigned long conn_flushed = 0;
+#ifdef FINE_MEASURE
 static __thread unsigned long measurements[MAX_CONN_COUNT][4][MAX_REQ_COUNT];
+#endif
 // static __thread unsigned long SLO_handles[MAX_PORT_RANGE];
 /*
     unsigned long recv_time;   // from NIC to be processed
@@ -196,8 +199,11 @@ static void send_completed_cb(struct ixev_ref *ref) {
     struct nvme_req *req = container_of(ref, struct nvme_req, ref);
     struct pp_conn *conn = req->conn;
     int i, num4k;
+
+#ifdef FINE_MEASURE
     measurements[conn->conn_id][3][conn->req_measured] =
         timer_now() - req->timestamp;  // send_time
+#endif
     conn->req_measured++;
     if (conn->req_measured > MAX_REQ_COUNT) {
         fprintf(
@@ -334,8 +340,10 @@ int send_pending_reqs(struct pp_conn *conn) {
 
         int ret = send_req(req);
         if (!ret) {
+#ifdef FINE_MEASURE
             measurements[conn->conn_id][2][conn->req_measured] =
                 timer_now() - req->timestamp;  // queue_time
+#endif
             sent_reqs++;
             list_pop(&conn->pending_requests, struct nvme_req, link);
         } else {
@@ -374,8 +382,10 @@ static void nvme_written_cb(struct ixev_nvme_req_ctx *ctx,
     conn->list_len++;
     conn->in_flight_pkts--;
     conn->sent_pkts++;
+#ifdef FINE_MEASURE
     measurements[conn->conn_id][1][conn->req_measured] =
         timer_now() - req->timestamp;  // nvme_time
+#endif
     list_add_tail(&conn->pending_requests, &req->link);
     send_pending_reqs(conn);
     return;
@@ -405,8 +415,10 @@ static void nvme_response_cb(struct ixev_nvme_req_ctx *ctx,
     conn->list_len++;
     conn->in_flight_pkts--;
     conn->sent_pkts++;
+#ifdef FINE_MEASURE
     measurements[conn->conn_id][1][conn->req_measured] =
         timer_now() - req->timestamp;  // nvme_time
+#endif
     list_add_tail(&conn->pending_requests, &req->link);
     send_pending_reqs(conn);
     return;
@@ -628,8 +640,10 @@ static void receive_req(struct pp_conn *conn) {
         num4k = (header->lba_count * ns_sector_size) / PAGE_SIZE;
         if (((header->lba_count * ns_sector_size) % PAGE_SIZE) != 0) num4k++;
 
+#ifdef FINE_MEASURE
         measurements[conn->conn_id][0][conn->req_measured] =
             timer_now() - req->timestamp;  // recv_time
+#endif
         switch (header->opcode) {
             case CMD_SET:
                 ixev_set_nvme_handler(&req->ctx, IXEV_NVME_WR,
@@ -747,6 +761,7 @@ static void pp_release(struct ixev_ctx *ctx) {
     conn_opened--;
     if (conn_opened == 0) {
         // flush
+#ifdef FINE_MEASURE
         f = fopen("stats.txt", "a");
         for (int i = conn_flushed; i < conn_accepted + 1; i++) {
             fprintf(f, "Connection-%d\n", i);
@@ -757,6 +772,7 @@ static void pp_release(struct ixev_ctx *ctx) {
             }
         }
         fclose(f);
+#endif
         conn_flushed = conn_accepted + 1;
     }
 

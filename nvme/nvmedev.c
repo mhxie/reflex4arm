@@ -923,7 +923,7 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
         }
     }
     printf(
-        "IOPS SLO: %lu, r/w SLO %d, latency SLO: %lu us, scaled IOPS: %lf "
+        "IOPS SLO: %lu, r/w SLO %d, latency SLO: %lu us, scaled IOPS: %ld "
         "tokens/s, \n",
         IOPS_SLO, rw_ratio_SLO, latency_us_SLO, nvme_fg->scaled_IOPS_limit);
 
