@@ -1,9 +1,10 @@
-FROM ubuntu:20.04 AS prebuild
+FROM ubuntu:20.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y net-tools libpciaccess-dev
+RUN apt install linux-headers-$(uname -r)
 
-FROM prebuild AS build
+FROM base AS prebuild
 
 RUN apt-get install -y git libconfig-dev
 COPY . /reflex4arm
@@ -13,9 +14,12 @@ RUN git submodule update --init --recursive
 RUN ./spdk/scripts/pkgdep.sh
 RUN sed -i 's|mempool/ring|mempool/ring net/ena|g' spdk/dpdkbuild/Makefile
 RUN sed -i 's|false|true|g' spdk/dpdk/lib/librte_timer/meson.build
-# RUN cd spdk && ./configure --with-igb-uio-driver && make && cd ..
-RUN cd spdk && ./configure && make && cd ..
+RUN cp usertools/openloop_perf/* spdk/examples/nvme/perf/
 
+FROM prebuild as build
+
+RUN cd spdk && ./configure --with-igb-uio-driver && make && cd ..
+RUN cd spdk && ./configure && make && cd ..
 RUN meson build && meson compile -C build
 
 FROM prebuild

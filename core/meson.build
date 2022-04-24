@@ -35,7 +35,7 @@ DPDK_WHOLE_LIB_NAMES = [
     'librte_net.a',
     'librte_ethdev.a',
     'librte_mbuf.a',
-    'librte_eal.a',
+    # 'librte_eal.a', # dulplicate in IX_LIB
     'librte_telemetry.a',
     # needed by ena librte_pmd_ena.a 
     'librte_timer.a',
