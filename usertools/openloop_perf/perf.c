@@ -1450,7 +1450,7 @@ static void check_cutoff(void *ctx, uint64_t start, uint64_t end,
     //     (*cutoff)++;
     // }
     while (so_far_pct >= **cutoff && **cutoff > 0) {
-        printf("%9.3f\t", (double)end * 1000 * 1000 / g_tsc_rate);
+        printf("%9.3f ", (double)end * 1000 * 1000 / g_tsc_rate);
         (*cutoff)++;
     }
 }
@@ -1618,7 +1618,7 @@ static void print_performance(void) {
             // not printing WRTIE latency
             for (i = 1; i < NUM_IO_TYPES; i++) {
                 const double *cutoff = g_latency_cutoffs;
-                printf("Tail Latency: ");
+                printf("Tail Latency: %10.2f ", total_io_per_second[i]);
                 spdk_histogram_data_iterate(ns_ctx->histogram[i], check_cutoff,
                                             &cutoff);
                 printf("\n");
