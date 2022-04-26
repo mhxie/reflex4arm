@@ -127,9 +127,11 @@ struct ns_entry {
 //     0.99, 0.995, 0.999, 0.9999, 0.99999, 0.999999, 0.9999999, -1,
 // };
 
-static const double g_latency_cutoffs[] = {
-    0.25, 0.50, 0.75, 0.90, 0.95, 0.99, 0.999, -1,
-};
+// static const double g_latency_cutoffs[] = {
+//     0.25, 0.50, 0.75, 0.90, 0.95, 0.99, 0.999, -1,
+// };
+
+static const double g_latency_cutoffs[] = {0.50, 0.90, 0.95, 0.99};
 
 struct ns_worker_ctx {
     struct ns_entry *entry;
@@ -1402,7 +1404,7 @@ static void usage(char *program_name) {
     printf("\t[-C max completions per poll]\n");
     printf("\t\t(default: 0 - unlimited)\n");
     printf("\t[-i shared memory group ID]\n");
-    printf("\t[-L lambda (avg arrival req rate)]\n");
+    printf("\t[-O lambda (avg arrival req rate)]\n");
     printf(
         "\t\t(if specificied, I/O generator is open-loop with exponential "
         "distribution)\n");
@@ -1442,11 +1444,17 @@ static void check_cutoff(void *ctx, uint64_t start, uint64_t end,
     }
 
     so_far_pct = (double)so_far / total;
+    // while (so_far_pct >= **cutoff && **cutoff > 0) {
+    //     printf("%9.5f%% : %9.3fus\n", **cutoff * 100,
+    //            (double)end * 1000 * 1000 / g_tsc_rate);
+    //     (*cutoff)++;
+    // }
+    printf("Tail Latency: ");
     while (so_far_pct >= **cutoff && **cutoff > 0) {
-        printf("%9.5f%% : %9.3fus\n", **cutoff * 100,
-               (double)end * 1000 * 1000 / g_tsc_rate);
+        printf("%9.3f\t", (double)end * 1000 * 1000 / g_tsc_rate);
         (*cutoff)++;
     }
+    printf("\n")
 }
 
 static void print_bucket(void *ctx, uint64_t start, uint64_t end,
@@ -1468,8 +1476,9 @@ static void print_performance(void) {
     double io_per_second[NUM_IO_TYPES], mb_per_second[NUM_IO_TYPES],
         average_latency[NUM_IO_TYPES], min_latency[NUM_IO_TYPES],
         max_latency[NUM_IO_TYPES];
-    double sum_ave_latency[NUM_IO_TYPES], min_latency_so_far[NUM_IO_TYPES],
-        max_latency_so_far[NUM_IO_TYPES];
+    double sum_ave_latency[NUM_IO_TYPES + 1],
+        min_latency_so_far[NUM_IO_TYPES + 1],
+        max_latency_so_far[NUM_IO_TYPES + 1];
     double total_io_per_second[NUM_IO_TYPES], total_mb_per_second[NUM_IO_TYPES];
     int ns_count;
     struct worker_thread *worker;
@@ -1553,7 +1562,7 @@ static void print_performance(void) {
         worker = worker->next;
     }
     assert(total_io_completed[READ] + total_io_completed[WRITE] != 0);
-    for (i = 0; i < NUM_IO_TYPES; i++) {
+    for (i = 0; i <= NUM_IO_TYPES; i++) {
         if (ns_count != 0 && total_io_completed[i]) {
             sum_ave_latency[i] =
                 ((double)total_io_tsc[i] / total_io_completed[i]) * 1000 *
@@ -1570,6 +1579,26 @@ static void print_performance(void) {
                        max_strlen + 13, "Total writes", total_io_per_second[i],
                        total_mb_per_second[i], sum_ave_latency[i],
                        min_latency_so_far[i], max_latency_so_far[i]);
+            else if (i == NUM_IO_TYPES) {
+                sum_ave_latency[i] =
+                    (((double)total_io_tsc[0] + (double)total_io_tsc[1]) /
+                     (total_io_completed[0] + total_io_completed[1])) *
+                    1000 * 1000 / g_tsc_rate;
+                max_latency_so_far[i] =
+                    max_latency_so_far[0] < max_latency_so_far[1]
+                        ? max_latency_so_far[1]
+                        : max_latency_so_far[0];
+                min_latency_so_far[i] =
+                    min_latency_so_far[0] > min_latency_so_far[1]
+                        ? min_latency_so_far[1]
+                        : min_latency_so_far[0];
+                printf("%-*s: %10.2f %10.2f %10.2f %10.2f %10.2f\n",
+                       max_strlen + 13, "Total combined",
+                       total_io_per_second[0] + total_io_per_second[1],
+                       total_mb_per_second[0] + total_mb_per_second[1],
+                       sum_ave_latency[i], min_latency_so_far[i],
+                       max_latency_so_far[i]);
+            }
             printf("\n");
         }
     }
@@ -1582,15 +1611,16 @@ static void print_performance(void) {
     while (worker) {
         ns_ctx = worker->ns_ctx;
         while (ns_ctx) {
-            const double *cutoff = g_latency_cutoffs;
-
             printf("Summary latency data for %-43.43s from core %u:\n",
                    ns_ctx->entry->name, worker->lcore);
             printf(
                 "=============================================================="
                 "===================\n");
 
-            for (i = 0; i < NUM_IO_TYPES; i++) {
+            // not printing WRTIE latency
+            for (i = 1; i < NUM_IO_TYPES; i++) {
+                const double *cutoff = g_latency_cutoffs;
+
                 spdk_histogram_data_iterate(ns_ctx->histogram[i], check_cutoff,
                                             &cutoff);
             }
@@ -1886,21 +1916,20 @@ static int parse_args(int argc, char **argv) {
     g_file_name = NULL;
 
     while ((op = getopt(argc, argv,
-                        "c:e:i:lo:q:r:k:s:t:w:C:DGHILM:NP:RT:U:V")) != -1) {
+                        "c:e:f:i:lo:p:q:r:k:s:t:w:C:O:DGHILM:NP:RT:U:V")) !=
+           -1) {
         switch (op) {
             case 'i':
             case 'C':
             case 'P':
             case 'o':
-            case 'O':
+            case 'O':  // new
             case 'q':
             case 'k':
             case 's':
             case 't':
             case 'M':
-            case 'd':
-            case 'f':
-            case 'p':
+            case 'p':  // new
             case 'U':
                 val = spdk_strtol(optarg, 10);
                 if (val < 0) {
@@ -1920,6 +1949,10 @@ static int parse_args(int argc, char **argv) {
                     case 'o':
                         g_io_size_bytes = val;
                         break;
+                    case 'O':
+                        g_open_loop = true;
+                        g_lambda = val;
+                        break;
                     case 'q':
                         g_queue_depth = val;
                         break;
@@ -1936,16 +1969,6 @@ static int parse_args(int argc, char **argv) {
                         g_rw_percentage = val;
                         g_mix_specified = true;
                         break;
-                    case 'O':
-                        g_open_loop = true;
-                        g_lambda = spdk_strtol(optarg, 10);
-                        break;
-                    case 'd':
-                        distribution = optarg;
-                        break;
-                    case 'f':
-                        g_file_name = optarg;
-                        break;
                     case 'p':
                         g_precondition = true;
                         break;
@@ -1956,6 +1979,14 @@ static int parse_args(int argc, char **argv) {
                 break;
             case 'c':
                 g_core_mask = optarg;
+                break;
+            case 'd':  // new
+                distribution = optarg;
+                printf("distribution: %s\n", distribution);
+                break;
+            case 'f':  // new
+                g_file_name = optarg;
+                printf("file name: %s\n", g_file_name);
                 break;
             case 'e':
                 if (parse_metadata(optarg)) {

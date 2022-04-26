@@ -2,7 +2,7 @@ FROM ubuntu:20.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y net-tools libpciaccess-dev
-RUN apt install linux-headers-$(uname -r)
+# RUN apt install linux-headers-$(uname -r)
 
 FROM base AS prebuild
 
@@ -18,7 +18,7 @@ RUN cp usertools/openloop_perf/* spdk/examples/nvme/perf/
 
 FROM prebuild as build
 
-RUN cd spdk && ./configure --with-igb-uio-driver && make && cd ..
+# RUN cd spdk && ./configure --with-igb-uio-driver && make && cd ..
 RUN cd spdk && ./configure && make && cd ..
 RUN meson build && meson compile -C build
 
