@@ -351,8 +351,8 @@ int init_nvmeqp_cpu(void) {
     printf("Deafult io qpair opts: %d, %d, %d\n", opts.qprio,
            opts.io_queue_size, opts.io_queue_requests);
     // opts.qprio = 0;
-    opts.io_queue_size = DEFAULT_IO_QUEUE_SIZE * 4;
-    opts.io_queue_requests = opts.io_queue_size * 2;
+    opts.io_queue_size = opts.io_queue_size;
+    opts.io_queue_requests = opts.io_queue_requests * 2;
 
     // while (opts.io_queue_size >= 1) {
     //     // FIXME: naive mapping from CPU to SSDs

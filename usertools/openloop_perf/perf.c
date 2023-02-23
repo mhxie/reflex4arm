@@ -196,7 +196,7 @@ struct worker_thread {
 };
 
 struct ns_fn_table {
-    void (*setup_payload)(struct perf_task *task, uint8_t pattern);
+    bool (*setup_payload)(struct perf_task *task, uint8_t pattern);
 
     int (*submit_io)(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
                      struct ns_entry *entry, uint64_t offset_in_ios);
@@ -221,6 +221,8 @@ static bool g_open_loop = false;
 
 static uint32_t g_fixed = 0;
 static int dropped_count = 0;
+static int spdk_allocated_count = 0;
+static uint32_t max_used_qdepth = 0;
 static bool g_done = false;
 static bool g_precondition = false;
 // avg requests per second to generate (exponential distribution)
@@ -283,14 +285,16 @@ static inline void task_complete(struct perf_task *task);
 
 #ifdef SPDK_CONFIG_URING
 
-static void uring_setup_payload(struct perf_task *task, uint8_t pattern) {
+static bool uring_setup_payload(struct perf_task *task, uint8_t pattern) {
     task->iov.iov_base = spdk_dma_zmalloc(g_io_size_bytes, g_io_align, NULL);
     task->iov.iov_len = g_io_size_bytes;
     if (task->iov.iov_base == NULL) {
-        fprintf(stderr, "spdk_dma_zmalloc() for task->iov.iov_base failed\n");
+        fprintf(stderr, "uring setup: spdk_dma_zmalloc() for task->iov.iov_base failed\n");
+	return true;
         exit(1);
     }
     memset(task->iov.iov_base, pattern, task->iov.iov_len);
+    return false;
 }
 
 static int uring_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
@@ -387,14 +391,16 @@ static const struct ns_fn_table uring_fn_table = {
 #endif
 
 #ifdef HAVE_LIBAIO
-static void aio_setup_payload(struct perf_task *task, uint8_t pattern) {
+static bool aio_setup_payload(struct perf_task *task, uint8_t pattern) {
     task->iov.iov_base = spdk_dma_zmalloc(g_io_size_bytes, g_io_align, NULL);
     task->iov.iov_len = g_io_size_bytes;
     if (task->iov.iov_base == NULL) {
-        fprintf(stderr, "spdk_dma_zmalloc() for task->buf failed\n");
+        fprintf(stderr, "aiosetup spdk_dma_zmalloc() for task->buf failed\n");
+	return true;
         exit(1);
     }
     memset(task->iov.iov_base, pattern, task->iov.iov_len);
+    return false;
 }
 
 static int aio_submit(io_context_t aio_ctx, struct iocb *iocb, int fd,
@@ -575,7 +581,7 @@ static int register_files(int argc, char **argv) {
 
 static void io_complete(void *ctx, const struct spdk_nvme_cpl *cpl);
 
-static void nvme_setup_payload(struct perf_task *task, uint8_t pattern) {
+static bool nvme_setup_payload(struct perf_task *task, uint8_t pattern) {
     uint32_t max_io_size_bytes, max_io_md_size;
 
     /* maximum extended lba format size from all active namespace,
@@ -586,8 +592,12 @@ static void nvme_setup_payload(struct perf_task *task, uint8_t pattern) {
     task->iov.iov_base = spdk_dma_zmalloc(max_io_size_bytes, g_io_align, NULL);
     task->iov.iov_len = max_io_size_bytes;
     if (task->iov.iov_base == NULL) {
-        fprintf(stderr, "task->buf spdk_dma_zmalloc failed\n");
+	printf("already allocated %d buf\n", spdk_allocated_count);
+        fprintf(stderr, "nvmesetup iov_base=NULL: task->buf spdk_dma_zmalloc failed\n");
+	return true;
         exit(1);
+    } else {
+	spdk_allocated_count++;
     }
     memset(task->iov.iov_base, pattern, task->iov.iov_len);
 
@@ -597,11 +607,13 @@ static void nvme_setup_payload(struct perf_task *task, uint8_t pattern) {
             spdk_dma_zmalloc(max_io_md_size, g_io_align, NULL);
         task->md_iov.iov_len = max_io_md_size;
         if (task->md_iov.iov_base == NULL) {
-            fprintf(stderr, "task->md_buf spdk_dma_zmalloc failed\n");
+            fprintf(stderr, "io_md_size = %d, task->md_buf spdk_dma_zmalloc failed\n", max_io_md_size);
             spdk_dma_free(task->iov.iov_base);
+	    spdk_allocated_count--;
             exit(1);
         }
     }
+    return false;
 }
 
 static int nvme_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
@@ -729,6 +741,7 @@ static int nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx) {
     struct spdk_nvme_qpair *qpair;
     int i;
 
+    printf("initialized ns_ctx %p\n", ns_ctx);
     ns_ctx->u.nvme.num_active_qpairs = g_nr_io_queues_per_ns;
     ns_ctx->u.nvme.num_all_qpairs =
         g_nr_io_queues_per_ns + g_nr_unused_io_queues;
@@ -1085,6 +1098,12 @@ static inline void submit_single_io(struct perf_task *task) {
         fprintf(stderr, "starting I/O failed\n");
     } else {
         ns_ctx->current_queue_depth++;
+	/*
+	if (ns_ctx->current_queue_depth > max_used_qdepth) {
+		max_used_qdepth = ns_ctx->current_queue_depth;
+		printf("max queue depth updated to %ld \n", ns_ctx->current_queue_depth);
+	}
+	*/
     }
 }
 
@@ -1122,10 +1141,16 @@ static inline void task_complete(struct perf_task *task) {
      * to complete.  In this case, do not submit a new I/O to replace
      * the one just completed.
      */
+    spdk_dma_free(task->iov.iov_base);
+    spdk_dma_free(task->md_iov.iov_base);
+    spdk_allocated_count--;
+    free(task);
     if (spdk_unlikely(ns_ctx->is_draining)) {
-        spdk_dma_free(task->iov.iov_base);
-        spdk_dma_free(task->md_iov.iov_base);
-        free(task);
+	// printf("freeing task\n");
+        // spdk_dma_free(task->iov.iov_base);
+        // spdk_dma_free(task->md_iov.iov_base);
+	// spdk_allocated_count--;
+        // free(task);
     } else {
         if (!g_open_loop) {
             submit_single_io(task);
@@ -1148,6 +1173,8 @@ static void io_complete(void *ctx, const struct spdk_nvme_cpl *cpl) {
 static struct perf_task *allocate_task(struct ns_worker_ctx *ns_ctx,
                                        int queue_depth) {
     struct perf_task *task;
+    bool setup_failed = true;
+
 
     task = calloc(1, sizeof(*task));
     if (task == NULL) {
@@ -1155,7 +1182,18 @@ static struct perf_task *allocate_task(struct ns_worker_ctx *ns_ctx,
         exit(1);
     }
 
-    ns_ctx->entry->fn_table->setup_payload(task, queue_depth % 8 + 1);
+    setup_failed = ns_ctx->entry->fn_table->setup_payload(task, queue_depth % 8 + 1);
+    if (spdk_unlikely(setup_failed)) {
+	// printf("freeing task, ns_ctx=%p, qd=%d\n", ns_ctx, ns_ctx->current_queue_depth);
+        // spdk_dma_free(task->iov.iov_base);
+        // spdk_dma_free(task->md_iov.iov_base);
+	sleep(0.1);
+    	setup_failed = ns_ctx->entry->fn_table->setup_payload(task, queue_depth % 8 + 1);
+	// exit(1);
+	if (setup_failed) {
+	    exit(1);
+	}
+    }
 
     task->ns_ctx = ns_ctx;
 
@@ -1238,6 +1276,7 @@ static int work_fn(void *arg) {
     /* Allocate queue pairs for each namespace. */
     ns_ctx = worker->ns_ctx;
     while (ns_ctx != NULL) {
+	printf("worker initing ns_ctx");
         if (init_ns_worker_ctx(ns_ctx) != 0) {
             printf("ERROR: init_ns_worker_ctx() failed\n");
             return 1;
@@ -1266,11 +1305,14 @@ static int work_fn(void *arg) {
              * I/O will be submitted in the io_complete callback
              * to replace each I/O that is completed.
              */
-            //	ns_ctx = worker->ns_ctx;
+
+            if (spdk_get_ticks() > tsc_end) {
+                break;
+            }
 
             if (spdk_get_ticks() > tsc_next_gen) {
                 // count_dropped += submit_single_io(ns_ctx);
-                task = allocate_task(ns_ctx, 0);
+                task = allocate_task(ns_ctx, ns_ctx->current_queue_depth);
                 submit_single_io(task);
                 tsc_next_gen = time_to_gen_next_req();
             }
@@ -1280,9 +1322,6 @@ static int work_fn(void *arg) {
             //		ns_ctx = ns_ctx->next;
             //	}
 
-            if (spdk_get_ticks() > tsc_end) {
-                break;
-            }
         }
     } /* closed-loop load generation */
     else {
@@ -2334,6 +2373,7 @@ static int associate_workers_with_ns(void) {
             ns_ctx->histogram[i] = spdk_histogram_data_alloc();
         }
         worker->ns_ctx = ns_ctx;
+	printf("Associated ns_ctx to worker\n");
 
         worker = worker->next;
         if (worker == NULL) {
