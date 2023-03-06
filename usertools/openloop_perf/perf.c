@@ -66,7 +66,8 @@
 enum io_type {
     WRITE,        // 0
     READ,         // 1
-    NUM_IO_TYPES  // 2
+    AGG,	  // 2
+    NUM_IO_TYPES  // 3
 };
 
 struct ctrlr_entry {
@@ -131,7 +132,8 @@ struct ns_entry {
 //     0.25, 0.50, 0.75, 0.90, 0.95, 0.99, 0.999, -1,
 // };
 
-static const double g_latency_cutoffs[] = {0.50, 0.90, 0.95, 0.99};
+// static const double g_latency_cutoffs[] = {0.50, 0.90, 0.95, 0.99};
+static const double g_latency_cutoffs[] = {0.95};
 
 struct ns_worker_ctx {
     struct ns_entry *entry;
@@ -1118,6 +1120,7 @@ static inline void task_complete(struct perf_task *task) {
     entry = ns_ctx->entry;
     ns_ctx->current_queue_depth--;
     ns_ctx->io_completed[iotype]++;
+    ns_ctx->io_completed[2]++; // AGG
     tsc_diff = spdk_get_ticks() - task->submit_tsc;
     ns_ctx->total_tsc[iotype] += tsc_diff;
     if (spdk_unlikely(ns_ctx->min_tsc[iotype] > tsc_diff)) {
@@ -1128,6 +1131,7 @@ static inline void task_complete(struct perf_task *task) {
     }
     if (spdk_unlikely(g_latency_sw_tracking_level > 0)) {
         spdk_histogram_data_tally(ns_ctx->histogram[iotype], tsc_diff);
+        spdk_histogram_data_tally(ns_ctx->histogram[2], tsc_diff);
     }
 
     if (spdk_unlikely(entry->md_size > 0)) {
@@ -1654,10 +1658,9 @@ static void print_performance(void) {
                 "=============================================================="
                 "===================\n");
 
-            // not printing WRTIE latency
-            for (i = 1; i < NUM_IO_TYPES; i++) {
+            for (i = 0; i < NUM_IO_TYPES; i++) {
                 const double *cutoff = g_latency_cutoffs;
-                printf("Tail Latency: %10.2f ", total_io_per_second[i]);
+                printf("Tail Latency[%d]: %10.2f ", i, total_io_per_second[i]);
                 spdk_histogram_data_iterate(ns_ctx->histogram[i], check_cutoff,
                                             &cutoff);
                 printf("\n");
