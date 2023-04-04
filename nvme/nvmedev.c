@@ -60,10 +60,12 @@ static long global_ns_size = 1;
 static long global_ns_sector_size = 1;
 static long active_nvme_devices = 0;
 static int cpu_per_ssd = 1;
+static int g_max_outstanding_requests = 512;
+static long g_submitted_requests = 0;
 // struct pci_dev *g_nvme_dev[CFG_MAX_NVMEDEV];
 
 #define MAX_OPEN_BATCH 32
-#define NUM_NVME_REQUESTS (4096 * 256)  // 4096 * 64 //1024
+#define NUM_NVME_REQUESTS (4096 * 512)  // 4096 * 64 //1024
 #define SGL_PAGE_SIZE \
     4096  // should match PAGE_SIZE defined in dp/core/reflex_server.c
 #define DEFAULT_IO_QUEUE_SIZE 256
@@ -79,7 +81,7 @@ static struct mempool_datastore request_datastore;
 static struct mempool_datastore ctx_datastore;
 static struct mempool_datastore nvme_swq_datastore;
 
-static struct nvme_flow_group nvme_fgs[MAX_NVME_FLOW_GROUPS];
+static struct nvme_flow_group g_nvme_fgs[MAX_NVME_FLOW_GROUPS];
 static unsigned long global_token_rate =
     UINT_MAX;  // max token rate device can handle for current strictest latency
                // SLO
@@ -352,7 +354,8 @@ int init_nvmeqp_cpu(void) {
            opts.io_queue_size, opts.io_queue_requests);
     // opts.qprio = 0;
     opts.io_queue_size = opts.io_queue_size;
-    opts.io_queue_requests = opts.io_queue_requests * 2;
+    opts.io_queue_requests = opts.io_queue_requests;
+    g_max_outstanding_requests = opts.io_queue_requests;
 
     // while (opts.io_queue_size >= 1) {
     //     // FIXME: naive mapping from CPU to SSDs
@@ -487,6 +490,8 @@ static const char *get_status_string(uint16_t sct, uint16_t sc) {
 
 void nvme_write_cb(void *ctx, const struct spdk_nvme_cpl *cpl) {
     struct nvme_ctx *n_ctx = (struct nvme_ctx *)ctx;
+    
+    g_nvme_fgs[n_ctx->fg_handle].completions++;
 
     if (spdk_nvme_cpl_is_error(cpl)) {
         printf("SPDK Write Failed!\n");
@@ -505,6 +510,8 @@ void nvme_write_cb(void *ctx, const struct spdk_nvme_cpl *cpl) {
 
 void nvme_read_cb(void *ctx, const struct spdk_nvme_cpl *cpl) {
     struct nvme_ctx *n_ctx = (struct nvme_ctx *)ctx;
+
+    g_nvme_fgs[n_ctx->fg_handle].completions++;
 
     if (spdk_nvme_cpl_is_error(cpl)) {
         printf("SPDK Read Failed!\n");
@@ -572,11 +579,11 @@ int set_nvme_flow_group_id(long flow_group_id, long *fg_handle_to_set,
     for (i = 1; i < MAX_NVME_FLOW_GROUPS; i++) {
         if (bitmap_test(g_nvme_fgs_bitmap, i)) {
             // if already registered this flow group, return its index
-            if (nvme_fgs[i].flow_group_id == flow_group_id &&
-                nvme_fgs[i].tid == RTE_PER_LCORE(cpu_nr)) {
+            if (g_nvme_fgs[i].flow_group_id == flow_group_id &&
+                g_nvme_fgs[i].tid == RTE_PER_LCORE(cpu_nr)) {
                 *fg_handle_to_set = i;
                 spin_unlock(&nvme_bitmap_lock);
-                // if (nvme_fgs[i].cookie == cookie)
+                // if (g_nvme_fgs[i].cookie == cookie)
                 return 1;
                 // else
                 //     return 2;
@@ -692,9 +699,9 @@ static void readjust_lc_tenant_token_limits(void) {
     int i, j = 0;
     for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
         if (bitmap_test(g_nvme_fgs_bitmap, i)) {
-            if (nvme_fgs[i].latency_critical_flag) {
-                nvme_fgs[i].scaled_IOPuS_limit =
-                    (nvme_fgs[i].scaled_IOPS_limit + global_lc_boost_no_BE) /
+            if (g_nvme_fgs[i].latency_critical_flag) {
+                g_nvme_fgs[i].scaled_IOPuS_limit =
+                    (g_nvme_fgs[i].scaled_IOPS_limit + global_lc_boost_no_BE) /
                     (double)1E6;
                 j++;
                 if (j == global_num_lc_tenants) {
@@ -713,16 +720,16 @@ int recalculate_weights_add(long new_flow_group_idx) {
 
     spin_lock(&nvme_bitmap_lock);
 
-    if (nvme_fgs[new_flow_group_idx].latency_critical_flag) {
+    if (g_nvme_fgs[new_flow_group_idx].latency_critical_flag) {
         new_global_LC_sum_token_rate =
             global_LC_sum_token_rate +
-            nvme_fgs[new_flow_group_idx].scaled_IOPS_limit;
-        if (nvme_fgs[new_flow_group_idx].rw_ratio_SLO < 100) {
+            g_nvme_fgs[new_flow_group_idx].scaled_IOPS_limit;
+        if (g_nvme_fgs[new_flow_group_idx].rw_ratio_SLO < 100) {
             global_readonly_flag = false;
         }
 
         new_global_token_rate = lookup_device_token_rate(
-            nvme_fgs[new_flow_group_idx].latency_us_SLO);
+            g_nvme_fgs[new_flow_group_idx].latency_us_SLO);
         if (new_global_token_rate > global_token_rate) {
             new_global_token_rate =
                 global_token_rate;  // keep limit based on strictest latency SLO
@@ -781,24 +788,25 @@ int recalculate_weights_remove(long flow_group_idx) {
 
     spin_lock(&nvme_bitmap_lock);
 
-    if (nvme_fgs[flow_group_idx].latency_critical_flag) {
+    if (g_nvme_fgs[flow_group_idx].latency_critical_flag) {
         // find new strictest latency SLO
         global_readonly_flag = true;
         for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
             if (bitmap_test(g_nvme_fgs_bitmap, i) && i != flow_group_idx) {
-                if (nvme_fgs[i].latency_critical_flag) {
-                    if (nvme_fgs[i].latency_us_SLO < strictest_latency_SLO) {
-                        strictest_latency_SLO = nvme_fgs[i].latency_us_SLO;
+                if (g_nvme_fgs[i].latency_critical_flag) {
+                    if (g_nvme_fgs[i].latency_us_SLO < strictest_latency_SLO) {
+                        strictest_latency_SLO = g_nvme_fgs[i].latency_us_SLO;
                     }
-                    if (nvme_fgs[i].rw_ratio_SLO < 100) {
+                    if (g_nvme_fgs[i].rw_ratio_SLO < 100) {
                         global_readonly_flag = false;
                     }
                 }
             }
         }
-        global_LC_sum_token_rate -= nvme_fgs[flow_group_idx].scaled_IOPS_limit;
+        global_LC_sum_token_rate -= g_nvme_fgs[flow_group_idx].scaled_IOPS_limit;
         global_token_rate = lookup_device_token_rate(strictest_latency_SLO);
 
+	printf("Flow %ld finished %ld requests\n", flow_group_idx, g_nvme_fgs[flow_group_idx].completions);
         printf("Global token rate: %lu tokens/s\n", global_token_rate);
 
         global_num_lc_tenants--;
@@ -851,7 +859,8 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
                 MAX_NVME_FLOW_GROUPS);
     }
 
-    nvme_fg = &nvme_fgs[fg_handle];
+    nvme_fg = &g_nvme_fgs[fg_handle];
+    nvme_fg->completions = 0;
 
     if (latency_us_SLO == 0) {
         nvme_fg->latency_critical_flag = false;
@@ -938,7 +947,7 @@ long bsys_nvme_unregister_flow(long fg_handle) {
     struct nvme_tenant_mgmt *thread_tenant_manager;
     struct nvme_flow_group *nvme_fg;
 
-    nvme_fg = &nvme_fgs[fg_handle];
+    nvme_fg = &g_nvme_fgs[fg_handle];
     nvme_fg->conn_ref_count--;
     nvme_fg->scaled_IOPS_limit -=
         scaled_IOPS(nvme_fg->IOPS_SLO, nvme_fg->rw_ratio_SLO) / (double)1E6;
@@ -989,129 +998,6 @@ static int nvme_compute_req_cost(int req_type, size_t req_len) {
     return 1;
 }
 
-long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
-                     unsigned long lba, unsigned int lba_count,
-                     unsigned long cookie) {
-    struct spdk_nvme_ns *ns;
-    struct nvme_ctx *ctx;
-    void *paddr;
-    int ret;
-
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
-                                global_ns_id);
-    ctx = alloc_local_nvme_ctx();
-    if (ctx == NULL) {
-        printf(
-            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_write\n");
-        return -RET_NOMEM;
-    }
-    ctx->cookie = cookie;
-
-    /*
-        paddr = (void *) vm_lookup_phys(vaddr, PGSIZE_2MB);
-        if (unlikely(!paddr)) {
-                printf("bsys_nvme_write: no paddr for requested vaddr!");
-                return -RET_FAULT;
-        }
-
-        paddr = (void *) ((uintptr_t) paddr + PGOFF_2MB(vaddr));
-        */
-    paddr = vaddr;
-
-    if (g_nvme_sched_flag) {
-        // Store all info in ctx before add to software queue
-        ctx->tid = RTE_PER_LCORE(cpu_nr);
-        ctx->fg_handle = fg_handle;
-        ctx->cmd = NVME_CMD_WRITE;
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
-        ctx->ns = ns;
-        ctx->paddr = paddr;
-        ctx->lba = lba;
-        ctx->lba_count = lba_count;
-
-        // add to SW queue
-        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
-        struct nvme_sw_queue *swq = nvme_fgs[fg_handle].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
-        if (ret != 0) {
-            free_local_nvme_ctx(ctx);
-            return -RET_NOMEM;
-        }
-    } else {
-        ret = spdk_nvme_ns_cmd_write(ns, percpu_get(qpair), paddr, lba,
-                                     lba_count, nvme_write_cb, ctx, 0);
-        if (ret != 0) printf("NVME Write ret: %lx\n", ret);
-        assert(ret == 0);
-    }
-
-    return RET_OK;
-}
-
-long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
-                    unsigned long lba, unsigned int lba_count,
-                    unsigned long cookie) {
-    struct spdk_nvme_ns *ns;
-    struct nvme_ctx *ctx;
-    void *paddr;
-    unsigned int ns_sector_size;
-    int ret;
-
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
-                                global_ns_id);
-
-    ctx = alloc_local_nvme_ctx();
-    if (ctx == NULL) {
-        printf(
-            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_read\n");
-        return -RET_NOMEM;
-    }
-    ctx->cookie = cookie;
-
-    /*
-        paddr = (void *) vm_lookup_phys(vaddr, PGSIZE_2MB);
-        if (unlikely(!paddr)) {
-                printf("bsys_nvme_read: no paddr for requested vaddr!");
-                return -RET_FAULT;
-        }
-        paddr = (void *) ((uintptr_t) paddr + PGOFF_2MB(vaddr));
-        */
-    paddr = vaddr;
-
-    ctx->user_buf.buf = vaddr;
-
-    if (g_nvme_sched_flag) {
-        // Store all info in ctx before add to software queue
-        ctx->tid = RTE_PER_LCORE(cpu_nr);
-        ctx->fg_handle = fg_handle;
-        ctx->cmd = NVME_CMD_READ;
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_READ, lba_count * global_ns_sector_size);
-        ctx->ns = ns;
-        ctx->paddr = paddr;
-        ctx->lba = lba;
-        ctx->lba_count = lba_count;
-
-        // add to SW queue
-        struct nvme_sw_queue *swq = nvme_fgs[fg_handle].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
-        if (ret != 0) {
-            free_local_nvme_ctx(ctx);
-            return -RET_NOMEM;
-        }
-    } else {
-        assert(((lba / lba_count) * lba_count) == lba);
-        ret = spdk_nvme_ns_cmd_read(ns, percpu_get(qpair), paddr, lba,
-                                    lba_count, nvme_read_cb, ctx, 0);
-        if (ret != 0) printf("NVME Read ret: %lx\n", ret);
-        assert(ret == 0);
-    }
-
-    return RET_OK;
-}
-
 static void sgl_reset_cb(void *cb_arg, uint32_t sgl_offset) {
     struct nvme_ctx *ctx = (struct nvme_ctx *)cb_arg;
 
@@ -1154,131 +1040,6 @@ static int sgl_next_cb(void *cb_arg, uint64_t *address, uint32_t *length) {
     return 0;
 }
 
-long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
-                      int num_sgls, unsigned long lba, unsigned int lba_count,
-                      unsigned long cookie) {
-    struct spdk_nvme_ns *ns;
-    struct nvme_ctx *ctx;
-    int ret;
-
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
-                                global_ns_id);
-
-    ctx = alloc_local_nvme_ctx();
-    if (ctx == NULL) {
-        printf(
-            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_read\n");
-        return -RET_NOMEM;
-    }
-    ctx->cookie = cookie;
-    ctx->user_buf.sgl_buf.sgl = buf;
-    ctx->user_buf.sgl_buf.num_sgls = num_sgls;
-
-    if (g_nvme_sched_flag) {
-        // Store all info in ctx before add to software queue
-        ctx->tid = percpu_get(cpu_nr);
-        ctx->fg_handle = fg_handle;
-        ctx->cmd = NVME_CMD_WRITE;
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
-        ctx->ns = ns;
-        ctx->lba = lba;
-        ctx->lba_count = lba_count;
-
-        // add to SW queue
-        struct nvme_sw_queue *swq = nvme_fgs[fg_handle].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
-        if (ret != 0) {
-            free_local_nvme_ctx(ctx);
-            return -RET_NOMEM;
-        }
-    } else {
-        ret = spdk_nvme_ns_cmd_writev(ns, percpu_get(qpair), lba, lba_count,
-                                      nvme_write_cb, ctx, 0, sgl_reset_cb,
-                                      sgl_next_cb);
-        if (ret != 0)
-            printf("Writev failed: %lx %lx %lx\n", ret, num_sgls, lba_count);
-        assert(ret == 0);
-    }
-
-    return RET_OK;
-}
-
-long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
-                     int num_sgls, unsigned long lba, unsigned int lba_count,
-                     unsigned long cookie) {
-    struct spdk_nvme_ns *ns;
-    struct nvme_ctx *ctx;
-    int ret;
-
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
-                                global_ns_id);
-
-    ctx = alloc_local_nvme_ctx();
-    if (ctx == NULL) {
-        printf(
-            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_read\n");
-        return -RET_NOMEM;
-    }
-    ctx->cookie = cookie;
-    ctx->user_buf.sgl_buf.sgl = buf;
-    ctx->user_buf.sgl_buf.num_sgls = num_sgls;
-
-    if (g_nvme_sched_flag) {
-        // Store all info in ctx before add to software queue
-        ctx->tid = RTE_PER_LCORE(cpu_nr);
-        ctx->fg_handle = fg_handle;
-        ctx->cmd = NVME_CMD_READ;
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_READ, lba_count * global_ns_sector_size);
-        ctx->ns = ns;
-        ctx->lba = lba;
-        ctx->lba_count = lba_count;
-
-        // add to SW queue
-        struct nvme_sw_queue *swq = nvme_fgs[fg_handle].nvme_swq;
-        // printf("swq %lx accessed from fg_handle: %ld", swq, fg_handle);
-        ret = nvme_sw_queue_push_back(swq, ctx);
-        if (ret != 0) {
-            free_local_nvme_ctx(ctx);
-            printf("returning NOMEM from readv\n");
-            return -RET_NOMEM;
-        }
-    } else {
-        ret = spdk_nvme_ns_cmd_readv(ns, percpu_get(qpair), lba, lba_count,
-                                     nvme_read_cb, ctx, 0, sgl_reset_cb,
-                                     sgl_next_cb);
-        if (ret != 0)
-            printf("Readv failed: %lx %lx %lx\n", ret, num_sgls, lba_count);
-        assert(ret == 0);
-    }
-
-    return RET_OK;
-}
-
-unsigned long try_acquire_global_tokens(unsigned long token_demand) {
-    unsigned long new_token_level = 0;
-    unsigned long avail_tokens = 0;
-
-    while (1) {
-        avail_tokens = atomic_u64_read(&global_leftover_tokens);
-
-        if (token_demand > avail_tokens) {
-            if (atomic_u64_cmpxchg(&global_leftover_tokens, avail_tokens, 0)) {
-                return avail_tokens;
-            }
-
-        } else {
-            new_token_level = avail_tokens - token_demand;
-            if (atomic_u64_cmpxchg(&global_leftover_tokens, avail_tokens,
-                                   new_token_level)) {
-                return token_demand;
-            }
-        }
-    }
-}
 
 static void issue_nvme_req(struct nvme_ctx *ctx) {
     int ret;
@@ -1318,11 +1079,273 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
     } else {
         panic("unrecognized nvme request\n");
     }
+    g_submitted_requests++;
     if (ret < 0) {
         printf("Error submitting nvme request\n");
+	printf("Current outstanding: %ld\n", g_submitted_requests);
         panic("Ran out of NVMe cmd buffer space\n");
     }
 }
+
+long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
+                     unsigned long lba, unsigned int lba_count,
+                     unsigned long cookie) {
+    struct spdk_nvme_ns *ns;
+    struct nvme_ctx *ctx;
+    struct nvme_ctx *pctx;
+    void *paddr;
+    int ret;
+
+    // FIXME: naive mapping from CPU to SSDs
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
+                                global_ns_id);
+    ctx = alloc_local_nvme_ctx();
+    if (ctx == NULL) {
+        printf(
+            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_write\n");
+        return -RET_NOMEM;
+    }
+    ctx->cookie = cookie;
+
+    /*
+        paddr = (void *) vm_lookup_phys(vaddr, PGSIZE_2MB);
+        if (unlikely(!paddr)) {
+                printf("bsys_nvme_write: no paddr for requested vaddr!");
+                return -RET_FAULT;
+        }
+
+        paddr = (void *) ((uintptr_t) paddr + PGOFF_2MB(vaddr));
+        */
+    paddr = vaddr;
+
+    // Store all info in ctx before add to software queue
+    ctx->tid = RTE_PER_LCORE(cpu_nr);
+    ctx->fg_handle = fg_handle;
+    ctx->cmd = NVME_CMD_WRITE;
+    if (g_nvme_sched_flag) {
+    	ctx->req_cost = nvme_compute_req_cost(
+            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
+    }
+    ctx->ns = ns;
+    ctx->paddr = paddr;
+    ctx->lba = lba;
+    ctx->lba_count = lba_count;
+
+    // add to SW queue
+    // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
+    struct nvme_sw_queue *swq = g_nvme_fgs[fg_handle].nvme_swq;
+    ret = nvme_sw_queue_push_back(swq, ctx);
+    if (ret != 0) {
+        free_local_nvme_ctx(ctx);
+        return -RET_NOMEM;
+    }
+    if (!g_nvme_sched_flag) {
+        while(nvme_sw_queue_isempty(swq) == 0) {
+            if (g_submitted_requests >= g_max_outstanding_requests) break; 
+            nvme_sw_queue_pop_front(swq, &pctx);
+            issue_nvme_req(pctx);
+        }
+    }
+
+    return RET_OK;
+}
+
+long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
+                    unsigned long lba, unsigned int lba_count,
+                    unsigned long cookie) {
+    struct spdk_nvme_ns *ns;
+    struct nvme_ctx *ctx;
+    struct nvme_ctx *pctx;
+    void *paddr;
+    unsigned int ns_sector_size;
+    int ret;
+
+    // FIXME: naive mapping from CPU to SSDs
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
+                                global_ns_id);
+
+    ctx = alloc_local_nvme_ctx();
+    if (ctx == NULL) {
+        printf(
+            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_read\n");
+        return -RET_NOMEM;
+    }
+    ctx->cookie = cookie;
+
+    /*
+        paddr = (void *) vm_lookup_phys(vaddr, PGSIZE_2MB);
+        if (unlikely(!paddr)) {
+                printf("bsys_nvme_read: no paddr for requested vaddr!");
+                return -RET_FAULT;
+        }
+        paddr = (void *) ((uintptr_t) paddr + PGOFF_2MB(vaddr));
+        */
+    paddr = vaddr;
+
+    ctx->user_buf.buf = vaddr;
+
+        // Store all info in ctx before add to software queue
+    ctx->tid = RTE_PER_LCORE(cpu_nr);
+    ctx->fg_handle = fg_handle;
+    ctx->cmd = NVME_CMD_READ;
+    if (g_nvme_sched_flag) {
+        ctx->req_cost = nvme_compute_req_cost(
+            NVME_CMD_READ, lba_count * global_ns_sector_size);
+    }
+    ctx->ns = ns;
+    ctx->paddr = paddr;
+    ctx->lba = lba;
+    ctx->lba_count = lba_count;
+
+    // add to SW queue
+    struct nvme_sw_queue *swq = g_nvme_fgs[fg_handle].nvme_swq;
+    ret = nvme_sw_queue_push_back(swq, ctx);
+    if (ret != 0) {
+    	free_local_nvme_ctx(ctx);
+        return -RET_NOMEM;
+    }
+    if (!g_nvme_sched_flag) {
+        while(nvme_sw_queue_isempty(swq) == 0) {
+            if (g_submitted_requests >= g_max_outstanding_requests) break; 
+            nvme_sw_queue_pop_front(swq, &pctx);
+            issue_nvme_req(pctx);
+        }
+    }
+
+    return RET_OK;
+}
+
+
+
+long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
+                      int num_sgls, unsigned long lba, unsigned int lba_count,
+                      unsigned long cookie) {
+    struct spdk_nvme_ns *ns;
+    struct nvme_ctx *ctx;
+    struct nvme_ctx *pctx;
+    int ret;
+
+    // FIXME: naive mapping from CPU to SSDs
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
+                                global_ns_id);
+
+    ctx = alloc_local_nvme_ctx();
+    if (ctx == NULL) {
+        printf(
+            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_read\n");
+        return -RET_NOMEM;
+    }
+    ctx->cookie = cookie;
+    ctx->user_buf.sgl_buf.sgl = buf;
+    ctx->user_buf.sgl_buf.num_sgls = num_sgls;
+
+    // Store all info in ctx before add to software queue
+    ctx->tid = percpu_get(cpu_nr);
+    ctx->fg_handle = fg_handle;
+    ctx->cmd = NVME_CMD_WRITE;
+    if (g_nvme_sched_flag) {
+        ctx->req_cost = nvme_compute_req_cost(
+            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
+    }
+    ctx->ns = ns;
+    ctx->lba = lba;
+    ctx->lba_count = lba_count;
+
+    // add to SW queue
+    struct nvme_sw_queue *swq = g_nvme_fgs[fg_handle].nvme_swq;
+    ret = nvme_sw_queue_push_back(swq, ctx);
+    if (ret != 0) {
+        free_local_nvme_ctx(ctx);
+        return -RET_NOMEM;
+    }
+    if (!g_nvme_sched_flag) {
+        while(nvme_sw_queue_isempty(swq) == 0) {
+            if (g_submitted_requests >= g_max_outstanding_requests) break; 
+            nvme_sw_queue_pop_front(swq, &pctx);
+            issue_nvme_req(pctx);
+        }
+    }
+
+    return RET_OK;
+}
+
+long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
+                     int num_sgls, unsigned long lba, unsigned int lba_count,
+                     unsigned long cookie) {
+    struct spdk_nvme_ns *ns;
+    struct nvme_ctx *ctx;
+    struct nvme_ctx *pctx;
+    int ret;
+
+    // FIXME: naive mapping from CPU to SSDs
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
+                                global_ns_id);
+
+    ctx = alloc_local_nvme_ctx();
+    if (ctx == NULL) {
+        printf(
+            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_read\n");
+        return -RET_NOMEM;
+    }
+    ctx->cookie = cookie;
+    ctx->user_buf.sgl_buf.sgl = buf;
+    ctx->user_buf.sgl_buf.num_sgls = num_sgls;
+
+    // Store all info in ctx before add to software queue
+    ctx->tid = RTE_PER_LCORE(cpu_nr);
+    ctx->fg_handle = fg_handle;
+    ctx->cmd = NVME_CMD_READ;
+    if (g_nvme_sched_flag) {
+        ctx->req_cost = nvme_compute_req_cost(
+            NVME_CMD_READ, lba_count * global_ns_sector_size);
+    }
+    ctx->ns = ns;
+    ctx->lba = lba;
+    ctx->lba_count = lba_count;
+
+    // add to SW queue
+    struct nvme_sw_queue *swq = g_nvme_fgs[fg_handle].nvme_swq;
+    // printf("swq %lx accessed from fg_handle: %ld", swq, fg_handle);
+    ret = nvme_sw_queue_push_back(swq, ctx);
+    if (ret != 0) {
+        free_local_nvme_ctx(ctx);
+        printf("returning NOMEM from readv\n");
+	printf("Current outstanding: %ld; received: %ld\n", g_submitted_requests, percpu_get(received_nvme_completions));
+        return -RET_NOMEM;
+    }
+    if (!g_nvme_sched_flag) {
+        while(nvme_sw_queue_isempty(swq) == 0) {
+            if (g_submitted_requests >= g_max_outstanding_requests) break; 
+            nvme_sw_queue_pop_front(swq, &pctx);
+            issue_nvme_req(pctx);
+        }
+    }
+
+    return RET_OK;
+}
+
+unsigned long try_acquire_global_tokens(unsigned long token_demand) {
+    unsigned long new_token_level = 0;
+    unsigned long avail_tokens = 0;
+
+    while (1) {
+        avail_tokens = atomic_u64_read(&global_leftover_tokens);
+
+        if (token_demand > avail_tokens) {
+            if (atomic_u64_cmpxchg(&global_leftover_tokens, avail_tokens, 0)) {
+                return avail_tokens;
+            }
+
+        } else {
+            new_token_level = avail_tokens - token_demand;
+            if (atomic_u64_cmpxchg(&global_leftover_tokens, avail_tokens,
+                                   new_token_level)) {
+                return token_demand;
+            }
+        }
+    }
+}
+
 
 /*
  * nvme_sched_subround1: schedule latency critical tenant traffic
@@ -1346,14 +1369,14 @@ static inline int nvme_sched_subround1(void) {
 
     list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
         // serve latency-critical (LC) tenants
-        if (nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+        if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
             if (nvme_swq->fg_handle == 2) {
                 // printf("%f\n",
-                // nvme_fgs[nvme_swq->fg_handle].scaled_IOPuS_limit);
+                // g_nvme_fgs[nvme_swq->fg_handle].scaled_IOPuS_limit);
             }
 
             token_increment =
-                (nvme_fgs[nvme_swq->fg_handle].scaled_IOPuS_limit *
+                (g_nvme_fgs[nvme_swq->fg_handle].scaled_IOPuS_limit *
                  time_delta) +
                 0.5;  // 0.5 is for rounding
             nvme_swq->token_credit += (long)token_increment;
@@ -1367,8 +1390,12 @@ static inline int nvme_sched_subround1(void) {
                 // NOTE: may also need to schedule LC tenants in round robin for
                 // fairness
             }
-            while (nvme_sw_queue_isempty(nvme_swq) == 0 &&
+	    while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
                    nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
+		if (g_submitted_requests >= g_max_outstanding_requests) {
+		    // printf("Temporal bursts! outstanding = %ld\n", g_submitted_requests);
+		    break;
+		}
                 nvme_sw_queue_pop_front(nvme_swq, &ctx);
                 issue_nvme_req(ctx);
                 nvme_swq->token_credit -= ctx->req_cost;
@@ -1458,15 +1485,19 @@ static inline void nvme_sched_subround2(void) {
             i++;
             continue;
         }
-        if (!nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+        if (!g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
             be_tokens += nvme_sw_queue_take_saved_tokens(nvme_swq);
             token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
                                time_delta_cycles) /
                               (double)(cycles_per_us * 1E6);
             be_tokens += (long)(token_increment + 0.5);
 
-            while ((nvme_sw_queue_isempty(nvme_swq) == 0) &&
+            while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
                    nvme_sw_queue_peak_head_cost(nvme_swq) <= be_tokens) {
+		if (g_submitted_requests >= g_max_outstanding_requests) {
+		    // printf("Temporal bursts! outstanding = %ld\n", g_submitted_requests);
+		    break;
+		}
                 nvme_sw_queue_pop_front(nvme_swq, &ctx);
                 issue_nvme_req(ctx);
                 be_tokens -= ctx->req_cost;
@@ -1486,15 +1517,20 @@ static inline void nvme_sched_subround2(void) {
         log_debug("schedule tenant second %d\n", j);
         // log_debug("subround2: sched tenant handle %ld, tenant_tokens %lu\n",
         // nvme_swq->fg_handle, tenant_tokens);
-        if (!nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+        if (!g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
             be_tokens += nvme_sw_queue_take_saved_tokens(nvme_swq);
             token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
                                time_delta_cycles) /
                               (double)(cycles_per_us * 1E6);
             be_tokens += (long)(token_increment + 0.5);
 
-            while ((nvme_sw_queue_isempty(nvme_swq) == 0) &&
+
+            while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
                    nvme_sw_queue_peak_head_cost(nvme_swq) <= be_tokens) {
+		if (g_submitted_requests >= g_max_outstanding_requests) {
+		    // printf("Temporal bursts! outstanding = %ld\n", g_submitted_requests);
+		    break;
+		}
                 nvme_sw_queue_pop_front(nvme_swq, &ctx);
                 issue_nvme_req(ctx);
                 be_tokens -= ctx->req_cost;
@@ -1518,7 +1554,7 @@ static inline void nvme_sched_subround2(void) {
                     i++;
                     continue;
                 }
-                if (!nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+                if (!g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
                     done = 1;  // incremented to next best effort tenant
                 }
                 break;
@@ -1591,6 +1627,7 @@ int nvme_sched(void) {
 void nvme_process_completions() {
     int i;
     int max_completions = 4096;
+    int this_completions;
 
     if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0) return;
 
@@ -1600,6 +1637,8 @@ void nvme_process_completions() {
         percpu_get(received_nvme_completions)++;
     }
     percpu_get(open_ev_ptr) = 0;
-    percpu_get(received_nvme_completions) +=
+    this_completions =
         spdk_nvme_qpair_process_completions(percpu_get(qpair), max_completions);
+    g_submitted_requests -= this_completions;
+    percpu_get(received_nvme_completions) += this_completions;
 }

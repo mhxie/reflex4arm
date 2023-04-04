@@ -18,8 +18,8 @@ DPDK_LIB_NAMES = [
     # 'librte_eal.a',
     # 'librte_telemetry.a',
     'librte_hash.a',
-    'librte_bus_pci.a',
-    'librte_kvargs.a'
+    #'librte_bus_pci.a',
+    #'librte_kvargs.a'
 ]
 DPDK_LIBS = []
 foreach NAME : DPDK_LIB_NAMES
@@ -35,13 +35,15 @@ DPDK_WHOLE_LIB_NAMES = [
     'librte_net.a',
     'librte_ethdev.a',
     'librte_mbuf.a',
-    'librte_eal.a', # dulplicate in IX_LIB
+    #'librte_eal.a', # dulplicate in IX_LIB
     'librte_telemetry.a',
     # needed by ena librte_pmd_ena.a 
     'librte_timer.a',
     # needed by SPDK
     'librte_ring.a',
     'librte_pci.a',
+    'librte_bus_pci.a',
+    'librte_kvargs.a',
 ]
 
 dpdk_deps = []
@@ -54,7 +56,7 @@ foreach NAME : DPDK_WHOLE_LIB_NAMES
 endforeach
 
 SPDK_LIB_NAMES = [
-    'libspdk_env_dpdk.a',
+  #'libspdk_env_dpdk.a',
     # 'libspdk_nvme.a',
     # 'libspdk_util.a',
     # 'libspdk_log.a',
@@ -74,7 +76,7 @@ SPDK_WHOLE_LIB_NAMES = [
     'libspdk_jsonrpc.a',
     'libspdk_rpc.a',
     'libspdk_util.a',
-#     'libspdk_env_dpdk.a',
+    'libspdk_env_dpdk.a',
 ]
 spdk_deps = []
 foreach NAME : SPDK_WHOLE_LIB_NAMES

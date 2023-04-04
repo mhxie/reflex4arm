@@ -81,7 +81,7 @@
 #define PAGE_SIZE 4096
 
 #define MAX_NUM_CONTIG_ALLOC_RETRIES 5
-#define MAX_REQ_COUNT 10 * 1024  // 10s * 1024 IOPS
+//#define MAX_REQ_COUNT 10 * 1024  // 10s * 1024 IOPS
 #define MAX_CONN_COUNT 512
 // #define MAX_PORT_RANGE 65535
 
@@ -203,7 +203,6 @@ static void send_completed_cb(struct ixev_ref *ref) {
 #ifdef FINE_MEASURE
     measurements[conn->conn_id][3][conn->req_measured] =
         timer_now() - req->timestamp;  // send_time
-#endif
     conn->req_measured++;
     if (conn->req_measured > MAX_REQ_COUNT) {
         fprintf(
@@ -212,6 +211,7 @@ static void send_completed_cb(struct ixev_ref *ref) {
             conn->conn_id);
         conn->req_measured = 0;
     }
+#endif
 
     num4k = (req->lba_count * ns_sector_size) / 4096;
     if (((req->lba_count * ns_sector_size) % 4096) != 0) num4k++;

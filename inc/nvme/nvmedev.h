@@ -49,7 +49,7 @@
 
 #define NVME_MAX_COMPLETIONS 64
 
-#define MAX_NVME_FLOW_GROUPS 16384  // 16
+#define MAX_NVME_FLOW_GROUPS 1024 // 16
 extern DEFINE_BITMAP(g_ioq_bitmap, MAX_NUM_IO_QUEUES);
 extern DEFINE_BITMAP(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS);
 RTE_DECLARE_PER_LCORE(struct spdk_nvme_qpair *, qpair);
@@ -97,6 +97,7 @@ struct nvme_flow_group {
         *nvme_swq;     // thread-local software queue for this flow group
     unsigned int tid;  // thread id
     int conn_ref_count;
+    unsigned long completions;
 };
 
 struct nvme_tenant_mgmt {
