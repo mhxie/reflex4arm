@@ -108,7 +108,15 @@ struct cfg_parameters {
 extern struct cfg_parameters CFG;
 
 extern int g_nvme_dev_model;
-extern bool g_nvme_sched_flag;
+// extern bool g_nvme_sched_flag;
+enum sched_mode {                                                             
+    NO_SCHED,                                                                 
+    REFLEX,                                                                   
+    WFQ,                                                                      
+    WDRR,                                                                     
+    LESS                                                                      
+};
+extern uint8_t g_nvme_sched_mode;
 
 extern int NVME_READ_COST;
 extern int NVME_WRITE_COST;

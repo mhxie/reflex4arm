@@ -121,6 +121,7 @@ RTE_DEFINE_PER_LCORE(unsigned long, last_sched_time);
 RTE_DEFINE_PER_LCORE(unsigned long, last_sched_time_be);
 RTE_DEFINE_PER_LCORE(unsigned long, local_extra_demand);
 RTE_DEFINE_PER_LCORE(unsigned long, local_leftover_tokens);
+RTE_DEFINE_PER_LCORE(int, lc_roundrobin_start);
 RTE_DEFINE_PER_LCORE(int, roundrobin_start);
 
 static int nvme_compute_req_cost(int req_type, size_t req_len);
@@ -1122,7 +1123,7 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
     ctx->tid = RTE_PER_LCORE(cpu_nr);
     ctx->fg_handle = fg_handle;
     ctx->cmd = NVME_CMD_WRITE;
-    if (g_nvme_sched_flag) {
+    if (g_nvme_sched_mode) {
     	ctx->req_cost = nvme_compute_req_cost(
             NVME_CMD_WRITE, lba_count * global_ns_sector_size);
     }
@@ -1139,7 +1140,7 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
         free_local_nvme_ctx(ctx);
         return -RET_NOMEM;
     }
-    if (!g_nvme_sched_flag) {
+    if (!g_nvme_sched_mode) {
         while(nvme_sw_queue_isempty(swq) == 0) {
             if (g_submitted_requests >= g_max_outstanding_requests) break; 
             nvme_sw_queue_pop_front(swq, &pctx);
@@ -1188,7 +1189,7 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
     ctx->tid = RTE_PER_LCORE(cpu_nr);
     ctx->fg_handle = fg_handle;
     ctx->cmd = NVME_CMD_READ;
-    if (g_nvme_sched_flag) {
+    if (g_nvme_sched_mode) {
         ctx->req_cost = nvme_compute_req_cost(
             NVME_CMD_READ, lba_count * global_ns_sector_size);
     }
@@ -1204,7 +1205,7 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
     	free_local_nvme_ctx(ctx);
         return -RET_NOMEM;
     }
-    if (!g_nvme_sched_flag) {
+    if (!g_nvme_sched_mode) {
         while(nvme_sw_queue_isempty(swq) == 0) {
             if (g_submitted_requests >= g_max_outstanding_requests) break; 
             nvme_sw_queue_pop_front(swq, &pctx);
@@ -1243,7 +1244,7 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
     ctx->tid = percpu_get(cpu_nr);
     ctx->fg_handle = fg_handle;
     ctx->cmd = NVME_CMD_WRITE;
-    if (g_nvme_sched_flag) {
+    if (g_nvme_sched_mode) {
         ctx->req_cost = nvme_compute_req_cost(
             NVME_CMD_WRITE, lba_count * global_ns_sector_size);
     }
@@ -1258,7 +1259,7 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
         free_local_nvme_ctx(ctx);
         return -RET_NOMEM;
     }
-    if (!g_nvme_sched_flag) {
+    if (!g_nvme_sched_mode) {
         while(nvme_sw_queue_isempty(swq) == 0) {
             if (g_submitted_requests >= g_max_outstanding_requests) break; 
             nvme_sw_queue_pop_front(swq, &pctx);
@@ -1295,7 +1296,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     ctx->tid = RTE_PER_LCORE(cpu_nr);
     ctx->fg_handle = fg_handle;
     ctx->cmd = NVME_CMD_READ;
-    if (g_nvme_sched_flag) {
+    if (g_nvme_sched_mode) {
         ctx->req_cost = nvme_compute_req_cost(
             NVME_CMD_READ, lba_count * global_ns_sector_size);
     }
@@ -1313,7 +1314,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
 	printf("Current outstanding: %ld; received: %ld\n", g_submitted_requests, percpu_get(received_nvme_completions));
         return -RET_NOMEM;
     }
-    if (!g_nvme_sched_flag) {
+    if (!g_nvme_sched_mode) {
         while(nvme_sw_queue_isempty(swq) == 0) {
             if (g_submitted_requests >= g_max_outstanding_requests) break; 
             nvme_sw_queue_pop_front(swq, &pctx);
@@ -1346,6 +1347,82 @@ unsigned long try_acquire_global_tokens(unsigned long token_demand) {
     }
 }
 
+/*
+ * nvme_sched_wdrr: schedule with weighted deficit round robin
+ */
+static inline int nvme_sched_wdrr_subround1(void) {
+    struct nvme_tenant_mgmt *thread_tenant_manager;
+    struct nvme_sw_queue *nvme_swq;
+    struct nvme_ctx *ctx;
+    unsigned long now;
+    unsigned long time_delta;
+    long POS_LIMIT = 0;
+    unsigned long local_leftover = 0;
+    unsigned long local_demand = 0;
+    double token_increment;
+    bool not_empty = true;
+    int i = 0;
+
+    now = timer_now();  // in us
+    time_delta = now - percpu_get(last_sched_time);
+    percpu_get(last_sched_time) = now;
+
+    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+
+    list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
+        // serve latency-critical (LC) tenants
+        if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+
+            token_increment =
+                (g_nvme_fgs[nvme_swq->fg_handle].scaled_IOPuS_limit *
+                 time_delta) +
+                0.5;  // 0.5 is for rounding
+            nvme_swq->token_credit += (long)token_increment;
+            if (nvme_swq->token_credit < -TOKEN_DEFICIT_LIMIT) {
+            }
+        } else {  // track demand of best-effort (will need for subround2)
+            local_demand +=
+                nvme_swq->total_token_demand - nvme_swq->saved_tokens;
+        }
+    }
+    while (not_empty && g_submitted_requests < g_max_outstanding_requests) {
+	not_empty = false;
+	i = 0;
+    	list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
+	    if (i < percpu_get(lc_roundrobin_start)) continue;
+            if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+		if (g_submitted_requests >= g_max_outstanding_requests) {
+		    percpu_get(lc_roundrobin_start) = i;
+		    break;
+		}
+	    	if ((nvme_sw_queue_isempty(nvme_swq) == 0) &&
+                   nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
+                    nvme_sw_queue_pop_front(nvme_swq, &ctx);
+                    issue_nvme_req(ctx);
+                    nvme_swq->token_credit -= ctx->req_cost;
+		    not_empty = true;
+		}
+	    }
+	    i += 1;
+	}
+	percpu_get(lc_roundrobin_start) = 0;
+    }
+
+    list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
+        POS_LIMIT = 3 * token_increment;
+        if (nvme_swq->token_credit > POS_LIMIT) {
+            local_leftover +=
+                (nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY);
+            nvme_swq->token_credit -=
+                nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY;
+        }
+    }
+
+    percpu_get(local_extra_demand) = local_demand;
+    percpu_get(local_leftover_tokens) = local_leftover;
+
+    return 0;
+}
 
 /*
  * nvme_sched_subround1: schedule latency critical tenant traffic
@@ -1613,8 +1690,15 @@ int nvme_sched(void) {
         return 0;
     }
 
-    nvme_sched_subround1();  // serve latency-critical tenants
-    nvme_sched_subround2();  // serve best-effort tenants
+    if (g_nvme_sched_mode == REFLEX) {
+    	nvme_sched_subround1();  // serve latency-critical tenants
+    	nvme_sched_subround2();  // serve best-effort tenants
+    } else if (g_nvme_sched_mode == WFQ) {
+    } else if (g_nvme_sched_mode == WDRR) {
+        nvme_sched_wdrr_subround1();
+	nvme_sched_subround2();
+    } else if (g_nvme_sched_mode == LESS) {
+    }
 
     percpu_get(local_leftover_tokens) = 0;
     percpu_get(local_extra_demand) = 0;

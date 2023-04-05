@@ -96,7 +96,8 @@ extern int arp_insert(struct ip_addr *addr, struct eth_addr *mac);
 // defined in the header
 unsigned long MAX_DEV_TOKEN_RATE;
 int g_nvme_dev_model;
-bool g_nvme_sched_flag;
+// bool g_nvme_sched_flag;
+uint8_t g_nvme_sched_mode;
 struct lat_tokenrate_pair g_dev_models[128];
 int g_dev_model_size;
 
@@ -594,21 +595,30 @@ static int parse_scheduler_mode(void) {
     sched = config_lookup(&cfg, "scheduler");
 
     if (!sched) {
-        g_nvme_sched_flag = true;
+        g_nvme_sched_mode = NO_SCHED;
         return 0;
     }
     sched_mode = config_setting_get_string(sched);
     if (sched_mode) {
-        if (!strcmp(sched_mode, "on")) {
-            g_nvme_sched_flag = true;
-            log_info("I/O Scheduler: ON\n");
+        if (!strcmp(sched_mode, "reflex")) {
+            g_nvme_sched_mode = REFLEX;
+            log_info("I/O Scheduler: ReFlex\n");
+	} else if (!strcmp(sched_mode, "wfq")) {
+            g_nvme_sched_mode = REFLEX;
+            log_info("I/O Scheduler: WFQ\n");
+	} else if (!strcmp(sched_mode, "drr")) {
+            g_nvme_sched_mode = REFLEX;
+            log_info("I/O Scheduler: DRR\n");
+	} else if (!strcmp(sched_mode, "less")) {
+            g_nvme_sched_mode = REFLEX;
+            log_info("I/O Scheduler: LESS\n");
         } else if (!strcmp(sched_mode, "off")) {
             g_nvme_dev_model = DEFAULT_FLASH;
-            g_nvme_sched_flag = false;
+            g_nvme_sched_mode = NO_SCHED;
             log_info("I/O Scheduler: OFF (and using DEFAULT FLASH)\n");
         } else {
-            log_info("Default: scheduler on\n");
-            g_nvme_sched_flag = true;
+            log_info("Default: LESS scheduler on\n");
+            g_nvme_sched_mode = LESS;
         }
         return 0;
     }
