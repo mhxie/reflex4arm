@@ -49,6 +49,7 @@ struct nvme_sw_queue {
     unsigned long saved_tokens;
     long fg_handle;
     long token_credit;
+    float smoothy_share;
     struct list_node list;
 };
 

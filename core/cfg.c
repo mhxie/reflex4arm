@@ -603,22 +603,28 @@ static int parse_scheduler_mode(void) {
         if (!strcmp(sched_mode, "reflex")) {
             g_nvme_sched_mode = REFLEX;
             log_info("I/O Scheduler: ReFlex\n");
+	} else if (!strcmp(sched_mode, "reflexrr")) {
+            g_nvme_sched_mode = REFLEX_RR;
+            log_info("I/O Scheduler: ReFlex RR\n");
 	} else if (!strcmp(sched_mode, "wfq")) {
-            g_nvme_sched_mode = REFLEX;
+            g_nvme_sched_mode = WFQ;
             log_info("I/O Scheduler: WFQ\n");
-	} else if (!strcmp(sched_mode, "drr")) {
-            g_nvme_sched_mode = REFLEX;
-            log_info("I/O Scheduler: DRR\n");
-	} else if (!strcmp(sched_mode, "less")) {
-            g_nvme_sched_mode = REFLEX;
-            log_info("I/O Scheduler: LESS\n");
+	} else if (!strcmp(sched_mode, "wdrr")) {
+            g_nvme_sched_mode = WDRR;
+            log_info("I/O Scheduler: WDRR\n");
+	} else if (!strcmp(sched_mode, "lessv1")) {
+            g_nvme_sched_mode = LESSv1;
+            log_info("I/O Scheduler: LESSv1\n");
+	} else if (!strcmp(sched_mode, "lessv2")) {
+            g_nvme_sched_mode = LESSv2;
+            log_info("I/O Scheduler: LESSv2\n");
         } else if (!strcmp(sched_mode, "off")) {
             g_nvme_dev_model = DEFAULT_FLASH;
             g_nvme_sched_mode = NO_SCHED;
             log_info("I/O Scheduler: OFF (and using DEFAULT FLASH)\n");
         } else {
-            log_info("Default: LESS scheduler on\n");
-            g_nvme_sched_mode = LESS;
+            log_info("Default: LESSv1 scheduler on\n");
+            g_nvme_sched_mode = LESSv1;
         }
         return 0;
     }

@@ -123,6 +123,8 @@ RTE_DEFINE_PER_LCORE(unsigned long, local_extra_demand);
 RTE_DEFINE_PER_LCORE(unsigned long, local_leftover_tokens);
 RTE_DEFINE_PER_LCORE(int, lc_roundrobin_start);
 RTE_DEFINE_PER_LCORE(int, roundrobin_start);
+RTE_DEFINE_PER_LCORE(unsigned long, min_scaled_IOPS);
+RTE_DEFINE_PER_LCORE(unsigned int, min_tenant_count);
 
 static int nvme_compute_req_cost(int req_type, size_t req_len);
 
@@ -842,6 +844,7 @@ int recalculate_weights_remove(long flow_group_idx) {
     return 1;
 }
 
+
 // TODO: consider implementing separate per-thread lists for BE and LC tenants
 // (will simplify some code for scheduler)
 long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
@@ -851,6 +854,7 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
     struct nvme_flow_group *nvme_fg;
     int ret = 0;
     int flow_state = 0;
+    int lc_tenant_count = 0;
     struct nvme_tenant_mgmt *thread_tenant_manager;
     struct nvme_sw_queue *swq;
 
@@ -926,11 +930,28 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
         thread_tenant_manager = &percpu_get(nvme_tenant_manager);
         list_add(&thread_tenant_manager->tenant_swq, &swq->list);
         thread_tenant_manager->num_tenants++;
+	// FIXME: this is unfair to the new flow
+        percpu_get(lc_roundrobin_start) = 0;
         percpu_get(roundrobin_start) = 0;
         nvme_fg->conn_ref_count = 0;
         if (latency_us_SLO == 0) {
             thread_tenant_manager->num_best_effort_tenants++;
-        }
+        } else {
+	    lc_tenant_count = thread_tenant_manager->num_tenants - 
+		    thread_tenant_manager->num_best_effort_tenants;
+	    if (lc_tenant_count == 1) {
+	        percpu_get(min_scaled_IOPS) = nvme_fg->scaled_IOPS_limit;
+		percpu_get(min_tenant_count) = 1;
+	    } else if (lc_tenant_count > 1) {
+	        if(percpu_get(min_scaled_IOPS) > nvme_fg->scaled_IOPS_limit) {
+		    percpu_get(min_scaled_IOPS) = nvme_fg->scaled_IOPS_limit;
+		    percpu_get(min_tenant_count) = 1;
+		} else if (percpu_get(min_scaled_IOPS) == nvme_fg->scaled_IOPS_limit) {
+		    percpu_get(min_tenant_count) += 1;
+		}
+	    }
+	        
+	}
     }
     printf(
         "IOPS SLO: %lu, r/w SLO %d, latency SLO: %lu us, scaled IOPS: %ld "
@@ -947,6 +968,8 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
 long bsys_nvme_unregister_flow(long fg_handle) {
     struct nvme_tenant_mgmt *thread_tenant_manager;
     struct nvme_flow_group *nvme_fg;
+    unsigned long smallest_IOPS_limit = ULONG_MAX;
+    int i = 0;
 
     nvme_fg = &g_nvme_fgs[fg_handle];
     nvme_fg->conn_ref_count--;
@@ -955,13 +978,38 @@ long bsys_nvme_unregister_flow(long fg_handle) {
     if (nvme_fg->scaled_IOPS_limit < 0) {
         printf("Unexpected unregisteration (handle: %ld)\n", fg_handle);
     }
+
     recalculate_weights_remove(fg_handle);
 
     if (nvme_fg->conn_ref_count == 0) {
         thread_tenant_manager = &percpu_get(nvme_tenant_manager);
         if (!nvme_fg->latency_critical_flag) {
             thread_tenant_manager->num_best_effort_tenants--;
-        }
+        } else if (thread_tenant_manager->num_best_effort_tenants+1 < 
+			thread_tenant_manager->num_tenants) {
+	    // remaining more than one LC tenants
+    	    if(percpu_get(min_scaled_IOPS) == nvme_fg->scaled_IOPS_limit) {
+	    	// fine new min, FIXME: use minheap to improve efficiency
+	    	percpu_get(min_tenant_count) -= 1;
+    	        if (percpu_get(min_tenant_count) == 0) {
+                    for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
+                        if (bitmap_test(g_nvme_fgs_bitmap, i) && i != fg_handle) {
+                            if (g_nvme_fgs[i].latency_critical_flag) {
+    			        if (g_nvme_fgs[i].scaled_IOPS_limit < smallest_IOPS_limit) {
+    			            percpu_get(min_scaled_IOPS) = g_nvme_fgs[i].scaled_IOPS_limit;
+    				    percpu_get(min_tenant_count) = 1;
+    			        } else if (g_nvme_fgs[i].scaled_IOPS_limit == smallest_IOPS_limit) {
+    			            percpu_get(min_tenant_count) += 1;
+    			        }
+    			    }
+    		        }
+    		    }
+	        }
+	    }
+	} else {
+	    percpu_get(min_scaled_IOPS) = smallest_IOPS_limit;
+	    percpu_get(min_tenant_count) = 0;
+	}
         list_del(&nvme_fg->nvme_swq->list);
         free_local_nvme_swq(nvme_fg->nvme_swq);
         thread_tenant_manager->num_tenants--;
@@ -1348,9 +1396,9 @@ unsigned long try_acquire_global_tokens(unsigned long token_demand) {
 }
 
 /*
- * nvme_sched_wdrr: schedule with weighted deficit round robin
+ * nvme_sched_lessv1: schedule with the LESS schedule
  */
-static inline int nvme_sched_wdrr_subround1(void) {
+static inline int nvme_sched_lessv1_subround1(void) {
     struct nvme_tenant_mgmt *thread_tenant_manager;
     struct nvme_sw_queue *nvme_swq;
     struct nvme_ctx *ctx;
@@ -1362,6 +1410,7 @@ static inline int nvme_sched_wdrr_subround1(void) {
     double token_increment;
     bool not_empty = true;
     int i = 0;
+    double j = 0;
 
     now = timer_now();  // in us
     time_delta = now - percpu_get(last_sched_time);
@@ -1369,6 +1418,7 @@ static inline int nvme_sched_wdrr_subround1(void) {
 
     thread_tenant_manager = &percpu_get(nvme_tenant_manager);
 
+    double min_token_increment = percpu_get(min_scaled_IOPS) / (double) 1e6 * time_delta + 0.5;
     list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
         // serve latency-critical (LC) tenants
         if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
@@ -1378,6 +1428,7 @@ static inline int nvme_sched_wdrr_subround1(void) {
                  time_delta) +
                 0.5;  // 0.5 is for rounding
             nvme_swq->token_credit += (long)token_increment;
+	    nvme_swq->smoothy_share = token_increment / min_token_increment; // >= 1
             if (nvme_swq->token_credit < -TOKEN_DEFICIT_LIMIT) {
             }
         } else {  // track demand of best-effort (will need for subround2)
@@ -1389,22 +1440,36 @@ static inline int nvme_sched_wdrr_subround1(void) {
 	not_empty = false;
 	i = 0;
     	list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
-	    if (i < percpu_get(lc_roundrobin_start)) continue;
             if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+	    	if (i < percpu_get(lc_roundrobin_start)) continue;
 		if (g_submitted_requests >= g_max_outstanding_requests) {
 		    percpu_get(lc_roundrobin_start) = i;
-		    break;
+		    return 1;
 		}
-	    	if ((nvme_sw_queue_isempty(nvme_swq) == 0) &&
-                   nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
-                    nvme_sw_queue_pop_front(nvme_swq, &ctx);
-                    issue_nvme_req(ctx);
-                    nvme_swq->token_credit -= ctx->req_cost;
-		    not_empty = true;
+	    	if (nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
+		    j = 0;
+		    while ((nvme_sw_queue_isempty(nvme_swq) == 0) &&
+				    j < nvme_swq->smoothy_share) {
+                    	nvme_sw_queue_pop_front(nvme_swq, &ctx);
+                    	issue_nvme_req(ctx);
+                    	nvme_swq->token_credit -= ctx->req_cost;
+			j += 1;
+		    }
+		    // Use simple approximation as of now
+		    if (j - nvme_swq->smoothy_share > 0.5) {
+	                nvme_swq->smoothy_share -= 0.5;
+		    } else if (j - nvme_swq->smoothy_share < 0.5)  {
+			nvme_swq->smoothy_share += 0.5;
+		    } else { // == 0.5
+			nvme_swq->smoothy_share -= 0.25;
+	            }
+		    // still requests remaining
+		    if (nvme_sw_queue_isempty(nvme_swq) == 0) not_empty = true;
 		}
+	    	i++;
 	    }
-	    i += 1;
 	}
+	// not i = #lc tenants + 1
 	percpu_get(lc_roundrobin_start) = 0;
     }
 
@@ -1415,6 +1480,104 @@ static inline int nvme_sched_wdrr_subround1(void) {
                 (nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY);
             nvme_swq->token_credit -=
                 nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY;
+        }
+    }
+
+    percpu_get(local_extra_demand) = local_demand;
+    percpu_get(local_leftover_tokens) = local_leftover;
+
+    return 0;
+}
+
+/*
+ * nvme_sched_rr_subround1: roundrobinly schedule latency critical tenant traffic
+ */
+static inline int nvme_sched_rr_subround1(void) {
+    struct nvme_tenant_mgmt *thread_tenant_manager;
+    struct nvme_sw_queue *nvme_swq;
+    struct nvme_ctx *ctx;
+    unsigned long now;
+    unsigned long time_delta;
+    long POS_LIMIT = 0;
+    unsigned long local_leftover = 0;
+    unsigned long local_demand = 0;
+    double token_increment;
+    int i = 0;
+    bool is_congested = false;
+
+    now = timer_now();  // in us
+    time_delta = now - percpu_get(last_sched_time);
+    percpu_get(last_sched_time) = now;
+
+    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+
+    list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
+        // serve latency-critical (LC) tenants
+        if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+	    if (i < percpu_get(lc_roundrobin_start)) continue;
+
+            token_increment =
+                (g_nvme_fgs[nvme_swq->fg_handle].scaled_IOPuS_limit *
+                 time_delta) +
+                0.5;  // 0.5 is for rounding
+            nvme_swq->token_credit += (long)token_increment;
+	    while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
+                   nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
+		if (g_submitted_requests >= g_max_outstanding_requests) {
+		    percpu_get(lc_roundrobin_start) = i;
+		    return 1;
+		}
+                nvme_sw_queue_pop_front(nvme_swq, &ctx);
+                issue_nvme_req(ctx);
+                nvme_swq->token_credit -= ctx->req_cost;
+            }
+
+            POS_LIMIT = 3 * token_increment;
+            if (nvme_swq->token_credit > POS_LIMIT) {
+                local_leftover +=
+                    (nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY);
+                nvme_swq->token_credit -=
+                    nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY;
+            }
+	    i++;
+        } else {  // track demand of best-effort (will need for subround2)
+            local_demand +=
+                nvme_swq->total_token_demand - nvme_swq->saved_tokens;
+        }
+    }
+
+    i = 0;
+    list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
+        // serve latency-critical (LC) tenants
+        if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
+	    if (i >= percpu_get(lc_roundrobin_start)) break;
+            token_increment =
+                (g_nvme_fgs[nvme_swq->fg_handle].scaled_IOPuS_limit *
+                 time_delta) +
+                0.5;  // 0.5 is for rounding
+            nvme_swq->token_credit += (long)token_increment;
+	    while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
+                   nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
+		if (g_submitted_requests >= g_max_outstanding_requests) {
+		    percpu_get(lc_roundrobin_start) = i;
+		    return 1;
+		}
+                nvme_sw_queue_pop_front(nvme_swq, &ctx);
+                issue_nvme_req(ctx);
+                nvme_swq->token_credit -= ctx->req_cost;
+            }
+
+            POS_LIMIT = 3 * token_increment;
+            if (nvme_swq->token_credit > POS_LIMIT) {
+                local_leftover +=
+                    (nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY);
+                nvme_swq->token_credit -=
+                    nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY;
+            }
+	    i++;
+        } else {  // track demand of best-effort (will need for subround2)
+            local_demand +=
+                nvme_swq->total_token_demand - nvme_swq->saved_tokens;
         }
     }
 
@@ -1471,7 +1634,7 @@ static inline int nvme_sched_subround1(void) {
                    nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
 		if (g_submitted_requests >= g_max_outstanding_requests) {
 		    // printf("Temporal bursts! outstanding = %ld\n", g_submitted_requests);
-		    break;
+		    return 1;
 		}
                 nvme_sw_queue_pop_front(nvme_swq, &ctx);
                 issue_nvme_req(ctx);
@@ -1682,6 +1845,7 @@ int nvme_sched(void) {
 #endif
     struct nvme_tenant_mgmt *thread_tenant_manager;
     thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+    int round1_ret;
 
     if (thread_tenant_manager->num_tenants == 0) {
         percpu_get(last_sched_time) = timer_now();
@@ -1691,13 +1855,22 @@ int nvme_sched(void) {
     }
 
     if (g_nvme_sched_mode == REFLEX) {
-    	nvme_sched_subround1();  // serve latency-critical tenants
-    	nvme_sched_subround2();  // serve best-effort tenants
+    	round1_ret = nvme_sched_subround1();  // serve latency-critical tenants
+	if (!round1_ret) nvme_sched_subround2();  // serve best-effort tenants
+    } else if (g_nvme_sched_mode == REFLEX_RR) {
+	// This should fix the starvation issue
+    	round1_ret = nvme_sched_rr_subround1();  // roundrobinly serve lc tenants
+	if (!round1_ret) nvme_sched_subround2();  // roundrobinly serve be tenants
     } else if (g_nvme_sched_mode == WFQ) {
     } else if (g_nvme_sched_mode == WDRR) {
-        nvme_sched_wdrr_subround1();
-	nvme_sched_subround2();
-    } else if (g_nvme_sched_mode == LESS) {
+    } else if (g_nvme_sched_mode == LESSv1) {
+        // convert the bursty schedule to smooth schedule
+        round1_ret = nvme_sched_lessv1_subround1();
+	if (!round1_ret) nvme_sched_subround2();
+    } else if (g_nvme_sched_mode == LESSv2) {
+        // prioritize the tenant with more recent bursts
+        // round1_ret = nvme_sched_lessv2_subround1();
+	// if (!round1_ret) nvme_sched_subround2();
     }
 
     percpu_get(local_leftover_tokens) = 0;

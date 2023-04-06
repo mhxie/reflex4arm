@@ -111,10 +111,12 @@ extern int g_nvme_dev_model;
 // extern bool g_nvme_sched_flag;
 enum sched_mode {                                                             
     NO_SCHED,                                                                 
-    REFLEX,                                                                   
+    REFLEX,
+    REFLEX_RR,
     WFQ,                                                                      
     WDRR,                                                                     
-    LESS                                                                      
+    LESSv1,
+    LESSv2
 };
 extern uint8_t g_nvme_sched_mode;
 
