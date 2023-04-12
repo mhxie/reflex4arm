@@ -1,16 +1,18 @@
+if get_option('ENABLE_KSTATS')
+    core_sources += files('kstats.c')
+endif
+
 core_sources += files('cfg.c',
     'mbuf.c', 'mempool.c',
     'pci.c','cpu.c',
     'ethfg.c', 'ethqueue.c',
     'tailqueue.c',
     'utimer.c', 'timer.c',
-    'control_plane.c', 'log.c',
+    'control_plane.c',
+    'log.c',
     'dpdk.c', 'syscall.c'  
 )
 
-if get_option('ENABLE_KSTATS')
-    core_sources += ['kstats.c']
-endif
 
 DPDK_LIB_NAMES = [
     # 'librte_ethdev.a',

@@ -61,6 +61,7 @@
 #include <ix/control_plane.h>
 #include <ix/log.h>
 #include <rte_per_lcore.h>
+#include <ix/timer.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>

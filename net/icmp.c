@@ -64,12 +64,13 @@
 #include <ix/ethdev.h>
 #include <ix/log.h>
 #include <ix/stddef.h>
-#include <ix/timer.h>
+// #include <ix/timer.h>
 #include <net/ethernet.h>
 #include <net/icmp.h>
 #include <net/ip.h>
 #include <rte_config.h>
 #include <rte_mbuf.h>
+#include <rte_timer.h>
 #include <sys/socket.h>
 
 #include "net.h"
@@ -137,7 +138,7 @@ void icmp_input(struct eth_fg *cur_fg, struct rte_mbuf *pkt, struct lwip_icmp_hd
             seq = mbuf_nextd_off(hdr, uint16_t *, sizeof(struct lwip_icmp_hdr) + 2);
             icmptimestamp = mbuf_nextd_off(hdr, uint64_t *, sizeof(struct lwip_icmp_hdr) + 4);
 
-            time = (rdtsc() - *icmptimestamp) / cycles_per_us;
+            time = (rdtsc() - *icmptimestamp) / (rte_get_timer_hz() / 1E6);
 
             log_info("icmp: echo reply: %d bytes: icmp_req=%d time=%lld us\n",
                      len, ntoh16(*seq), time);

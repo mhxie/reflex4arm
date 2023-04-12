@@ -59,8 +59,9 @@
 DEF_KSTATS(none);
 DEF_KSTATS(idle);
 DEF_KSTATS(user);
-DEF_KSTATS(timer);
+// DEF_KSTATS(timer);
 DEF_KSTATS(timer_collapse);
+DEF_KSTATS(rte_timer);
 DEF_KSTATS(print_kstats);
 DEF_KSTATS(percpu_bookkeeping);
 DEF_KSTATS(tx_reclaim);
@@ -90,5 +91,6 @@ DEF_KSTATS(bsys_tcp_sendv);
 DEF_KSTATS(bsys_udp_recv_done);
 DEF_KSTATS(bsys_udp_send);
 DEF_KSTATS(bsys_udp_sendv);
+DEF_KSTATS(nvme_sched);
 
 DEF_KSTATS(posix_syscall);

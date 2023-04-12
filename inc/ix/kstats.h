@@ -84,11 +84,11 @@ typedef struct kstats {
 
 #ifdef ENABLE_KSTATS
 
-RTE_DELCARE_PER_LCORE(kstats, _kstats);
-RTE_DELCARE_PER_LCORE(kstats_accumulate, _kstats_accumulate);
-RTE_DELCARE_PER_LCORE(int, _kstats_packets);
-RTE_DELCARE_PER_LCORE(int, _kstats_batch_histogram[]);
-RTE_DELCARE_PER_LCORE(int, _kstats_backlog_histogram[]);
+RTE_DECLARE_PER_LCORE(kstats, _kstats);
+RTE_DECLARE_PER_LCORE(kstats_accumulate, _kstats_accumulate);
+RTE_DECLARE_PER_LCORE(int, _kstats_packets);
+RTE_DECLARE_PER_LCORE(int, _kstats_batch_histogram[]);
+RTE_DECLARE_PER_LCORE(int, _kstats_backlog_histogram[]);
 
 #define KSTATS_BATCH_HISTOGRAM_SIZE 512
 #define KSTATS_BACKLOG_HISTOGRAM_SIZE 512

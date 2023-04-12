@@ -65,6 +65,7 @@
 #include <rte_ethdev.h>
 #include <rte_launch.h>
 #include <rte_version.h>
+#include <rte_timer.h>
 #include <stdio.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -128,7 +129,7 @@ static struct init_vector_t init_tbl[] = {
     {"cfgcpu", init_parse_cpu, NULL, NULL},  // after cpu
     {"cfgmem", init_parse_mem, NULL, NULL},  // after cpu
     {"dpdk", dpdk_init, NULL, NULL},
-    {"timer", timer_init, timer_init_cpu, NULL},
+    {"timer", timer_init, NULL , NULL},
     {"net", net_init, NULL, NULL},
     {"cfg", init_cfg, NULL, NULL},  // after net
     {"cp", cp_init, NULL, NULL},
@@ -609,10 +610,10 @@ static int init_fg_cpu(void) {
             return ret;
         }
 
-        timer_init_fg();
+	// timer_init_fg();
     }
 
-    unset_current_fg();
+    // unset_current_fg();
 
     //FIXME: figure out flow group stuff, this is temp fix for fg_id == cpu_id (no migration)
     fg_id = percpu_get(cpu_id);

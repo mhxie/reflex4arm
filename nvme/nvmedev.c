@@ -41,6 +41,7 @@
 #include <nvme/nvme_sw_queue.h>
 #include <nvme/nvmedev.h>
 #include <rte_per_lcore.h>
+#include <rte_timer.h>
 #include <spdk/nvme.h>
 #include <sys/socket.h>
 
@@ -1729,7 +1730,7 @@ static inline void nvme_sched_subround2(void) {
             be_tokens += nvme_sw_queue_take_saved_tokens(nvme_swq);
             token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
                                time_delta_cycles) /
-                              (double)(cycles_per_us * 1E6);
+                              (double)(rte_get_timer_hz());
             be_tokens += (long)(token_increment + 0.5);
 
             while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
@@ -1761,7 +1762,7 @@ static inline void nvme_sched_subround2(void) {
             be_tokens += nvme_sw_queue_take_saved_tokens(nvme_swq);
             token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
                                time_delta_cycles) /
-                              (double)(cycles_per_us * 1E6);
+                              (double)(rte_get_timer_hz());
             be_tokens += (long)(token_increment + 0.5);
 
 

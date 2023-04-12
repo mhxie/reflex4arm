@@ -84,18 +84,18 @@
 #include <ix/log.h>
 #include <ix/mempool.h>
 #include <ix/stddef.h>
-#include <ix/timer.h>
 #include <rte_config.h>
 #include <rte_errno.h>
 #include <rte_malloc.h>
 #include <rte_mbuf.h>
 #include <rte_mempool.h>
+#include <rte_timer.h>
 #include <stdio.h>
 #include <sys/socket.h>
 
 static struct mempool_datastore *mempool_all_datastores;
 #ifdef ENABLE_KSTATS
-static struct timer mempool_timer;
+static struct rte_timer mempool_timer;
 #endif
 
 /**
@@ -543,22 +543,26 @@ void mempool_destroy_datastore(struct mempool_datastore *mds) {
 
 #ifdef ENABLE_KSTATS
 
-#define PRINT_INTERVAL (5 * ONE_SECOND)
-static void mempool_printstats(struct timer *t, struct eth_fg *cur_fg) {
+#define PRINT_INTERVAL (5 * rte_get_timer_hz())
+static void mempool_printstats(struct rte_timer *t, struct eth_fg *cur_fg) {
     struct mempool_datastore *mds = mempool_all_datastores;
     printf("DATASTORE name             free%% lock/s\n");
 
     for (; mds; mds = mds->next_ds) {
         printf("DATASTORE %-15s", mds->prettyname);
     }
-    timer_add(t, NULL, PRINT_INTERVAL);
+    // timer_add(t, NULL, PRINT_INTERVAL);
 }
 #endif
 
 int mempool_init(void) {
 #ifdef ENABLE_KSTATS
-    timer_init_entry(&mempool_timer, mempool_printstats);
-    timer_add(&mempool_timer, NULL, PRINT_INTERVAL);
+    // timer_init_entry(&mempool_timer, mempool_printstats);
+    int ret;
+    rte_timer_init(&mempool_timer);
+    // timer_add(&mempool_timer, NULL, PRINT_INTERVAL);
+    ret = rte_timer_reset(&mempool_timer, PRINT_INTERVAL, PERIODICAL, rte_lcore_id(), mempool_printstats, NULL);
+    if (ret) rte_exit(EXIT_FAILURE, "mempool_printstats timer setup failed.\n");
 #endif
     return 0;
 }

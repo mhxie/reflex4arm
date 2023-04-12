@@ -1,5 +1,5 @@
 ix_sources = [
-    'main.c', 'ixev.c', 'ixev_timer.c'
+    'main.c', 'ixev.c' # , 'ixev_timer.c'
 ]
 ix_inc = include_directories('.')
 

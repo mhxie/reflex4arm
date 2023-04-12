@@ -59,7 +59,7 @@
 #include <ix/cfg.h>
 #include <ix/list.h>
 #include <ix/mempool.h>
-#include <ix/timer.h>
+// #include <ix/timer.h>
 #include <ixev.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -70,6 +70,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#include <rte_timer.h>
 
 #define BINARY_HEADER binary_header_blk_t
 
@@ -360,7 +361,7 @@ static void receive_req(struct pp_conn *conn) {
         // if (req->cmd == CMD_GET) { //only report read latency (not write)
         if (measure_cond) {
             // unsigned long now = rdtsc();
-            unsigned long latency = (rdtsc() - req->sent_time) / cycles_per_us;
+            unsigned long latency = (rdtsc() - req->sent_time) * 1E6 / rte_get_timer_hz();
             if (latency >= MAX_LATENCY)
                 measurements[MAX_LATENCY - 1]++;
             else
@@ -430,8 +431,8 @@ static void receive_req(struct pp_conn *conn) {
                 target_IOPS = global_target_IOPS;
             }
 
-            guide_IOPS = nr_threads * (NUM_MEASURE * usecs) /
-                         ((rdtsc() - phase_start) / cycles_per_us);
+            guide_IOPS = nr_threads * (NUM_MEASURE * usecs) * 1E6 /
+                         ((rdtsc() - phase_start) / rte_get_timer_hz());
             printf(
                 "RqIOPS:\t IOPS:\t Avg:\t 10th:\t 20th:\t 30th:\t 40th:\t "
                 "50th:\t 60th:\t 70th:\t 80th:\t 90th:\t 95th:\t 99th:\t "
@@ -942,12 +943,12 @@ static void *receive_loop(void *arg) {
         assert(measure == 0);
         if (SWEEP) {
             cycles_between_req =
-                (((unsigned long)cycles_per_us * 1000UL * 1000UL) /
+                (((unsigned long)rte_get_timer_hz()) /
                  (sweep[i] / nr_threads));
             NUM_MEASURE = sweep[i] * DURATION / nr_threads;
         } else {
             cycles_between_req =
-                ((unsigned long)cycles_per_us * 1000UL * 1000UL * nr_threads) /
+                ((unsigned long)rte_get_timer_hz() * nr_threads) /
                 global_target_IOPS;
             NUM_MEASURE = global_target_IOPS * DURATION / nr_threads;
         }
@@ -960,7 +961,7 @@ static void *receive_loop(void *arg) {
                 "Test round %d: cycles between requests is %lu(%d "
                 "us/request, "
                 "DDL: %lu), NUM_MEASURE is %d.\n",
-                i, cycles_between_req, cycles_between_req / cycles_per_us,
+                i, cycles_between_req, cycles_between_req / rte_get_timer_hz() * 1E6,
                 cycles_between_req + cycles_between_req / 10, NUM_MEASURE);
 #endif
         pthread_barrier_wait(&barrier);  // caution
@@ -1135,7 +1136,7 @@ int reflex_client_main(int argc, char *argv[]) {
 
     free(ip);
     cycles_between_req =
-        ((unsigned long)cycles_per_us * 1000UL * 1000UL * nr_threads) /
+        ((unsigned long)rte_get_timer_hz() * nr_threads) /
         global_target_IOPS;
     NUM_MEASURE = global_target_IOPS * DURATION / nr_threads;
     pp_conn_pool_entries = 16 * 4096;

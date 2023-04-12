@@ -60,7 +60,8 @@
 
 #include <ix/kstats.h>
 #include <ix/log.h>
-#include <ix/timer.h>
+// #include <ix/timer.h>
+#include <rte_timer.h>
 #include <linux/perf_event.h>
 #include <stdio.h>
 #include <strings.h>
@@ -68,7 +69,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#define KSTATS_INTERVAL (5 * ONE_SECOND)
+#define KSTATS_INTERVAL (5 * rte_get_timer_hz())
 
 RTE_DEFINE_PER_LCORE(kstats, _kstats);
 RTE_DEFINE_PER_LCORE(kstats_accumulate, _kstats_accumulate);
@@ -78,7 +79,8 @@ RTE_DEFINE_PER_LCORE(int, _kstats_backlog_histogram[KSTATS_BACKLOG_HISTOGRAM_SIZ
 RTE_DEFINE_PER_LCORE(int, llc_load_misses_fd);
 RTE_DEFINE_PER_LCORE(int, hw_instructions_fd);
 
-static RTE_DEFINE_PER_LCORE(struct timer, _kstats_timer);
+// static RTE_DEFINE_PER_LCORE(struct timer, _kstats_timer);
+static RTE_DEFINE_PER_LCORE(struct rte_timer, _kstats_timer);
 
 void kstats_enter(kstats_distr *n, kstats_accumulate *saved_accu) {
     kstats_distr *old = percpu_get(_kstats_accumulate).cur;
@@ -181,8 +183,8 @@ static long long read_perf_event(int fd) {
 /*
  * print and reinitialize
  */
-static void kstats_print(struct timer *t, struct eth_fg *none) {
-    uint64_t total_cycles = (uint64_t)cycles_per_us * KSTATS_INTERVAL;
+static void kstats_print(struct rte_timer *t, struct eth_fg *none) {
+    uint64_t total_cycles = (uint64_t) rte_get_timer_hz() / 1E6 * KSTATS_INTERVAL;
     char batch_histogram[2048], backlog_histogram[2048];
     int avg_batch, avg_backlog;
 
@@ -213,7 +215,7 @@ static void kstats_print(struct timer *t, struct eth_fg *none) {
     bzero(percpu_get(_kstats_backlog_histogram), sizeof(*percpu_get(_kstats_backlog_histogram)) * KSTATS_BACKLOG_HISTOGRAM_SIZE);
     percpu_get(_kstats_packets) = 0;
 
-    timer_add(&percpu_get(_kstats_timer), NULL, KSTATS_INTERVAL);
+    // timer_add(&percpu_get(_kstats_timer), NULL, KSTATS_INTERVAL);
 }
 
 static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
@@ -234,8 +236,10 @@ int kstats_init_cpu(void) {
     struct perf_event_attr llc_load_misses_attr = {.type = PERF_TYPE_HW_CACHE, .config = (PERF_COUNT_HW_CACHE_LL) | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16)};
     struct perf_event_attr hw_instructions_attr = {.type = PERF_TYPE_HARDWARE, .config = PERF_COUNT_HW_INSTRUCTIONS};
 
-    timer_init_entry(&percpu_get(_kstats_timer), kstats_print);
-    timer_add(&percpu_get(_kstats_timer), NULL, KSTATS_INTERVAL);
+    // timer_init_entry(&percpu_get(_kstats_timer), kstats_print);
+    // timer_add(&percpu_get(_kstats_timer), NULL, KSTATS_INTERVAL);
+    rte_timer_init(&percpu_get(_kstats_timer));
+    rte_timer_reset(&percpu_get(_kstats_timer), KSTATS_INTERVAL, PERIODICAL, rte_lcore_id(), kstats_print, NULL);
 
     percpu_get(llc_load_misses_fd) = init_perf_event(&llc_load_misses_attr);
     percpu_get(hw_instructions_fd) = init_perf_event(&hw_instructions_attr);

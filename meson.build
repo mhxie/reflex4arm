@@ -37,10 +37,10 @@ endif
 
 core_sources = []
 deps = []
+subdir('core')
 subdir('lwip')
 subdir('net')
 subdir('nvme')
-subdir('core')
 subdir('libix')
 subdir('apps')
 

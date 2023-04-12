@@ -63,6 +63,7 @@
 #include <ix/log.h>
 #include <ix/stddef.h>
 #include <rte_per_lcore.h>
+#include <rte_timer.h>
 
 /* Accumulate metrics period (in us) */
 #define METRICS_PERIOD_US 10000
@@ -103,6 +104,7 @@ struct power_accumulator {
 
 static struct power_accumulator power_acc;
 
+// uint64_t cycles_per_us = rte_get_timer_hz() / 1E6;
 unsigned int eth_rx_max_batch = 64;  //128; //64
 
 //#define PRINT_RTE_STATS 1

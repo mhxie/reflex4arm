@@ -32,7 +32,7 @@
 
 #include <ix/errno.h>
 #include <ix/log.h>
-#include <ix/timer.h>
+// #include <ix/timer.h>
 #include <nvme/nvme_sw_queue.h>
 #include <stdio.h>
 #include <stdlib.h>

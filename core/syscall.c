@@ -70,11 +70,12 @@
 #include <ix/log.h>
 #include <ix/stddef.h>
 #include <ix/syscall.h>
-#include <ix/timer.h>
-#include <ix/utimer.h>
+// #include <ix/timer.h>
+// #include <ix/utimer.h>
 #include <nvme/nvmedev.h>
 #include <rte_config.h>
 #include <rte_malloc.h>
+#include <rte_timer.h>
 #include <rte_per_lcore.h>
 #include <sys/socket.h>
 
@@ -223,17 +224,19 @@ again:
 
     //schedule
     if (g_nvme_sched_mode) {
+    	KSTATS_PUSH(nvme_sched, NULL);
         nvme_sched();
+    	KSTATS_POP(NULL);
     }
 
     KSTATS_PUSH(percpu_bookkeeping, NULL);
     cpu_do_bookkeeping();
     KSTATS_POP(NULL);
 
-    // KSTATS_PUSH(timer, NULL);
+    KSTATS_PUSH(rte_timer, NULL);
     // timer_run();
-    // unset_current_fg();
-    // KSTATS_POP(NULL);
+    rte_timer_manage();
+    KSTATS_POP(NULL);
 
     KSTATS_PUSH(rx_poll, NULL);
     eth_process_poll();
@@ -341,18 +344,18 @@ static int sys_nrcpus(void) {
  *
  * Returns the timer id
  */
-int sys_timer_init(void *addr) {
-    return utimer_init(&percpu_get(utimers), addr);
-}
+// int sys_timer_init(void *addr) {
+//     return utimer_init(&percpu_get(utimers), addr);
+// }
 
 /**
  * sys_timer_ctl - arm the timer
  *
  * Returns 0 or failure
  */
-int sys_timer_ctl(int timer_id, uint64_t delay) {
-    return utimer_arm(&percpu_get(utimers), timer_id, delay);
-}
+// int sys_timer_ctl(int timer_id, uint64_t delay) {
+//     return utimer_arm(&percpu_get(utimers), timer_id, delay);
+// }
 
 typedef uint64_t (*sysfn_t)(uint64_t, uint64_t, uint64_t,
                             uint64_t, uint64_t, uint64_t, uint64_t);
@@ -365,8 +368,8 @@ static sysfn_t sys_tbl[] = {
     (sysfn_t)sys_unmap,  //FIXME: don't need
     (sysfn_t)sys_spawnmode,
     (sysfn_t)sys_nrcpus,
-    (sysfn_t)sys_timer_init,
-    (sysfn_t)sys_timer_ctl,
+    // (sysfn_t)sys_timer_init,
+    // (sysfn_t)sys_timer_ctl,
 };
 
 /**
