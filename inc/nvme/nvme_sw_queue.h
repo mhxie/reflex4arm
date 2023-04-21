@@ -38,7 +38,7 @@
 
 #include <ix/list.h>
 #include <nvme/nvmedev.h>
-#define NVME_SW_QUEUE_SIZE (256 * 8)
+#define NVME_SW_QUEUE_SIZE (4096 * 8) // 4096 * 512 total, 4096 queues
 
 struct nvme_sw_queue {
     struct nvme_ctx *buf[NVME_SW_QUEUE_SIZE];

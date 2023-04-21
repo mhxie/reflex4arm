@@ -635,7 +635,7 @@ static inline void usys_nvme_closed(hqu_t handle, long ret) {
 }
 
 /**
- * usys_nvme_registered_flow - indicatest that registered flow
+ * usys_nvme_registered_flow - indicates that registered flow
  * @flow_group_id: the flow group's id
  * @ret: the result (return code)
  */

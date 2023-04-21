@@ -247,7 +247,9 @@ again:
     //KSTATS_POP(NULL);
 
     // log_info("Enter NVME process completions:\n");
+    KSTATS_PUSH(nvme_complete, NULL);
     nvme_process_completions();
+    KSTATS_POP(NULL);
     // log_info("Leave NVME process completions.");
 
     KSTATS_PUSH(tx_send, NULL);

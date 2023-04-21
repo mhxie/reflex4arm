@@ -92,5 +92,6 @@ DEF_KSTATS(bsys_udp_recv_done);
 DEF_KSTATS(bsys_udp_send);
 DEF_KSTATS(bsys_udp_sendv);
 DEF_KSTATS(nvme_sched);
+DEF_KSTATS(nvme_complete);
 
 DEF_KSTATS(posix_syscall);

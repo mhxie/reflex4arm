@@ -62,11 +62,11 @@ static long global_ns_sector_size = 1;
 static long active_nvme_devices = 0;
 static int cpu_per_ssd = 1;
 static int g_max_outstanding_requests = 512;
-static long g_submitted_requests = 0;
+static long g_outstanding_requests = 0;
 // struct pci_dev *g_nvme_dev[CFG_MAX_NVMEDEV];
 
 #define MAX_OPEN_BATCH 32
-#define NUM_NVME_REQUESTS (4096 * 512)  // 4096 * 64 //1024
+#define NUM_NVME_REQUESTS (4096 * 256)  // 4096 * 64 //1024
 #define SGL_PAGE_SIZE \
     4096  // should match PAGE_SIZE defined in dp/core/reflex_server.c
 #define DEFAULT_IO_QUEUE_SIZE 256
@@ -810,8 +810,8 @@ int recalculate_weights_remove(long flow_group_idx) {
         global_LC_sum_token_rate -= g_nvme_fgs[flow_group_idx].scaled_IOPS_limit;
         global_token_rate = lookup_device_token_rate(strictest_latency_SLO);
 
-	printf("Flow %ld finished %ld requests\n", flow_group_idx, g_nvme_fgs[flow_group_idx].completions);
-        printf("Global token rate: %lu tokens/s\n", global_token_rate);
+	// printf("Flow %ld finished %ld requests\n", flow_group_idx, g_nvme_fgs[flow_group_idx].completions);
+        // printf("Global token rate: %lu tokens/s\n", global_token_rate);
 
         global_num_lc_tenants--;
     } else {
@@ -859,6 +859,28 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
     struct nvme_tenant_mgmt *thread_tenant_manager;
     struct nvme_sw_queue *swq;
 
+    if (!g_nvme_sched_mode) {
+        printf(
+            "Register new-tenant %ld (flow_group: %ld). Managed by thread "
+            "%ld, scheduler=off\n",
+            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
+    	nvme_fg = &g_nvme_fgs[0];
+	if (nvme_fg->nvme_swq == NULL) {
+    	    nvme_fg->completions = 0;
+            swq = alloc_local_nvme_swq();
+            if (swq == NULL) {
+                log_err("error: can't allocate nvme_swq for flow group\n");
+                return -RET_NOMEM;
+            }
+            nvme_fg->nvme_swq = swq;
+            nvme_sw_queue_init(swq, 0);
+	}
+    	nvme_fg->conn_ref_count++;
+
+    	usys_nvme_registered_flow(0, cookie, RET_OK);
+        return RTE_OK;
+    }
+
     flow_state = set_nvme_flow_group_id(flow_group_id, &fg_handle, cookie);
     if (fg_handle < 0) {
         log_err("error: exceeded max (%d) nvme flow groups!\n",
@@ -870,16 +892,16 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
 
     if (latency_us_SLO == 0) {
         nvme_fg->latency_critical_flag = false;
-        printf(
-            "Register BE-tenant %ld (flow_group: %ld). Managed by thread "
-            "%ld.\n",
-            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
+        // printf(
+        //     "Register BE-tenant %ld (flow_group: %ld). Managed by thread "
+        //     "%ld.\n",
+        //     fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
     } else {
         nvme_fg->latency_critical_flag = true;
-        printf(
-            "Register LC-tenant %ld (flow_group: %ld). Managed by thread "
-            "%ld.\n",
-            fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
+        // printf(
+        //     "Register LC-tenant %ld (flow_group: %ld). Managed by thread "
+        //     "%ld.\n",
+        //     fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
     }
 
     if (flow_state == 2) {
@@ -954,10 +976,10 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
 	        
 	}
     }
-    printf(
-        "IOPS SLO: %lu, r/w SLO %d, latency SLO: %lu us, scaled IOPS: %ld "
-        "tokens/s, \n",
-        IOPS_SLO, rw_ratio_SLO, latency_us_SLO, nvme_fg->scaled_IOPS_limit);
+//     printf(
+//         "IOPS SLO: %lu, r/w SLO %d, latency SLO: %lu us, scaled IOPS: %ld "
+//         "tokens/s, \n",
+//         IOPS_SLO, rw_ratio_SLO, latency_us_SLO, nvme_fg->scaled_IOPS_limit);
 
     nvme_fg->conn_ref_count++;
 
@@ -971,7 +993,13 @@ long bsys_nvme_unregister_flow(long fg_handle) {
     struct nvme_flow_group *nvme_fg;
     unsigned long smallest_IOPS_limit = ULONG_MAX;
     int i = 0;
-
+    if (!g_nvme_sched_mode) {
+        nvme_fg = &g_nvme_fgs[0];
+        nvme_fg->conn_ref_count--;
+	printf("Flow deregistered, remaining %d connections\n", nvme_fg->conn_ref_count);
+    	usys_nvme_unregistered_flow(0, RET_OK);
+	return RET_OK
+    }
     nvme_fg = &g_nvme_fgs[fg_handle];
     nvme_fg->conn_ref_count--;
     nvme_fg->scaled_IOPS_limit -=
@@ -1129,10 +1157,10 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
     } else {
         panic("unrecognized nvme request\n");
     }
-    g_submitted_requests++;
+    g_outstanding_requests++;
     if (ret < 0) {
         printf("Error submitting nvme request\n");
-	printf("Current outstanding: %ld\n", g_submitted_requests);
+	printf("Current outstanding: %ld\n", g_outstanding_requests);
         panic("Ran out of NVMe cmd buffer space\n");
     }
 }
@@ -1143,6 +1171,7 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
     struct spdk_nvme_ns *ns;
     struct nvme_ctx *ctx;
     struct nvme_ctx *pctx;
+    struct nvme_sw_queue *swq; 
     void *paddr;
     int ret;
 
@@ -1170,30 +1199,46 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
 
     // Store all info in ctx before add to software queue
     ctx->tid = RTE_PER_LCORE(cpu_nr);
-    ctx->fg_handle = fg_handle;
     ctx->cmd = NVME_CMD_WRITE;
-    if (g_nvme_sched_mode) {
-    	ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
-    }
     ctx->ns = ns;
     ctx->paddr = paddr;
     ctx->lba = lba;
     ctx->lba_count = lba_count;
 
-    // add to SW queue
-    // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
-    struct nvme_sw_queue *swq = g_nvme_fgs[fg_handle].nvme_swq;
-    ret = nvme_sw_queue_push_back(swq, ctx);
-    if (ret != 0) {
-        free_local_nvme_ctx(ctx);
-        return -RET_NOMEM;
-    }
     if (!g_nvme_sched_mode) {
+	// always using the first queue
+    	ctx->fg_handle = 0;
+        swq = g_nvme_fgs[0].nvme_swq;
+        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (ret != 0) {
+    	    printf("sw queue has %ld requests\n", swq->count);
+            return -RET_NOMEM;
+        }
         while(nvme_sw_queue_isempty(swq) == 0) {
-            if (g_submitted_requests >= g_max_outstanding_requests) break; 
+            if (g_outstanding_requests >= g_max_outstanding_requests) {
+	        printf("SSD queue is full!\n");
+		break;
+	    }
             nvme_sw_queue_pop_front(swq, &pctx);
             issue_nvme_req(pctx);
+        }
+    } else {
+    	ctx->fg_handle = fg_handle;
+    	ctx->req_cost = nvme_compute_req_cost(
+            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
+        // add to SW queue
+        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
+        swq = g_nvme_fgs[fg_handle].nvme_swq;
+        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (ret != 0) {
+            struct nvme_tenant_mgmt *thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+            list_for_each(&thread_tenant_manager->tenant_swq, swq, list) {
+    	        if (swq->count) {
+    	            printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
+    	        } 
+    	    }
+            free_local_nvme_ctx(ctx);
+            return -RET_NOMEM;
         }
     }
 
@@ -1206,6 +1251,7 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
     struct spdk_nvme_ns *ns;
     struct nvme_ctx *ctx;
     struct nvme_ctx *pctx;
+    struct nvme_sw_queue *swq;
     void *paddr;
     unsigned int ns_sector_size;
     int ret;
@@ -1234,31 +1280,48 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
 
     ctx->user_buf.buf = vaddr;
 
-        // Store all info in ctx before add to software queue
+    // Store all info in ctx before add to software queue
     ctx->tid = RTE_PER_LCORE(cpu_nr);
-    ctx->fg_handle = fg_handle;
     ctx->cmd = NVME_CMD_READ;
-    if (g_nvme_sched_mode) {
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_READ, lba_count * global_ns_sector_size);
-    }
     ctx->ns = ns;
     ctx->paddr = paddr;
     ctx->lba = lba;
     ctx->lba_count = lba_count;
 
-    // add to SW queue
-    struct nvme_sw_queue *swq = g_nvme_fgs[fg_handle].nvme_swq;
-    ret = nvme_sw_queue_push_back(swq, ctx);
-    if (ret != 0) {
-    	free_local_nvme_ctx(ctx);
-        return -RET_NOMEM;
-    }
     if (!g_nvme_sched_mode) {
+	// always using the first queue
+        ctx->fg_handle = 0;
+        swq = g_nvme_fgs[0].nvme_swq;
+        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (ret != 0) {
+    	    printf("sw queue has %ld requests\n", swq->count);
+            return -RET_NOMEM;
+        }
         while(nvme_sw_queue_isempty(swq) == 0) {
-            if (g_submitted_requests >= g_max_outstanding_requests) break; 
+            if (g_outstanding_requests >= g_max_outstanding_requests) {
+	        printf("SSD queue is full!\n");
+		break;
+	    }
             nvme_sw_queue_pop_front(swq, &pctx);
             issue_nvme_req(pctx);
+        }
+    } else {
+    	ctx->fg_handle = fg_handle;
+        ctx->req_cost = nvme_compute_req_cost(
+            NVME_CMD_READ, lba_count * global_ns_sector_size);
+        // add to SW queue
+        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
+        swq = g_nvme_fgs[fg_handle].nvme_swq;
+        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (ret != 0) {
+            struct nvme_tenant_mgmt *thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+            list_for_each(&thread_tenant_manager->tenant_swq, swq, list) {
+    	        if (swq->count) {
+    	            printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
+    	        } 
+    	    }
+            free_local_nvme_ctx(ctx);
+            return -RET_NOMEM;
         }
     }
 
@@ -1273,6 +1336,7 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
     struct spdk_nvme_ns *ns;
     struct nvme_ctx *ctx;
     struct nvme_ctx *pctx;
+    struct nvme_sw_queue *swq;
     int ret;
 
     // FIXME: naive mapping from CPU to SSDs
@@ -1291,28 +1355,45 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
 
     // Store all info in ctx before add to software queue
     ctx->tid = percpu_get(cpu_nr);
-    ctx->fg_handle = fg_handle;
     ctx->cmd = NVME_CMD_WRITE;
-    if (g_nvme_sched_mode) {
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
-    }
     ctx->ns = ns;
     ctx->lba = lba;
     ctx->lba_count = lba_count;
 
-    // add to SW queue
-    struct nvme_sw_queue *swq = g_nvme_fgs[fg_handle].nvme_swq;
-    ret = nvme_sw_queue_push_back(swq, ctx);
-    if (ret != 0) {
-        free_local_nvme_ctx(ctx);
-        return -RET_NOMEM;
-    }
     if (!g_nvme_sched_mode) {
+	// always using the first queue
+        ctx->fg_handle = 0;
+        swq = g_nvme_fgs[0].nvme_swq;
+        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (ret != 0) {
+    	    printf("sw queue has %ld requests\n", swq->count);
+            return -RET_NOMEM;
+        }
         while(nvme_sw_queue_isempty(swq) == 0) {
-            if (g_submitted_requests >= g_max_outstanding_requests) break; 
+            if (g_outstanding_requests >= g_max_outstanding_requests) {
+	        printf("SSD queue is full!\n");
+		break;
+	    }
             nvme_sw_queue_pop_front(swq, &pctx);
             issue_nvme_req(pctx);
+        }
+    } else {
+    	ctx->fg_handle = fg_handle;
+        ctx->req_cost = nvme_compute_req_cost(
+            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
+        // add to SW queue
+        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
+        swq = g_nvme_fgs[fg_handle].nvme_swq;
+        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (ret != 0) {
+            struct nvme_tenant_mgmt *thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+            list_for_each(&thread_tenant_manager->tenant_swq, swq, list) {
+    	        if (swq->count) {
+    	            printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
+    	        } 
+    	    }
+            free_local_nvme_ctx(ctx);
+            return -RET_NOMEM;
         }
     }
 
@@ -1325,6 +1406,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     struct spdk_nvme_ns *ns;
     struct nvme_ctx *ctx;
     struct nvme_ctx *pctx;
+    struct nvme_sw_queue *swq;
     int ret;
 
     // FIXME: naive mapping from CPU to SSDs
@@ -1343,31 +1425,45 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
 
     // Store all info in ctx before add to software queue
     ctx->tid = RTE_PER_LCORE(cpu_nr);
-    ctx->fg_handle = fg_handle;
     ctx->cmd = NVME_CMD_READ;
-    if (g_nvme_sched_mode) {
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_READ, lba_count * global_ns_sector_size);
-    }
     ctx->ns = ns;
     ctx->lba = lba;
     ctx->lba_count = lba_count;
 
-    // add to SW queue
-    struct nvme_sw_queue *swq = g_nvme_fgs[fg_handle].nvme_swq;
-    // printf("swq %lx accessed from fg_handle: %ld", swq, fg_handle);
-    ret = nvme_sw_queue_push_back(swq, ctx);
-    if (ret != 0) {
-        free_local_nvme_ctx(ctx);
-        printf("returning NOMEM from readv\n");
-	printf("Current outstanding: %ld; received: %ld\n", g_submitted_requests, percpu_get(received_nvme_completions));
-        return -RET_NOMEM;
-    }
     if (!g_nvme_sched_mode) {
+	// always using the first queue
+    	ctx->fg_handle = 0;
+        swq = g_nvme_fgs[0].nvme_swq;
+        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (ret != 0) {
+    	    printf("sw queue has %ld requests\n", swq->count);
+            return -RET_NOMEM;
+        }
         while(nvme_sw_queue_isempty(swq) == 0) {
-            if (g_submitted_requests >= g_max_outstanding_requests) break; 
+            if (g_outstanding_requests >= g_max_outstanding_requests) {
+	        printf("SSD queue is full!\n");
+		break;
+	    }
             nvme_sw_queue_pop_front(swq, &pctx);
             issue_nvme_req(pctx);
+        }
+    } else {
+    	ctx->fg_handle = fg_handle;
+        ctx->req_cost = nvme_compute_req_cost(
+            NVME_CMD_READ, lba_count * global_ns_sector_size);
+        // add to SW queue
+        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
+        swq = g_nvme_fgs[fg_handle].nvme_swq;
+        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (ret != 0) {
+            struct nvme_tenant_mgmt *thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+            list_for_each(&thread_tenant_manager->tenant_swq, swq, list) {
+    	        if (swq->count) {
+    	            printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
+    	        } 
+    	    }
+            free_local_nvme_ctx(ctx);
+            return -RET_NOMEM;
         }
     }
 
@@ -1434,16 +1530,17 @@ static inline int nvme_sched_lessv1_subround1(void) {
             }
         } else {  // track demand of best-effort (will need for subround2)
             local_demand +=
+		
                 nvme_swq->total_token_demand - nvme_swq->saved_tokens;
         }
     }
-    while (not_empty && g_submitted_requests < g_max_outstanding_requests) {
+    while (not_empty && g_outstanding_requests < g_max_outstanding_requests) {
 	not_empty = false;
 	i = 0;
     	list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
             if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
 	    	if (i < percpu_get(lc_roundrobin_start)) continue;
-		if (g_submitted_requests >= g_max_outstanding_requests) {
+		if (g_outstanding_requests >= g_max_outstanding_requests) {
 		    percpu_get(lc_roundrobin_start) = i;
 		    return 1;
 		}
@@ -1503,7 +1600,7 @@ static inline int nvme_sched_rr_subround1(void) {
     unsigned long local_leftover = 0;
     unsigned long local_demand = 0;
     double token_increment;
-    int i = 0;
+    int i = -1;
     bool is_congested = false;
 
     now = timer_now();  // in us
@@ -1513,6 +1610,8 @@ static inline int nvme_sched_rr_subround1(void) {
     thread_tenant_manager = &percpu_get(nvme_tenant_manager);
 
     list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
+	i++;
+	if (nvme_sw_queue_isempty(nvme_swq)) continue;
         // serve latency-critical (LC) tenants
         if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
 	    if (i < percpu_get(lc_roundrobin_start)) continue;
@@ -1524,7 +1623,7 @@ static inline int nvme_sched_rr_subround1(void) {
             nvme_swq->token_credit += (long)token_increment;
 	    while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
                    nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
-		if (g_submitted_requests >= g_max_outstanding_requests) {
+		if (g_outstanding_requests >= g_max_outstanding_requests) {
 		    percpu_get(lc_roundrobin_start) = i;
 		    return 1;
 		}
@@ -1540,15 +1639,16 @@ static inline int nvme_sched_rr_subround1(void) {
                 nvme_swq->token_credit -=
                     nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY;
             }
-	    i++;
         } else {  // track demand of best-effort (will need for subround2)
             local_demand +=
                 nvme_swq->total_token_demand - nvme_swq->saved_tokens;
         }
     }
 
-    i = 0;
+    i = -1;
     list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
+	i++;
+	if (nvme_sw_queue_isempty(nvme_swq)) continue;
         // serve latency-critical (LC) tenants
         if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
 	    if (i >= percpu_get(lc_roundrobin_start)) break;
@@ -1559,7 +1659,7 @@ static inline int nvme_sched_rr_subround1(void) {
             nvme_swq->token_credit += (long)token_increment;
 	    while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
                    nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
-		if (g_submitted_requests >= g_max_outstanding_requests) {
+		if (g_outstanding_requests >= g_max_outstanding_requests) {
 		    percpu_get(lc_roundrobin_start) = i;
 		    return 1;
 		}
@@ -1575,7 +1675,6 @@ static inline int nvme_sched_rr_subround1(void) {
                 nvme_swq->token_credit -=
                     nvme_swq->token_credit * TOKEN_FRAC_GIVEAWAY;
             }
-	    i++;
         } else {  // track demand of best-effort (will need for subround2)
             local_demand +=
                 nvme_swq->total_token_demand - nvme_swq->saved_tokens;
@@ -1609,6 +1708,7 @@ static inline int nvme_sched_subround1(void) {
     thread_tenant_manager = &percpu_get(nvme_tenant_manager);
 
     list_for_each(&thread_tenant_manager->tenant_swq, nvme_swq, list) {
+	if (nvme_sw_queue_isempty(nvme_swq)) continue;
         // serve latency-critical (LC) tenants
         if (g_nvme_fgs[nvme_swq->fg_handle].latency_critical_flag) {
             if (nvme_swq->fg_handle == 2) {
@@ -1633,8 +1733,8 @@ static inline int nvme_sched_subround1(void) {
             }
 	    while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
                    nvme_swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
-		if (g_submitted_requests >= g_max_outstanding_requests) {
-		    // printf("Temporal bursts! outstanding = %ld\n", g_submitted_requests);
+		if (g_outstanding_requests >= g_max_outstanding_requests) {
+		    // printf("Temporal bursts! outstanding = %ld\n", g_outstanding_requests);
 		    return 1;
 		}
                 nvme_sw_queue_pop_front(nvme_swq, &ctx);
@@ -1735,8 +1835,8 @@ static inline void nvme_sched_subround2(void) {
 
             while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
                    nvme_sw_queue_peak_head_cost(nvme_swq) <= be_tokens) {
-		if (g_submitted_requests >= g_max_outstanding_requests) {
-		    // printf("Temporal bursts! outstanding = %ld\n", g_submitted_requests);
+		if (g_outstanding_requests >= g_max_outstanding_requests) {
+		    // printf("Temporal bursts! outstanding = %ld\n", g_outstanding_requests);
 		    break;
 		}
                 nvme_sw_queue_pop_front(nvme_swq, &ctx);
@@ -1768,8 +1868,8 @@ static inline void nvme_sched_subround2(void) {
 
             while((nvme_sw_queue_isempty(nvme_swq) == 0) &&
                    nvme_sw_queue_peak_head_cost(nvme_swq) <= be_tokens) {
-		if (g_submitted_requests >= g_max_outstanding_requests) {
-		    // printf("Temporal bursts! outstanding = %ld\n", g_submitted_requests);
+		if (g_outstanding_requests >= g_max_outstanding_requests) {
+		    // printf("Temporal bursts! outstanding = %ld\n", g_outstanding_requests);
 		    break;
 		}
                 nvme_sw_queue_pop_front(nvme_swq, &ctx);
@@ -1897,6 +1997,6 @@ void nvme_process_completions() {
     percpu_get(open_ev_ptr) = 0;
     this_completions =
         spdk_nvme_qpair_process_completions(percpu_get(qpair), max_completions);
-    g_submitted_requests -= this_completions;
+    g_outstanding_requests -= this_completions;
     percpu_get(received_nvme_completions) += this_completions;
 }

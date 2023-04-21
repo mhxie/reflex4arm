@@ -69,7 +69,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#define KSTATS_INTERVAL (5 * rte_get_timer_hz())
+// #define KSTATS_INTERVAL (5 * rte_get_timer_hz())
+#define KSTATS_INTERVAL (rte_get_timer_hz() / 2)
 
 RTE_DEFINE_PER_LCORE(kstats, _kstats);
 RTE_DEFINE_PER_LCORE(kstats_accumulate, _kstats_accumulate);
