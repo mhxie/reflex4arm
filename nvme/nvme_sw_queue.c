@@ -40,12 +40,13 @@
 
 void nvme_sw_queue_init(struct nvme_sw_queue *q, long fg_handle) {
     q->count = 0;
-    q->head = 0;
-    q->tail = 0;
+    // q->head = 0;
+    // q->tail = 0;
     q->total_token_demand = 0;
     q->saved_tokens = 0;
     q->token_credit = 0;
     q->fg_handle = fg_handle;
+    list_head_init(&q->head);
 }
 
 int nvme_sw_queue_push_back(struct nvme_sw_queue *q, struct nvme_ctx *ctx) {
@@ -53,8 +54,9 @@ int nvme_sw_queue_push_back(struct nvme_sw_queue *q, struct nvme_ctx *ctx) {
         log_info("nvme_sw_queue full!\n");
         return -EAGAIN;
     }
-    q->buf[q->head] = ctx;
-    q->head = (q->head + 1) % NVME_SW_QUEUE_SIZE;
+    // q->buf[q->head] = ctx;
+    // q->head = (q->head + 1) % NVME_SW_QUEUE_SIZE;
+    list_add_tail(&q->head, &ctx->link);
     q->count++;
     q->total_token_demand += ctx->req_cost;
     return 0;
@@ -65,9 +67,12 @@ int nvme_sw_queue_pop_front(struct nvme_sw_queue *q, struct nvme_ctx **ctx) {
         // log_info("ringbuf empty!\n");
         return -EAGAIN;
     }
-    *ctx = q->buf[q->tail];
-    q->total_token_demand -= q->buf[q->tail]->req_cost;
-    q->tail = (q->tail + 1) % NVME_SW_QUEUE_SIZE;
+    // *ctx = q->buf[q->tail];
+    // q->total_token_demand -= q->buf[q->tail]->req_cost;
+    // q->tail = (q->tail + 1) % NVME_SW_QUEUE_SIZE;
+    *ctx = list_top(&q->head, struct nvme_ctx, link);
+    list_pop(&q->head, struct nvme_ctx, link);
+    q->total_token_demand -= (*ctx)->req_cost;
     q->count--;
     return 0;
 }
@@ -83,7 +88,9 @@ int nvme_sw_queue_isempty(struct nvme_sw_queue *q) {
 int nvme_sw_queue_peak_head_cost(struct nvme_sw_queue *q) {
     if (q->count == 0) return -1;
 
-    return q->buf[q->tail]->req_cost;
+    //    return q->buf[q->tail]->req_cost;
+    struct nvme_ctx *ctx = list_top(&q->head, struct nvme_ctx, link);
+    return ctx->req_cost;
 }
 
 unsigned long nvme_sw_queue_save_tokens(struct nvme_sw_queue *q,

@@ -1,32 +1,33 @@
 /*
  * Copyright (c) 2015-2017, Stanford University
- *  
+ *
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
- *  * Redistributions of source code must retain the above copyright notice, 
+ *
+ *  * Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
- * 
+ *
  *  * Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
  *    and/or other materials provided with the distribution.
- * 
+ *
  *  * Neither the name of the copyright holder nor the names of its
  *    contributors may be used to endorse or promote products derived from
  *    this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
@@ -75,8 +76,8 @@
 #include <nvme/nvmedev.h>
 #include <rte_config.h>
 #include <rte_malloc.h>
-#include <rte_timer.h>
 #include <rte_per_lcore.h>
+#include <rte_timer.h>
 #include <sys/socket.h>
 
 #define UARR_MIN_CAPACITY 8192
@@ -87,46 +88,32 @@ RTE_DEFINE_PER_LCORE(unsigned long, syscall_cookie);
 RTE_DEFINE_PER_LCORE(unsigned long, idle_cycles);
 
 static bsysfn_t bsys_tbl[] = {
-    (bsysfn_t)bsys_udp_send,
-    (bsysfn_t)bsys_udp_sendv,
-    (bsysfn_t)bsys_udp_recv_done,
-    (bsysfn_t)bsys_tcp_connect,
-    (bsysfn_t)bsys_tcp_accept,
-    (bsysfn_t)bsys_tcp_reject,
-    (bsysfn_t)bsys_tcp_send,
-    (bsysfn_t)bsys_tcp_sendv,
-    (bsysfn_t)bsys_tcp_recv_done,
-    (bsysfn_t)bsys_tcp_close,
-    (bsysfn_t)bsys_nvme_write,
-    (bsysfn_t)bsys_nvme_read,
-    (bsysfn_t)bsys_nvme_writev,
-    (bsysfn_t)bsys_nvme_readv,
-    (bsysfn_t)bsys_nvme_open,
-    (bsysfn_t)bsys_nvme_close,
-    (bsysfn_t)bsys_nvme_register_flow,
-    (bsysfn_t)bsys_nvme_unregister_flow};
+    (bsysfn_t)bsys_udp_send,           (bsysfn_t)bsys_udp_sendv,
+    (bsysfn_t)bsys_udp_recv_done,      (bsysfn_t)bsys_tcp_connect,
+    (bsysfn_t)bsys_tcp_accept,         (bsysfn_t)bsys_tcp_reject,
+    (bsysfn_t)bsys_tcp_send,           (bsysfn_t)bsys_tcp_sendv,
+    (bsysfn_t)bsys_tcp_recv_done,      (bsysfn_t)bsys_tcp_close,
+    (bsysfn_t)bsys_nvme_write,         (bsysfn_t)bsys_nvme_read,
+    (bsysfn_t)bsys_nvme_writev,        (bsysfn_t)bsys_nvme_readv,
+    (bsysfn_t)bsys_nvme_open,          (bsysfn_t)bsys_nvme_close,
+    (bsysfn_t)bsys_nvme_register_flow, (bsysfn_t)bsys_nvme_unregister_flow};
 
 //
 // TODO: Get rid of these eventually
 //
 // Empty UDP functions to allow for compilation
 //
-long bsys_udp_send(void __user *addr, size_t len,
-                   struct ip_tuple __user *id,
+long bsys_udp_send(void __user *addr, size_t len, struct ip_tuple __user *id,
                    unsigned long cookie) {
     return 0;
 }
 
-long bsys_udp_sendv(struct sg_entry __user *ents,
-                    unsigned int nrents,
-                    struct ip_tuple __user *id,
-                    unsigned long cookie) {
+long bsys_udp_sendv(struct sg_entry __user *ents, unsigned int nrents,
+                    struct ip_tuple __user *id, unsigned long cookie) {
     return -RET_NOSYS;
 }
 
-long bsys_udp_recv_done(void *iomap) {
-    return 0;
-}
+long bsys_udp_recv_done(void *iomap) { return 0; }
 
 static int bsys_dispatch_one(struct bsys_desc __user *d) {
     uint64_t sysnr, arga, argb, argc, argd, arge, argf, ret;
@@ -161,15 +148,13 @@ static int bsys_dispatch(struct bsys_desc __user *d, unsigned int nr) {
     kstats_accumulate save;
 #endif
 
-    if (!nr)
-        return 0;
+    if (!nr) return 0;
 
     for (i = 0; i < nr; i++) {
         KSTATS_PUSH(bsys_dispatch_one, &save);
         ret = bsys_dispatch_one(&d[i]);
         KSTATS_POP(&save);
-        if (unlikely(ret))
-            return ret;
+        if (unlikely(ret)) return ret;
     }
 
     return 0;
@@ -187,16 +172,15 @@ int sys_bpoll(struct bsys_desc *d, unsigned int nr) {
 
     usys_reset();
 
-    //KSTATS_PUSH(tx_reclaim, NULL);
-    //eth_process_reclaim();
-    //KSTATS_POP(NULL);
+    // KSTATS_PUSH(tx_reclaim, NULL);
+    // eth_process_reclaim();
+    // KSTATS_POP(NULL);
 
     KSTATS_PUSH(bsys, NULL);
     ret = bsys_dispatch(d, nr);
     KSTATS_POP(NULL);
 
-    if (ret)
-        return ret;
+    if (ret) return ret;
 
     percpu_get(received_nvme_completions) = 0;
 again:
@@ -204,29 +188,30 @@ again:
         case CP_CMD_MIGRATE:
             if (percpu_get(usys_arr)->len) {
                 /* If there are pending events and we have
-			 * received a migration command, return to user
-			 * space for the processing of the events. We
-			 * will delay the migration until we are in a
-			 * quiescent state. */
+                 * received a migration command, return to user
+                 * space for the processing of the events. We
+                 * will delay the migration until we are in a
+                 * quiescent state. */
                 return 0;
             }
-            //NOTE: not supporting migration now
-            //eth_fg_assign_to_cpu((bitmap_ptr) percpu_get(cp_cmd)->migrate.fg_bitmap, percpu_get(cp_cmd)->migrate.cpu);
-            //percpu_get(cp_cmd)->cmd_id = CP_CMD_NOP;
+            // NOTE: not supporting migration now
+            // eth_fg_assign_to_cpu((bitmap_ptr)
+            // percpu_get(cp_cmd)->migrate.fg_bitmap,
+            // percpu_get(cp_cmd)->migrate.cpu); percpu_get(cp_cmd)->cmd_id =
+            // CP_CMD_NOP;
             break;
         case CP_CMD_IDLE:
-            if (percpu_get(usys_arr)->len)
-                return 0;
+            if (percpu_get(usys_arr)->len) return 0;
             cp_idle();
         case CP_CMD_NOP:
             break;
     }
 
-    //schedule
+    // schedule
     if (g_nvme_sched_mode) {
-    	KSTATS_PUSH(nvme_sched, NULL);
+        KSTATS_PUSH(nvme_sched, NULL);
         nvme_sched();
-    	KSTATS_POP(NULL);
+        KSTATS_POP(NULL);
     }
 
     KSTATS_PUSH(percpu_bookkeeping, NULL);
@@ -242,9 +227,9 @@ again:
     eth_process_poll();
     KSTATS_POP(NULL);
 
-    //KSTATS_PUSH(rx_recv, NULL);
-    //empty = eth_process_recv();
-    //KSTATS_POP(NULL);
+    // KSTATS_PUSH(rx_recv, NULL);
+    // empty = eth_process_recv();
+    // KSTATS_POP(NULL);
 
     // log_info("Enter NVME process completions:\n");
     KSTATS_PUSH(nvme_complete, NULL);
@@ -266,7 +251,8 @@ again:
  * Returns 0 if successful, otherwise failure.
  */
 // static int sys_bcall(struct bsys_desc __user *d, unsigned int nr)
-int sys_bcall(struct bsys_desc *d, unsigned int nr)  //added Sparse support in the future
+int sys_bcall(struct bsys_desc *d,
+              unsigned int nr)  // added Sparse support in the future
 {
     int ret;
 
@@ -291,7 +277,7 @@ int sys_bcall(struct bsys_desc *d, unsigned int nr)  //added Sparse support in t
  * Returns an IOMAP pointer.
  */
 void *sys_baddr(void) {
-    //return percpu_get(usys_iomap);
+    // return percpu_get(usys_iomap);
     return percpu_get(usys_arr);
 }
 
@@ -337,9 +323,7 @@ int sys_spawnmode(bool spawn_cores) {
 /**
  * sys_nrcpus - returns the number of active CPUs
  */
-static int sys_nrcpus(void) {
-    return cpus_active;
-}
+static int sys_nrcpus(void) { return cpus_active; }
 
 /**
  * sys_timer_init - initializes a timer
@@ -359,17 +343,14 @@ static int sys_nrcpus(void) {
 //     return utimer_arm(&percpu_get(utimers), timer_id, delay);
 // }
 
-typedef uint64_t (*sysfn_t)(uint64_t, uint64_t, uint64_t,
-                            uint64_t, uint64_t, uint64_t, uint64_t);
+typedef uint64_t (*sysfn_t)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
+                            uint64_t, uint64_t);
 
 static sysfn_t sys_tbl[] = {
-    (sysfn_t)sys_bpoll,
-    (sysfn_t)sys_bcall,
-    (sysfn_t)sys_baddr,
-    (sysfn_t)sys_mmap,   //FIXME: don't need
-    (sysfn_t)sys_unmap,  //FIXME: don't need
-    (sysfn_t)sys_spawnmode,
-    (sysfn_t)sys_nrcpus,
+    (sysfn_t)sys_bpoll,     (sysfn_t)sys_bcall,  (sysfn_t)sys_baddr,
+    (sysfn_t)sys_mmap,   // FIXME: don't need
+    (sysfn_t)sys_unmap,  // FIXME: don't need
+    (sysfn_t)sys_spawnmode, (sysfn_t)sys_nrcpus,
     // (sysfn_t)sys_timer_init,
     // (sysfn_t)sys_timer_ctl,
 };
@@ -382,15 +363,15 @@ static sysfn_t sys_tbl[] = {
 /*
 void do_syscall(struct dune_tf *tf, uint64_t sysnr)
 {
-	if (unlikely(sysnr >= SYS_NR)) {
-		tf->rax = (uint64_t) - ENOSYS;
-		return;
-	}
+        if (unlikely(sysnr >= SYS_NR)) {
+                tf->rax = (uint64_t) - ENOSYS;
+                return;
+        }
 
-	KSTATS_POP(NULL);
-	tf->rax = (uint64_t) sys_tbl[sysnr](tf->rdi, tf->rsi, tf->rdx,
-					    tf->rcx, tf->r8, tf->r9, tf->r10);
-	KSTATS_PUSH(user, NULL);
+        KSTATS_POP(NULL);
+        tf->rax = (uint64_t) sys_tbl[sysnr](tf->rdi, tf->rsi, tf->rdx,
+                                            tf->rcx, tf->r8, tf->r9, tf->r10);
+        KSTATS_PUSH(user, NULL);
 }
 */
 
@@ -402,18 +383,21 @@ void do_syscall(struct dune_tf *tf, uint64_t sysnr)
 int syscall_init_cpu(void) {
     struct bsys_arr *arr;
     void *iomap;
-    arr = (struct bsys_arr *)rte_malloc(NULL, sizeof(struct bsys_arr) + UARR_MIN_CAPACITY * sizeof(struct bsys_desc), 0);
+    arr = (struct bsys_arr *)rte_malloc(
+        NULL,
+        sizeof(struct bsys_arr) + UARR_MIN_CAPACITY * sizeof(struct bsys_desc),
+        0);
     if (!arr) {
         return -ENOMEM;
     }
 
     /*
-	iomap = vm_map_to_user((void *) arr, usys_nr, PGSIZE_2MB, VM_PERM_R);
-	if (!iomap) {
-		page_free_contig((void *) arr, usys_nr);
-		return -ENOMEM;
-	}
-	*/
+        iomap = vm_map_to_user((void *) arr, usys_nr, PGSIZE_2MB, VM_PERM_R);
+        if (!iomap) {
+                page_free_contig((void *) arr, usys_nr);
+                return -ENOMEM;
+        }
+        */
 
     percpu_get(usys_arr) = arr;
     log_info("syscall_init_cpu: usys_arr pts is %p @@@@@@@@@@@@@@@@@@\n", arr);

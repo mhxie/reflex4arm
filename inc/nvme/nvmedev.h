@@ -49,7 +49,7 @@
 
 #define NVME_MAX_COMPLETIONS 64
 
-#define MAX_NVME_FLOW_GROUPS 1024 // 16
+#define MAX_NVME_FLOW_GROUPS 4096
 extern DEFINE_BITMAP(g_ioq_bitmap, MAX_NUM_IO_QUEUES);
 extern DEFINE_BITMAP(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS);
 RTE_DECLARE_PER_LCORE(struct spdk_nvme_qpair *, qpair);
@@ -67,8 +67,8 @@ struct nvme_ctx {
     } user_buf;
     // added for SW scheduling...
     unsigned int tid;  // thread id = percpu_get(cpu_nr)
-    // hqu_t priority;					//request priority (determined
-    // by flow priority)
+    // hqu_t priority;					//request priority
+    // (determined by flow priority)
     hqu_t fg_handle;  // flow group handle
     int cmd;          // NVME_CMD_[READ or WRITE]
     int req_cost;     // cost of request in tokens
@@ -79,6 +79,7 @@ struct nvme_ctx {
     unsigned int lba_count;   // size of IO in logical blocks
     const struct nvme_completion *completion;  // callback function handle
     unsigned long time;
+    struct list_node link;
 };
 
 struct nvme_flow_group {
@@ -101,7 +102,7 @@ struct nvme_flow_group {
 };
 
 struct nvme_tenant_mgmt {
-    struct list_head tenant_swq;
+    struct list_head tenant_swq_head;
     int num_tenants;
     int num_best_effort_tenants;
 };
@@ -123,5 +124,5 @@ extern struct nvme_ctx *alloc_local_nvme_ctx(void);
 extern void free_local_nvme_ctx(struct nvme_ctx *req);
 extern void nvme_process_completions(void);
 extern bool nvme_poll_completions(int max_completions);
-extern int nvme_schedule(void);
+// extern int nvme_schedule(void);
 extern int nvme_sched(void);
