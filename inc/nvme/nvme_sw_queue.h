@@ -38,19 +38,20 @@
 
 #include <ix/list.h>
 #include <nvme/nvmedev.h>
-#define NVME_SW_QUEUE_SIZE (4096 * 8) // 4096 * 512 total, 4096 queues
+#define NVME_SW_QUEUE_SIZE (4096 * 512)  // max 4096 queues
 
 struct nvme_sw_queue {
-    struct nvme_ctx *buf[NVME_SW_QUEUE_SIZE];
-    int count;          // number of elements current in queue
-    unsigned int head;  // head index (insert here)
-    unsigned int tail;  // tail index (remove from here)
+    //    struct nvme_ctx *buf[NVME_SW_QUEUE_SIZE];
+    struct list_head head;
+    int count;  // number of elements current in queue
+    // unsigned int head;  // head index (insert here)
+    // unsigned int tail;  // tail index (remove from here)
     unsigned long total_token_demand;
     unsigned long saved_tokens;
     long fg_handle;
     long token_credit;
     float smoothy_share;
-    struct list_node list;
+    struct list_node link;
 };
 
 void nvme_sw_queue_init(struct nvme_sw_queue *q, long fg_handle);
