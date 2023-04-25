@@ -213,6 +213,7 @@ static inline void list_head_init(struct list_head *h) {
  *
  */
 static inline void list_head_reset(struct list_head *h, struct list_node *n) {
+    if (n->prev == &h->n) return;  // already the first element
     h->n.prev->next = h->n.next;
     h->n.next->prev = h->n.prev;
     h->n.next = n;
