@@ -207,8 +207,9 @@ static inline void list_head_init(struct list_head *h) {
 }
 
 /**
- * list_head_init - initialize a list_head
+ * list_head_reset - reset the list_head to a node
  * @h: the list_head to set to the empty list
+ * @n: the list_node to reset as the new first entry.
  *
  */
 static inline void list_head_reset(struct list_head *h, struct list_node *n) {
@@ -216,6 +217,7 @@ static inline void list_head_reset(struct list_head *h, struct list_node *n) {
     h->n.next->prev = h->n.prev;
     h->n.next = n;
     h->n.prev = n->prev;
+    n->prev->next = &h->n;
     n->prev = &h->n;
     (void)list_debug(h);
 }

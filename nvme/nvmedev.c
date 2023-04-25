@@ -1586,7 +1586,6 @@ static inline int nvme_sched_rr_subround1(void) {
     unsigned long local_demand = 0;
     double token_increment;
     int i = -1;
-    bool is_congested = false;
 
     now = timer_now();  // in us
     time_delta = now - percpu_get(last_sched_time);

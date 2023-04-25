@@ -1,32 +1,33 @@
 /*
  * Copyright (c) 2015-2017, Stanford University
- *  
+ *
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
- *  * Redistributions of source code must retain the above copyright notice, 
+ *
+ *  * Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
- * 
+ *
  *  * Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
  *    and/or other materials provided with the distribution.
- * 
+ *
  *  * Neither the name of the copyright holder nor the names of its
  *    contributors may be used to endorse or promote products derived from
  *    this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
@@ -82,8 +83,7 @@ static inline void __ixev_check_generation(struct ixev_ctx *ctx) {
     }
 }
 
-static inline void
-__ixev_recv_done(struct ixev_ctx *ctx, size_t len) {
+static inline void __ixev_recv_done(struct ixev_ctx *ctx, size_t len) {
     __ixev_check_generation(ctx);
 
     if (!ctx->recv_done_desc) {
@@ -95,8 +95,8 @@ __ixev_recv_done(struct ixev_ctx *ctx, size_t len) {
     }
 }
 
-static inline void
-__ixev_sendv(struct ixev_ctx *ctx, struct sg_entry *ents, unsigned int nrents) {
+static inline void __ixev_sendv(struct ixev_ctx *ctx, struct sg_entry *ents,
+                                unsigned int nrents) {
     __ixev_check_generation(ctx);
 
     if (!ctx->sendv_desc) {
@@ -109,8 +109,7 @@ __ixev_sendv(struct ixev_ctx *ctx, struct sg_entry *ents, unsigned int nrents) {
     }
 }
 
-static inline void
-__ixev_close(struct ixev_ctx *ctx) {
+static inline void __ixev_close(struct ixev_ctx *ctx) {
     struct bsys_desc *d = __bsys_arr_next(karr);
     ixev_check_hacks(ctx);
     ksys_tcp_close(d, ctx->handle);
@@ -139,8 +138,7 @@ static void ixev_tcp_knock(hid_t handle, struct ip_tuple *id) {
 static void ixev_tcp_dead(hid_t handle, unsigned long cookie) {
     struct ixev_ctx *ctx = (struct ixev_ctx *)cookie;
 
-    if (!ctx)
-        return;
+    if (!ctx) return;
 
     ctx->is_dead = true;
     if (ctx->en_mask & IXEVHUP)
@@ -153,26 +151,26 @@ static void ixev_tcp_dead(hid_t handle, unsigned long cookie) {
     ctx->en_mask = 0;
 }
 
-static void ixev_tcp_recv(hid_t handle, unsigned long cookie,
-                          void *addr, size_t len) {
+static void ixev_tcp_recv(hid_t handle, unsigned long cookie, void *addr,
+                          size_t len) {
     struct ixev_ctx *ctx = (struct ixev_ctx *)cookie;
     uint16_t pos = ((ctx->recv_tail) & (IXEV_RECV_DEPTH - 1));
     struct sg_entry *ent;
 
     if (unlikely(ctx->recv_tail - ctx->recv_head + 1 >= IXEV_RECV_DEPTH)) {
         /*
-		 * FIXME: We've run out of space for received packets. This
-		 * will probably not happen unless the application is
-		 * misbehaving and does not accept new packets for long
-		 * periods of time or if a remote host sends a lot of too
-		 * small packets.
-		 *
-		 * Possible solutions:
-		 * 1.) Start copying into a buffer and accept up to the kernel
-		 * receive window size in data.
-		 * 2.) Allocate more descriptors and leave memory in mbufs, but
-		 * this could waste memory.
-		 */
+         * FIXME: We've run out of space for received packets. This
+         * will probably not happen unless the application is
+         * misbehaving and does not accept new packets for long
+         * periods of time or if a remote host sends a lot of too
+         * small packets.
+         *
+         * Possible solutions:
+         * 1.) Start copying into a buffer and accept up to the kernel
+         * receive window size in data.
+         * 2.) Allocate more descriptors and leave memory in mbufs, but
+         * this could waste memory.
+         */
         printf("ixev: ran out of receive memory\n");
         exit(-1);
     }
@@ -200,12 +198,10 @@ static void ixev_tcp_sent(hid_t handle, unsigned long cookie, size_t len) {
     }
 
     ctx->ref_head = ref;
-    if (!ctx->ref_head)
-        ctx->cur_buf = NULL;
+    if (!ctx->ref_head) ctx->cur_buf = NULL;
 
     /* if there is pending data, make sure we try again to send it */
-    if (ctx->send_count)
-        __ixev_sendv(ctx, ctx->send, ctx->send_count);
+    if (ctx->send_count) __ixev_sendv(ctx, ctx->send, ctx->send_count);
 
     if (ctx->en_mask & IXEVOUT)
         ctx->handler(ctx, IXEVOUT);
@@ -220,18 +216,18 @@ static void ixev_nvme_written(unsigned long cookie, long ret) {
         return;
     }
 
-    //ctx->curr_queue_depth--;
-    //add sample
+    // ctx->curr_queue_depth--;
+    // add sample
 
-    //printf("return from ixev\n");
+    // printf("return from ixev\n");
     if (ctx->en_mask & IXEV_NVME_WR) {
-        //printf("call handler %p\n", ctx->handler);
-        //printf("call handler\n");
+        // printf("call handler %p\n", ctx->handler);
+        // printf("call handler\n");
         ctx->handler(ctx, IXEV_NVME_WR);
     } else {
         ctx->trig_mask |= IXEV_NVME_WR;
     }
-    //printf("return from ixev\n");
+    // printf("return from ixev\n");
 }
 
 static void ixev_nvme_response(unsigned long cookie, void *buf, long ret) {
@@ -242,8 +238,8 @@ static void ixev_nvme_response(unsigned long cookie, void *buf, long ret) {
         return;
     }
 
-    //ctx->curr_queue_depth--;
-    //add sample
+    // ctx->curr_queue_depth--;
+    // add sample
 
     if (ctx->en_mask & IXEV_NVME_RD) {
         ctx->handler(ctx, IXEV_NVME_RD);
@@ -252,7 +248,8 @@ static void ixev_nvme_response(unsigned long cookie, void *buf, long ret) {
     }
 }
 
-static void ixev_nvme_opened(hqu_t handle, unsigned long ns_size, unsigned long ns_sector_size) {
+static void ixev_nvme_opened(hqu_t handle, unsigned long ns_size,
+                             unsigned long ns_sector_size) {
     if (ns_size == 0) {
         printf("Error: Namespace does not exist or has zero size\n");
         return;
@@ -263,11 +260,12 @@ static void ixev_nvme_opened(hqu_t handle, unsigned long ns_size, unsigned long 
     ixev_nvme_global_ops.opened(handle, ns_size, ns_sector_size);
 }
 
-static void ixev_nvme_registered_flow(long fg_handle, unsigned long cookie, long ret) {
+static void ixev_nvme_registered_flow(long fg_handle, unsigned long cookie,
+                                      long ret) {
     struct ixev_ctx *ctx = (struct ixev_ctx *)cookie;
 
     if (ret == RET_OK) {
-        //printf("ixev: registered nvme flow %lu\n", fg_handle);
+        // printf("ixev: registered nvme flow %lu\n", fg_handle);
     } else if (ret == -RET_CANTMEETSLO) {
         printf("ixev: system cannot meet SLO\n");
     }
@@ -281,7 +279,7 @@ static void ixev_nvme_unregistered_flow(long flow_group_id, long ret) {
         return;
     }
 
-    //printf("ixev: unregistered nvme flow %lu\n", flow_group_id);
+    // printf("ixev: unregistered nvme flow %lu\n", flow_group_id);
 
     ixev_nvme_global_ops.unregistered_flow(flow_group_id, ret);
 }
@@ -318,16 +316,14 @@ ssize_t ixev_recv(struct ixev_ctx *ctx, void *buf, size_t len) {
     size_t pos = 0;
     char *cbuf = (char *)buf;
 
-    if (ctx->is_dead)
-        return -EIO;
+    if (ctx->is_dead) return -EIO;
 
     while (ctx->recv_head != ctx->recv_tail) {
         struct sg_entry *ent =
             &ctx->recv[ctx->recv_head & (IXEV_RECV_DEPTH - 1)];
         size_t left = len - pos;
 
-        if (!left)
-            break;
+        if (!left) break;
 
         if (left >= ent->len) {
             memcpy(cbuf + pos, ent->base, ent->len);
@@ -342,8 +338,7 @@ ssize_t ixev_recv(struct ixev_ctx *ctx, void *buf, size_t len) {
         }
     }
 
-    if (!pos)
-        return -EAGAIN;
+    if (!pos) return -EAGAIN;
 
     __ixev_recv_done(ctx, pos);
     return pos;
@@ -369,18 +364,15 @@ void *ixev_recv_zc(struct ixev_ctx *ctx, size_t len) {
     struct sg_entry *ent;
     void *buf;
 
-    if (ctx->is_dead)
-        return NULL;
+    if (ctx->is_dead) return NULL;
 
     ent = &ctx->recv[ctx->recv_head & (IXEV_RECV_DEPTH - 1)];
-    if (len > ent->len)
-        return NULL;
+    if (len > ent->len) return NULL;
 
     buf = ent->base;
     ent->base = (char *)ent->base + len;
     ent->len -= len;
-    if (!ent->len)
-        ctx->recv_head++;
+    if (!ent->len) ctx->recv_head++;
 
     __ixev_recv_done(ctx, len);
     return buf;
@@ -412,8 +404,7 @@ static void __ixev_add_sent_cb(struct ixev_ctx *ctx, struct ixev_ref *ref) {
 }
 
 static size_t ixev_window_len(struct ixev_ctx *ctx, size_t len) {
-    size_t win_left = IXEV_SEND_WIN_SIZE -
-                      ctx->send_total + ctx->sent_total;
+    size_t win_left = IXEV_SEND_WIN_SIZE - ctx->send_total + ctx->sent_total;
 
     return min(win_left, len);
 }
@@ -435,11 +426,9 @@ ssize_t ixev_send(struct ixev_ctx *ctx, void *addr, size_t len) {
     char *caddr = (char *)addr;
     ssize_t ret, so_far = 0;
 
-    if (ctx->is_dead)
-        return -EIO;
+    if (ctx->is_dead) return -EIO;
 
-    if (!actual_len)
-        return -EAGAIN;
+    if (!actual_len) return -EAGAIN;
 
     /* hot path: is there already a buffer? */
     if (ctx->send_count && ctx->cur_buf) {
@@ -456,12 +445,10 @@ ssize_t ixev_send(struct ixev_ctx *ctx, void *addr, size_t len) {
 
     /* cold path: allocate and fill new buffers */
     while (actual_len) {
-        if (ctx->send_count >= IXEV_SEND_DEPTH)
-            goto out;
+        if (ctx->send_count >= IXEV_SEND_DEPTH) goto out;
 
         ctx->cur_buf = ixev_buf_alloc();
-        if (unlikely(!ctx->cur_buf))
-            goto out;
+        if (unlikely(!ctx->cur_buf)) goto out;
 
         ret = ixev_buf_store(ctx->cur_buf, caddr, actual_len);
         ent = ixev_next_entry(ctx);
@@ -477,8 +464,7 @@ ssize_t ixev_send(struct ixev_ctx *ctx, void *addr, size_t len) {
     }
 
 out:
-    if (!so_far)
-        return -ENOBUFS;
+    if (!so_far) return -ENOBUFS;
 
     ixev_update_send_stats(ctx, so_far);
     if (so_far < 0) {
@@ -504,10 +490,8 @@ ssize_t ixev_send_zc(struct ixev_ctx *ctx, void *addr, size_t len) {
     struct sg_entry *ent;
     size_t actual_len = ixev_window_len(ctx, len);
 
-    if (ctx->is_dead)
-        return -EIO;
-    if (!actual_len)
-        return -EAGAIN;
+    if (ctx->is_dead) return -EIO;
+    if (!actual_len) return -EAGAIN;
     if (ctx->send_count >= IXEV_SEND_DEPTH) {
         return -ENOBUFS;
     }
@@ -574,31 +558,32 @@ void ixev_nvme_write(hqu_t handle, void *buf, unsigned long lba,
     ksys_nvme_write(__bsys_arr_next(karr), handle, buf, lba, lba_count, cookie);
 }
 
-void ixev_nvme_readv(hqu_t fg_handle, void **sgls,
-                     int num_sgls, unsigned long lba, unsigned int lba_count,
+void ixev_nvme_readv(hqu_t fg_handle, void **sgls, int num_sgls,
+                     unsigned long lba, unsigned int lba_count,
                      unsigned long cookie) {
     if (unlikely(karr->len >= karr->max_len)) {
         printf("ixev: ran out of command space 3\n");
         exit(-1);
     }
 
-    ksys_nvme_readv(__bsys_arr_next(karr), fg_handle, sgls, num_sgls,
-                    lba, lba_count, cookie);
+    ksys_nvme_readv(__bsys_arr_next(karr), fg_handle, sgls, num_sgls, lba,
+                    lba_count, cookie);
 }
 
-void ixev_nvme_writev(hqu_t fg_handle, void **sgls,
-                      int num_sgls, unsigned long lba, unsigned int lba_count,
+void ixev_nvme_writev(hqu_t fg_handle, void **sgls, int num_sgls,
+                      unsigned long lba, unsigned int lba_count,
                       unsigned long cookie) {
     if (unlikely(karr->len >= karr->max_len)) {
         printf("ixev: ran out of command space 3\n");
         exit(-1);
     }
 
-    ksys_nvme_writev(__bsys_arr_next(karr), fg_handle, sgls, num_sgls,
-                     lba, lba_count, cookie);
+    ksys_nvme_writev(__bsys_arr_next(karr), fg_handle, sgls, num_sgls, lba,
+                     lba_count, cookie);
 }
 
-void ixev_nvme_register_flow(long flow_group_id, unsigned long cookie, unsigned int latency_us_SLO,
+void ixev_nvme_register_flow(long flow_group_id, unsigned long cookie,
+                             unsigned int latency_us_SLO,
                              unsigned long IOPS_SLO, int rw_ratio_SLO) {
     if (unlikely(karr->len >= karr->max_len)) {
         printf("ixev: ran out of command space 4\n");
@@ -670,8 +655,7 @@ static void ixev_shift_sends(struct ixev_ctx *ctx, int shift) {
     // printf("shifting send: %d.\n", shift);
     ctx->send_count -= shift;
 
-    for (i = 0; i < ctx->send_count; i++)
-        ctx->send[i] = ctx->send[i + shift];
+    for (i = 0; i < ctx->send_count; i++) ctx->send[i] = ctx->send[i + shift];
 }
 
 static void ixev_handle_sendv_ret(struct ixev_ctx *ctx, long ret) {
@@ -713,7 +697,7 @@ static void ixev_handle_close_ret(struct ixev_ctx *ctx, long ret) {
 }
 
 /*
- *  Functions reporting return errors (if any) 
+ *  Functions reporting return errors (if any)
  *  for nvme syscalls previously issued
  */
 static void ixev_handle_nvme_open_ret(struct ixev_ctx *ctx, long ret) {
@@ -744,7 +728,8 @@ static void ixev_handle_nvme_register_flow_ret(struct ixev_ctx *ctx, long ret) {
     }
 }
 
-static void ixev_handle_nvme_unregister_flow_ret(struct ixev_ctx *ctx, long ret) {
+static void ixev_handle_nvme_unregister_flow_ret(struct ixev_ctx *ctx,
+                                                 long ret) {
     if (unlikely(ret != 0)) {
         printf("ixev: failed to unregister nvme flow, ret = %ld\n", ret);
         return;
@@ -760,12 +745,12 @@ static void ixev_handle_one_ret(struct bsys_ret *r) {
         case KSYS_TCP_CONNECT:
             ctx->handle = ret;
             /*
-		 * FIXME: need to propogate this error to the app, but we
-		 * can't safely do so here because the app might make an
-		 * unsafe batched call during return processing. We need
-		 * a mechanism to defer failure reporting until after
-		 * return processing.
-		 */
+             * FIXME: need to propogate this error to the app, but we
+             * can't safely do so here because the app might make an
+             * unsafe batched call during return processing. We need
+             * a mechanism to defer failure reporting until after
+             * return processing.
+             */
             if (unlikely(ret < 0)) {
                 printf("ixev: connect failed with %ld\n", ret);
             }
@@ -800,8 +785,7 @@ static void ixev_handle_one_ret(struct bsys_ret *r) {
             break;
 
         default:
-            if (unlikely(ret))
-                ixev_bad_ret(ctx, sysnr, ret);
+            if (unlikely(ret)) ixev_bad_ret(ctx, sysnr, ret);
     }
 }
 
@@ -821,7 +805,8 @@ void ixev_wait(void) {
 
     /* WARNING: return handlers should not enqueue new comamnds */
     for (i = 0; i < karr->len; i++) {
-        // printf("I am handling %dth kernel syscalls: %d event.\n", i, karr->descs[i].sysnr);
+        // printf("I am handling %dth kernel syscalls: %d event.\n", i,
+        // karr->descs[i].sysnr);
         ixev_handle_one_ret((struct bsys_ret *)&karr->descs[i]);
     }
     karr->len = 0;
@@ -868,9 +853,9 @@ void ixev_set_nvme_handler(struct ixev_nvme_req_ctx *ctx, unsigned int mask,
 int ixev_init_thread(void) {
     int ret;
 
-    ret = mempool_create(&ixev_buf_pool, &ixev_buf_datastore, MEMPOOL_SANITY_GLOBAL, 0);
-    if (ret)
-        return ret;
+    ret = mempool_create(&ixev_buf_pool, &ixev_buf_datastore,
+                         MEMPOOL_SANITY_GLOBAL, 0);
+    if (ret) return ret;
 
     ret = ix_init(&ixev_ops, CMD_BATCH_SIZE * 2);
 
@@ -894,9 +879,10 @@ int ixev_init(struct ixev_conn_ops *ops) {
     /* FIXME: check if running inside IX */
     int ret;
 
-    ret = mempool_create_datastore(&ixev_buf_datastore, 131072, sizeof(struct ixev_buf), "ixev_buf");  // why 2^17???
-    if (ret)
-        return ret;
+    ret = mempool_create_datastore(&ixev_buf_datastore, 131072,
+                                   sizeof(struct ixev_buf),
+                                   "ixev_buf");  // why 2^17???
+    if (ret) return ret;
 
     ixev_global_ops = *ops;
     return 0;
@@ -914,9 +900,9 @@ int ixev_init_nvme(struct ixev_nvme_ops *ops) {
     /* FIXME: check if running inside IX */
     int ret;
 
-    ret = mempool_create_datastore(&ixev_buf_datastore, 131072, sizeof(struct ixev_buf), "ixev_buf");
-    if (ret)
-        return ret;
+    ret = mempool_create_datastore(&ixev_buf_datastore, 131072,
+                                   sizeof(struct ixev_buf), "ixev_buf");
+    if (ret) return ret;
 
     ixev_nvme_global_ops = *ops;
     return 0;
@@ -931,13 +917,14 @@ int ixev_init_nvme(struct ixev_nvme_ops *ops) {
  *
  * Returns zero if successful, otherwise fail.
  */
-int ixev_init_conn_nvme(struct ixev_conn_ops *conn_ops, struct ixev_nvme_ops *nvme_ops) {
+int ixev_init_conn_nvme(struct ixev_conn_ops *conn_ops,
+                        struct ixev_nvme_ops *nvme_ops) {
     /* FIXME: check if running inside IX */
     int ret;
 
-    ret = mempool_create_datastore(&ixev_buf_datastore, 131072, sizeof(struct ixev_buf), "ixev_buf");
-    if (ret)
-        return ret;
+    ret = mempool_create_datastore(&ixev_buf_datastore, 131072,
+                                   sizeof(struct ixev_buf), "ixev_buf");
+    if (ret) return ret;
 
     ixev_nvme_global_ops = *nvme_ops;
     ixev_global_ops = *conn_ops;
