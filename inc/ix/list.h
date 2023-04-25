@@ -1,32 +1,33 @@
 /*
  * Copyright (c) 2015-2017, Stanford University
- *  
+ *
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
- *  * Redistributions of source code must retain the above copyright notice, 
+ *
+ *  * Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
- * 
+ *
  *  * Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
  *    and/or other materials provided with the distribution.
- * 
+ *
  *  * Neither the name of the copyright holder nor the names of its
  *    contributors may be used to endorse or promote products derived from
  *    this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 /*
@@ -188,8 +189,7 @@ struct list_node *list_check_node(const struct list_node *n,
  * Example:
  *	static LIST_HEAD(my_global_list);
  */
-#define LIST_HEAD_(name) \
-    struct list_head name = LIST_HEAD_INIT(name)
+#define LIST_HEAD_(name) struct list_head name = LIST_HEAD_INIT(name)
 
 /**
  * list_head_init - initialize a list_head
@@ -204,6 +204,20 @@ struct list_node *list_check_node(const struct list_node *n,
  */
 static inline void list_head_init(struct list_head *h) {
     h->n.next = h->n.prev = &h->n;
+}
+
+/**
+ * list_head_init - initialize a list_head
+ * @h: the list_head to set to the empty list
+ *
+ */
+static inline void list_head_reset(struct list_head *h, struct list_node *n) {
+    h->n.prev->next = h->n.next;
+    h->n.next->prev = h->n.prev;
+    h->n.next = n;
+    h->n.prev = n->prev;
+    n->prev = &h->n;
+    (void)list_debug(h);
 }
 
 /**
@@ -302,8 +316,7 @@ static inline void list_del_from(struct list_head *h, struct list_node *n) {
     {
         /* Thorough check: make sure it was in list! */
         struct list_node *i;
-        for (i = h->n.next; i != n; i = i->next)
-            assert(i != &h->n);
+        for (i = h->n.next; i != n; i = i->next) assert(i != &h->n);
     }
     assert(!list_empty(h));
 #endif /* CCAN_LIST_DEBUG */
@@ -345,8 +358,7 @@ static inline void list_del_from(struct list_head *h, struct list_node *n) {
     ((type *)list_top_((h), list_off_(type, member)))
 
 static inline const void *list_top_(const struct list_head *h, size_t off) {
-    if (list_empty(h))
-        return NULL;
+    if (list_empty(h)) return NULL;
     return (const char *)h->n.next - off;
 }
 
@@ -370,8 +382,7 @@ static inline const void *list_top_(const struct list_head *h, size_t off) {
 static inline const void *list_pop_(const struct list_head *h, size_t off) {
     struct list_node *n;
 
-    if (list_empty(h))
-        return NULL;
+    if (list_empty(h)) return NULL;
     n = h->n.next;
     list_del(n);
     return (const char *)n - off;
@@ -395,8 +406,7 @@ static inline const void *list_pop_(const struct list_head *h, size_t off) {
     ((type *)list_tail_((h), list_off_(type, member)))
 
 static inline const void *list_tail_(const struct list_head *h, size_t off) {
-    if (list_empty(h))
-        return NULL;
+    if (list_empty(h)) return NULL;
     return (const char *)h->n.prev - off;
 }
 
@@ -469,9 +479,8 @@ static inline const void *list_tail_(const struct list_head *h, size_t off) {
  *	if (!second)
  *		printf("No second child!\n");
  */
-#define list_next(h, i, member)                           \
-    ((list_typeof(i))list_entry_or_null(list_debug(h),    \
-                                        (i)->member.next, \
+#define list_next(h, i, member)                                          \
+    ((list_typeof(i))list_entry_or_null(list_debug(h), (i)->member.next, \
                                         list_off_var_((i), member)))
 
 /**
@@ -487,9 +496,8 @@ static inline const void *list_tail_(const struct list_head *h, size_t off) {
  *	if (!first)
  *		printf("Can't go back to first child?!\n");
  */
-#define list_prev(h, i, member)                           \
-    ((list_typeof(i))list_entry_or_null(list_debug(h),    \
-                                        (i)->member.prev, \
+#define list_prev(h, i, member)                                          \
+    ((list_typeof(i))list_entry_or_null(list_debug(h), (i)->member.prev, \
                                         list_off_var_((i), member)))
 
 /**
@@ -603,30 +611,22 @@ static inline void list_prepend_list(struct list_head *to,
  *		next, offsetof(struct child, list))
  *		printf("Name: %s\n", child->name);
  */
-#define list_for_each_safe_off(h, i, nxt, off)                       \
-    for (i = list_node_to_off_(list_debug(h)->n.next, (off)),        \
-        nxt = list_node_to_off_(list_node_from_off_(i, (off))->next, \
-                                (off));                              \
-         list_node_from_off_(i, (off)) != &(h)->n;                   \
-         i = nxt,                                                    \
-        nxt = list_node_to_off_(list_node_from_off_(i, (off))->next, \
-                                (off)))
+#define list_for_each_safe_off(h, i, nxt, off)                               \
+    for (i = list_node_to_off_(list_debug(h)->n.next, (off)),                \
+        nxt = list_node_to_off_(list_node_from_off_(i, (off))->next, (off)); \
+         list_node_from_off_(i, (off)) != &(h)->n; i = nxt,                  \
+        nxt = list_node_to_off_(list_node_from_off_(i, (off))->next, (off)))
 
 /* Other -off variants. */
-#define list_entry_off(n, type, off) \
-    ((type *)list_node_from_off_((n), (off)))
+#define list_entry_off(n, type, off) ((type *)list_node_from_off_((n), (off)))
 
-#define list_head_off(h, type, off) \
-    ((type *)list_head_off((h), (off)))
+#define list_head_off(h, type, off) ((type *)list_head_off((h), (off)))
 
-#define list_tail_off(h, type, off) \
-    ((type *)list_tail_((h), (off)))
+#define list_tail_off(h, type, off) ((type *)list_tail_((h), (off)))
 
-#define list_add_off(h, n, off) \
-    list_add((h), list_node_from_off_((n), (off)))
+#define list_add_off(h, n, off) list_add((h), list_node_from_off_((n), (off)))
 
-#define list_del_off(n, off) \
-    list_del(list_node_from_off_((n), (off)))
+#define list_del_off(n, off) list_del(list_node_from_off_((n), (off)))
 
 #define list_del_from_off(h, n, off) \
     list_del_from(h, list_node_from_off_((n), (off)))
@@ -641,21 +641,17 @@ static inline struct list_node *list_node_from_off_(void *ptr, size_t off) {
 
 /* Get the offset of the member, but make sure it's a list_node. */
 #define list_off_(type, member) \
-    (offsetof(type, member) +   \
-     check_type(((type *)0)->member, struct list_node))
+    (offsetof(type, member) + check_type(((type *)0)->member, struct list_node))
 
-#define list_off_var_(var, member)    \
-    (offsetof(typeof(*var), member) + \
-     check_type(var->member, struct list_node))
+#define list_off_var_(var, member) \
+    (offsetof(typeof(*var), member) + check_type(var->member, struct list_node))
 
 #define list_typeof(var) typeof(var)
 
 /* Returns member, or NULL if at end of list. */
 static inline void *list_entry_or_null(const struct list_head *h,
-                                       const struct list_node *n,
-                                       size_t off) {
-    if (n == &h->n)
-        return NULL;
+                                       const struct list_node *n, size_t off) {
+    if (n == &h->n) return NULL;
     return (char *)n - off;
 }
 
@@ -693,9 +689,8 @@ static inline bool slist_empty(struct slist_head *h) {
 #define slist_for_each(h, pos) \
     for ((pos) = (h)->head.next; (pos); (pos) = (pos)->next)
 
-#define slist_for_each_prev(h, pos, ppos)  \
-    for ((ppos) = &(h)->head;              \
-         ((pos) = ((ppos)->next)) != NULL; \
+#define slist_for_each_prev(h, pos, ppos)                       \
+    for ((ppos) = &(h)->head; ((pos) = ((ppos)->next)) != NULL; \
          (ppos) = (ppos)->next)
 
 struct hlist_node {
@@ -707,39 +702,31 @@ struct hlist_head {
     struct hlist_node *head;
 };
 
-static inline void hlist_init_head(struct hlist_head *h) {
-    h->head = NULL;
-}
+static inline void hlist_init_head(struct hlist_head *h) { h->head = NULL; }
 
 static inline void hlist_add_head(struct hlist_head *h, struct hlist_node *n) {
     n->next = h->head;
     n->prev = (struct hlist_node *)h;
-    if (n->next)
-        n->next->prev = n;
+    if (n->next) n->next->prev = n;
     h->head = n;
 }
 
 static inline void hlist_del_head(struct hlist_head *h) {
     h->head = h->head->next;
-    if (h->head)
-        h->head->prev = (struct hlist_node *)h;
+    if (h->head) h->head->prev = (struct hlist_node *)h;
 }
 
 static inline void hlist_del(struct hlist_node *n) {
     n->prev->next = n->next;
-    if (n->next)
-        n->next->prev = n->prev;
+    if (n->next) n->next->prev = n->prev;
 }
 
-static inline bool hlist_empty(struct hlist_head *h) {
-    return h->head == NULL;
-}
+static inline bool hlist_empty(struct hlist_head *h) { return h->head == NULL; }
 
 #define hlist_entry(n, type, member) container_of(n, type, member)
 
 #define hlist_for_each(h, pos) \
     for ((pos) = (h)->head; (pos); (pos) = (pos)->next)
 
-#define hlist_for_each_safe(h, pos, tmp)                       \
-    for ((pos) = (h)->head; (pos) && ((tmp) = (pos)->next, 1); \
-         (pos) = (tmp))
+#define hlist_for_each_safe(h, pos, tmp) \
+    for ((pos) = (h)->head; (pos) && ((tmp) = (pos)->next, 1); (pos) = (tmp))

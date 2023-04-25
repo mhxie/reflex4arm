@@ -54,13 +54,15 @@ DEFINE_BITMAP(g_ioq_bitmap, MAX_NUM_IO_QUEUES);
 DEFINE_BITMAP(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS);
 
 // #define NO_SCHED
+#define CYCLIC_LIST
+#define SINGLE_THREADED
 
 static struct spdk_nvme_ctrlr *nvme_ctrlr[CFG_MAX_NVMEDEV] = {NULL};
 static long global_ns_id = 1;
 static long global_ns_size = 1;
 static long global_ns_sector_size = 1;
 static long active_nvme_devices = 0;
-static int cpu_per_ssd = 1;
+static unsigned int cpu2ssd[CFG_MAX_NVMEDEV];
 static int g_max_outstanding_requests = 512;
 static long g_outstanding_requests = 0;
 // struct pci_dev *g_nvme_dev[CFG_MAX_NVMEDEV];
@@ -323,9 +325,13 @@ int init_nvmedev(void) {
                CFG.num_nvmedev - g_cores_active);
     }
 
-    cpu_per_ssd =
+    int i;
+    int cpu_per_ssd =
         ceil((double)g_cores_active /
              CFG.num_nvmedev);  // #core should be a multiple of #nvme devices
+    for (i = 0; i < CFG.num_nvmedev; i++) {
+        cpu2ssd[i] = i / cpu_per_ssd;
+    }
     printf("Each SSD will be processed by %d cores.", cpu_per_ssd);
     // int i;
     // const struct pci_addr *addr[CFG.num_nvmedev];
@@ -349,8 +355,7 @@ int init_nvmedev(void) {
 int init_nvmeqp_cpu(void) {
     if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0) return 0;
     assert(nvme_ctrlr);
-    struct spdk_nvme_ctrlr *ctrlr =
-        nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd];
+    struct spdk_nvme_ctrlr *ctrlr = nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]];
     struct spdk_nvme_io_qpair_opts opts;
 
     spdk_nvme_ctrlr_get_default_io_qpair_opts(ctrlr, &opts, sizeof(opts));
@@ -362,7 +367,6 @@ int init_nvmeqp_cpu(void) {
     g_max_outstanding_requests = opts.io_queue_requests;
 
     // while (opts.io_queue_size >= 1) {
-    //     // FIXME: naive mapping from CPU to SSDs
     percpu_get(qpair) =
         spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
     //     if percpu_get (qpair) {
@@ -379,8 +383,7 @@ int init_nvmeqp_cpu(void) {
 }
 
 void nvmedev_exit(void) {
-    // FIXME: naive mapping from CPU to SSDs
-    struct spdk_nvme_ctrlr *nvme = nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd];
+    struct spdk_nvme_ctrlr *nvme = nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]];
     if (!nvme) return;
 }
 
@@ -551,9 +554,7 @@ long bsys_nvme_open(long dev_id, long ns_id) {
     bitmap_init(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS, 0);
 
     percpu_get(open_ev[percpu_get(open_ev_ptr)++]) = ioq;
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
-                                ns_id);
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]], ns_id);
     global_ns_size = spdk_nvme_ns_get_size(ns);
     global_ns_sector_size = spdk_nvme_ns_get_sector_size(ns);
     printf("NVMe device namespace size: %lu bytes, sector size: %lu\n",
@@ -1170,6 +1171,17 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
     }
 }
 
+void print_queue_status() {
+    struct nvme_tenant_mgmt *thread_tenant_manager =
+        &percpu_get(nvme_tenant_manager);
+    struct nvme_sw_queue *swq; 
+    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
+        if (swq->count) {
+            printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
+        }
+    }
+}
+
 long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
                      unsigned long lba, unsigned int lba_count,
                      unsigned long cookie) {
@@ -1180,8 +1192,7 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
     void *paddr;
     int ret;
 
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
                                 global_ns_id);
     ctx = alloc_local_nvme_ctx();
     if (ctx == NULL) {
@@ -1235,14 +1246,7 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
         swq = g_nvme_fgs[fg_handle].nvme_swq;
         ret = nvme_sw_queue_push_back(swq, ctx);
         if (ret != 0) {
-            struct nvme_tenant_mgmt *thread_tenant_manager =
-                &percpu_get(nvme_tenant_manager);
-            list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-                if (swq->count) {
-                    printf("%ld-queue has %ld requests\n", swq->fg_handle,
-                           swq->count);
-                }
-            }
+            print_queue_status();
             free_local_nvme_ctx(ctx);
             return -RET_NOMEM;
         }
@@ -1262,8 +1266,7 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
     unsigned int ns_sector_size;
     int ret;
 
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
                                 global_ns_id);
 
     ctx = alloc_local_nvme_ctx();
@@ -1319,14 +1322,7 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
         swq = g_nvme_fgs[fg_handle].nvme_swq;
         ret = nvme_sw_queue_push_back(swq, ctx);
         if (ret != 0) {
-            struct nvme_tenant_mgmt *thread_tenant_manager =
-                &percpu_get(nvme_tenant_manager);
-            list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-                if (swq->count) {
-                    printf("%ld-queue has %ld requests\n", swq->fg_handle,
-                           swq->count);
-                }
-            }
+            print_queue_status();
             free_local_nvme_ctx(ctx);
             return -RET_NOMEM;
         }
@@ -1344,8 +1340,7 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
     struct nvme_sw_queue *swq;
     int ret;
 
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
                                 global_ns_id);
 
     ctx = alloc_local_nvme_ctx();
@@ -1390,14 +1385,7 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
         swq = g_nvme_fgs[fg_handle].nvme_swq;
         ret = nvme_sw_queue_push_back(swq, ctx);
         if (ret != 0) {
-            struct nvme_tenant_mgmt *thread_tenant_manager =
-                &percpu_get(nvme_tenant_manager);
-            list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-                if (swq->count) {
-                    printf("%ld-queue has %ld requests\n", swq->fg_handle,
-                           swq->count);
-                }
-            }
+            print_queue_status();
             free_local_nvme_ctx(ctx);
             return -RET_NOMEM;
         }
@@ -1415,8 +1403,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     struct nvme_sw_queue *swq;
     int ret;
 
-    // FIXME: naive mapping from CPU to SSDs
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[percpu_get(cpu_id) / cpu_per_ssd],
+    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
                                 global_ns_id);
 
     ctx = alloc_local_nvme_ctx();
@@ -1461,14 +1448,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
         swq = g_nvme_fgs[fg_handle].nvme_swq;
         ret = nvme_sw_queue_push_back(swq, ctx);
         if (ret != 0) {
-            struct nvme_tenant_mgmt *thread_tenant_manager =
-                &percpu_get(nvme_tenant_manager);
-            list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-                if (swq->count) {
-                    printf("%ld-queue has %ld requests\n", swq->fg_handle,
-                           swq->count);
-                }
-            }
+            print_queue_status();
             free_local_nvme_ctx(ctx);
             return -RET_NOMEM;
         }
@@ -1615,12 +1595,15 @@ static inline int nvme_sched_rr_subround1(void) {
     thread_tenant_manager = &percpu_get(nvme_tenant_manager);
 
     list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
+#ifndef CYCLIC_LIST
         i++;
+#endif
         if (nvme_sw_queue_isempty(swq)) continue;
         // serve latency-critical (LC) tenants
         if (g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
+#ifndef CYCLIC_LIST
             if (i < percpu_get(lc_roundrobin_start)) continue;
-
+#endif
             token_increment =
                 (g_nvme_fgs[swq->fg_handle].scaled_IOPuS_limit * time_delta) +
                 0.5;  // 0.5 is for rounding
@@ -1628,7 +1611,12 @@ static inline int nvme_sched_rr_subround1(void) {
             while ((nvme_sw_queue_isempty(swq) == 0) &&
                    swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
                 if (g_outstanding_requests >= g_max_outstanding_requests) {
+#ifndef CYCLIC_LIST
                     percpu_get(lc_roundrobin_start) = i;
+#else
+                    list_head_reset(&thread_tenant_manager->tenant_swq_head,
+                                    swq);
+#endif
                     return 1;
                 }
                 nvme_sw_queue_pop_front(swq, &ctx);
@@ -1645,7 +1633,7 @@ static inline int nvme_sched_rr_subround1(void) {
             local_demand += swq->total_token_demand - swq->saved_tokens;
         }
     }
-
+#ifndef CYCLIC_LIST
     i = -1;
     list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
         i++;
@@ -1677,7 +1665,7 @@ static inline int nvme_sched_rr_subround1(void) {
             local_demand += swq->total_token_demand - swq->saved_tokens;
         }
     }
-
+#endif
     percpu_get(local_extra_demand) = local_demand;
     percpu_get(local_leftover_tokens) = local_leftover;
 
@@ -1946,7 +1934,9 @@ int nvme_sched(void) {
     if (thread_tenant_manager->num_tenants == 0) {
         percpu_get(last_sched_time) = timer_now();
         percpu_get(last_sched_time_be) = rdtsc();
+#ifndef SINGLE_THREADED
         update_scheduled_bitvector();
+#endif
         return 0;
     }
 
@@ -1974,7 +1964,9 @@ int nvme_sched(void) {
     percpu_get(local_leftover_tokens) = 0;
     percpu_get(local_extra_demand) = 0;
 
+#ifndef SINGLE_THREADED
     update_scheduled_bitvector();
+#endif
 
     return 0;
 }
