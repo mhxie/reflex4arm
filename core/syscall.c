@@ -88,14 +88,14 @@ RTE_DEFINE_PER_LCORE(unsigned long, syscall_cookie);
 RTE_DEFINE_PER_LCORE(unsigned long, idle_cycles);
 
 static bsysfn_t bsys_tbl[] = {
-    (bsysfn_t)bsys_udp_send,           (bsysfn_t)bsys_udp_sendv,
-    (bsysfn_t)bsys_udp_recv_done,      (bsysfn_t)bsys_tcp_connect,
-    (bsysfn_t)bsys_tcp_accept,         (bsysfn_t)bsys_tcp_reject,
-    (bsysfn_t)bsys_tcp_send,           (bsysfn_t)bsys_tcp_sendv,
-    (bsysfn_t)bsys_tcp_recv_done,      (bsysfn_t)bsys_tcp_close,
-    (bsysfn_t)bsys_nvme_write,         (bsysfn_t)bsys_nvme_read,
-    (bsysfn_t)bsys_nvme_writev,        (bsysfn_t)bsys_nvme_readv,
-    (bsysfn_t)bsys_nvme_open,          (bsysfn_t)bsys_nvme_close,
+    (bsysfn_t)bsys_udp_send, (bsysfn_t)bsys_udp_sendv,
+    (bsysfn_t)bsys_udp_recv_done, (bsysfn_t)bsys_tcp_connect,
+    (bsysfn_t)bsys_tcp_accept, (bsysfn_t)bsys_tcp_reject,
+    (bsysfn_t)bsys_tcp_send, (bsysfn_t)bsys_tcp_sendv,
+    (bsysfn_t)bsys_tcp_recv_done, (bsysfn_t)bsys_tcp_close,
+    (bsysfn_t)bsys_nvme_write, (bsysfn_t)bsys_nvme_read,
+    (bsysfn_t)bsys_nvme_writev, (bsysfn_t)bsys_nvme_readv,
+    (bsysfn_t)bsys_nvme_open, (bsysfn_t)bsys_nvme_close,
     (bsysfn_t)bsys_nvme_register_flow, (bsysfn_t)bsys_nvme_unregister_flow};
 
 //
@@ -176,36 +176,34 @@ int sys_bpoll(struct bsys_desc *d, unsigned int nr) {
     // eth_process_reclaim();
     // KSTATS_POP(NULL);
 
-    KSTATS_PUSH(bsys, NULL);
     ret = bsys_dispatch(d, nr);
-    KSTATS_POP(NULL);
 
     if (ret) return ret;
 
     percpu_get(received_nvme_completions) = 0;
-again:
-    switch (percpu_get(cp_cmd)->cmd_id) {
-        case CP_CMD_MIGRATE:
-            if (percpu_get(usys_arr)->len) {
-                /* If there are pending events and we have
-                 * received a migration command, return to user
-                 * space for the processing of the events. We
-                 * will delay the migration until we are in a
-                 * quiescent state. */
-                return 0;
-            }
-            // NOTE: not supporting migration now
-            // eth_fg_assign_to_cpu((bitmap_ptr)
-            // percpu_get(cp_cmd)->migrate.fg_bitmap,
-            // percpu_get(cp_cmd)->migrate.cpu); percpu_get(cp_cmd)->cmd_id =
-            // CP_CMD_NOP;
-            break;
-        case CP_CMD_IDLE:
-            if (percpu_get(usys_arr)->len) return 0;
-            cp_idle();
-        case CP_CMD_NOP:
-            break;
-    }
+    // again:
+    //     switch (percpu_get(cp_cmd)->cmd_id) {
+    //         case CP_CMD_MIGRATE:
+    //             if (percpu_get(usys_arr)->len) {
+    //                 /* If there are pending events and we have
+    //                  * received a migration command, return to user
+    //                  * space for the processing of the events. We
+    //                  * will delay the migration until we are in a
+    //                  * quiescent state. */
+    //                 return 0;
+    //             }
+    //             // NOTE: not supporting migration now
+    //             // eth_fg_assign_to_cpu((bitmap_ptr)
+    //             // percpu_get(cp_cmd)->migrate.fg_bitmap,
+    //             // percpu_get(cp_cmd)->migrate.cpu); percpu_get(cp_cmd)->cmd_id =
+    //             // CP_CMD_NOP;
+    //             break;
+    //         case CP_CMD_IDLE:
+    //             if (percpu_get(usys_arr)->len) return 0;
+    //             cp_idle();
+    //         case CP_CMD_NOP:
+    //             break;
+    //     }
 
     // schedule
     if (g_nvme_sched_mode) {
@@ -214,14 +212,14 @@ again:
         KSTATS_POP(NULL);
     }
 
-    KSTATS_PUSH(percpu_bookkeeping, NULL);
+    // KSTATS_PUSH(percpu_bookkeeping, NULL);
     cpu_do_bookkeeping();
-    KSTATS_POP(NULL);
+    // KSTATS_POP(NULL);
 
-    KSTATS_PUSH(rte_timer, NULL);
+    // KSTATS_PUSH(rte_timer, NULL);
     // timer_run();
     rte_timer_manage();
-    KSTATS_POP(NULL);
+    // KSTATS_POP(NULL);
 
     KSTATS_PUSH(rx_poll, NULL);
     eth_process_poll();
@@ -347,7 +345,7 @@ typedef uint64_t (*sysfn_t)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
                             uint64_t, uint64_t);
 
 static sysfn_t sys_tbl[] = {
-    (sysfn_t)sys_bpoll,     (sysfn_t)sys_bcall,  (sysfn_t)sys_baddr,
+    (sysfn_t)sys_bpoll, (sysfn_t)sys_bcall, (sysfn_t)sys_baddr,
     (sysfn_t)sys_mmap,   // FIXME: don't need
     (sysfn_t)sys_unmap,  // FIXME: don't need
     (sysfn_t)sys_spawnmode, (sysfn_t)sys_nrcpus,

@@ -3,11 +3,17 @@ ix_sources = [
 ]
 ix_inc = include_directories('.')
 
+CFLAGS = ['-fno-omit-frame-pointer', '-O3', '-march=native']
+
+if get_option('ENABLE_KSTATS')
+    CFLAGS += ['-DENABLE_KSTATS']
+endif
+
 EAL_INC = include_directories(join_paths('..', DPDK_ROOT, 'include'))
 EAL_LIBS = join_paths('..', DPDK_ROOT, 'lib', 'librte_eal.a')
 
 ix_lib = static_library('ix',
                     ix_sources,
-                    c_args : ['-fno-omit-frame-pointer', '-O3', '-march=native'],
+                    c_args : CFLAGS,
                     include_directories : [inc, ix_inc, EAL_INC],
                     objects: EAL_LIBS,)

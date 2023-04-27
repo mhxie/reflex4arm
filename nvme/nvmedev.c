@@ -33,6 +33,7 @@
 #include <ix/atomic.h>
 #include <ix/cfg.h>
 #include <ix/errno.h>
+#include <ix/kstats.h>
 #include <ix/log.h>
 #include <ix/mempool.h>
 #include <ix/syscall.h>
@@ -539,6 +540,7 @@ long bsys_nvme_open(long dev_id, long ns_id) {
     struct spdk_nvme_ns *ns;
     int ioq;
 
+    KSTATS_VECTOR(bsys_nvme_open);
     // FIXME: for now, only support 1 namespace
     // if (ns_id != global_ns_id) {
     // 	panic("ERROR: only support 1 namespace with ns_id = 1, ns_id: %lx\n",
@@ -563,6 +565,7 @@ long bsys_nvme_open(long dev_id, long ns_id) {
 }
 
 long bsys_nvme_close(long dev_id, long ns_id, hqu_t handle) {
+    KSTATS_VECTOR(bsys_nvme_close);
     printf("BSYS NVME CLOSE\n");
     // FIXME: for now, only support 1 namespace
     // if (ns_id != global_ns_id) {
@@ -860,6 +863,7 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
     int lc_tenant_count = 0;
     struct nvme_tenant_mgmt *thread_tenant_manager;
     struct nvme_sw_queue *swq;
+    KSTATS_VECTOR(bsys_nvme_register_flow);
 
     if (!g_nvme_sched_mode) {
         printf(
@@ -995,6 +999,8 @@ long bsys_nvme_unregister_flow(long fg_handle) {
     struct nvme_flow_group *nvme_fg;
     unsigned long smallest_IOPS_limit = ULONG_MAX;
     int i = 0;
+    KSTATS_VECTOR(bsys_nvme_unregister_flow);
+
     if (!g_nvme_sched_mode) {
         nvme_fg = &g_nvme_fgs[0];
         nvme_fg->conn_ref_count--;
@@ -1174,7 +1180,7 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
 void print_queue_status() {
     struct nvme_tenant_mgmt *thread_tenant_manager =
         &percpu_get(nvme_tenant_manager);
-    struct nvme_sw_queue *swq; 
+    struct nvme_sw_queue *swq;
     list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
         if (swq->count) {
             printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
@@ -1191,6 +1197,7 @@ long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
     struct nvme_sw_queue *swq;
     void *paddr;
     int ret;
+    KSTATS_VECTOR(bsys_nvme_write);
 
     ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
                                 global_ns_id);
@@ -1266,6 +1273,8 @@ long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
     unsigned int ns_sector_size;
     int ret;
 
+    KSTATS_VECTOR(bsys_nvme_read);
+
     ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
                                 global_ns_id);
 
@@ -1340,6 +1349,8 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
     struct nvme_sw_queue *swq;
     int ret;
 
+    KSTATS_VECTOR(bsys_nvme_writev);
+
     ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
                                 global_ns_id);
 
@@ -1402,6 +1413,8 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     struct nvme_ctx *pctx;
     struct nvme_sw_queue *swq;
     int ret;
+
+    KSTATS_VECTOR(bsys_nvme_readv);
 
     ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
                                 global_ns_id);
@@ -1614,7 +1627,7 @@ static inline int nvme_sched_rr_subround1(void) {
                     percpu_get(lc_roundrobin_start) = i;
 #else
                     list_head_reset(&thread_tenant_manager->tenant_swq_head,
-                                    swq);
+                                    &swq->link);
 #endif
                     return 1;
                 }
@@ -1940,7 +1953,7 @@ int nvme_sched(void) {
     }
 
     if (g_nvme_sched_mode == REFLEX) {
-        round1_ret = nvme_sched_subround1();  // serve latency-critical tenants
+        round1_ret = nvme_sched_subround1();      // serve latency-critical tenants
         if (!round1_ret) nvme_sched_subround2();  // serve best-effort tenants
     } else if (g_nvme_sched_mode == REFLEX_RR) {
         // This should fix the starvation issue

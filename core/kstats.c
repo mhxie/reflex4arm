@@ -185,7 +185,7 @@ static long long read_perf_event(int fd) {
  * print and reinitialize
  */
 static void kstats_print(struct rte_timer *t, struct eth_fg *none) {
-    uint64_t total_cycles = (uint64_t) rte_get_timer_hz() / 1E6 * KSTATS_INTERVAL;
+    uint64_t total_cycles = (uint64_t) KSTATS_INTERVAL;
     char batch_histogram[2048], backlog_histogram[2048];
     int avg_batch, avg_backlog;
 

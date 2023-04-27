@@ -60,6 +60,7 @@
 #include "ixev.h"
 
 #include <errno.h>
+#include <ix/kstats.h>
 #include <ix/mempool.h>
 #include <ix/stddef.h>
 #include <stdio.h>
@@ -796,13 +797,6 @@ void ixev_wait(void) {
     int i;
 
     ix_poll();
-    ixev_generation++;
-    // if (ixev_generation % 10 == 0) {
-    // 	printf("Start waiting...\n");
-    // }
-
-    // printf("Now the generation is %d\n", ixev_generation);
-
     /* WARNING: return handlers should not enqueue new comamnds */
     for (i = 0; i < karr->len; i++) {
         // printf("I am handling %dth kernel syscalls: %d event.\n", i,
@@ -811,11 +805,12 @@ void ixev_wait(void) {
     }
     karr->len = 0;
 
-    // if (ixev_generation % 10 == 0) {
-    // 	printf("Stop waiting...\n");
-    // }
-    // printf("now handle events\n");
+#ifdef ENABLE_KSTATS
+    kstats_accumulate save;
+#endif
+    KSTATS_PUSH(ix_handle_events, &save);
     ix_handle_events();
+    KSTATS_POP(&save);
 }
 
 /**
