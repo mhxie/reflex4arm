@@ -79,6 +79,7 @@ DEF_KSTATS(timer_tcp_send_delayed_ack);
 DEF_KSTATS(timer_handler);
 DEF_KSTATS(timer_tcp_retransmit);
 DEF_KSTATS(timer_tcp_persist);
+DEF_KSTATS(bsys_dispatch);
 DEF_KSTATS(bsys_dispatch_one);
 DEF_KSTATS(bsys_tcp_accept);
 DEF_KSTATS(bsys_tcp_close);

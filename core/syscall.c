@@ -218,7 +218,9 @@ int sys_bpoll(struct bsys_desc *d, unsigned int nr) {
 
     // KSTATS_PUSH(rte_timer, NULL);
     // timer_run();
+#ifdef ENABLE_KSTATS
     rte_timer_manage();
+#endif
     // KSTATS_POP(NULL);
 
     KSTATS_PUSH(rx_poll, NULL);
@@ -258,7 +260,7 @@ int sys_bcall(struct bsys_desc *d,
     eth_process_reclaim();
     KSTATS_POP(NULL);
 
-    KSTATS_PUSH(bsys, NULL);
+    KSTATS_PUSH(bsys_dispatch, NULL);
     ret = bsys_dispatch(d, nr);
     KSTATS_POP(NULL);
 

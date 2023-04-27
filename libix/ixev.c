@@ -797,6 +797,7 @@ void ixev_wait(void) {
     int i;
 
     ix_poll();
+    ixev_generation++;
     /* WARNING: return handlers should not enqueue new comamnds */
     for (i = 0; i < karr->len; i++) {
         // printf("I am handling %dth kernel syscalls: %d event.\n", i,
