@@ -1,22 +1,22 @@
 /*
  * Copyright (c) 2015-2017, Stanford University
- *  
+ *
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
- *  * Redistributions of source code must retain the above copyright notice, 
+ *
+ *  * Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
- * 
+ *
  *  * Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
  *    and/or other materials provided with the distribution.
- * 
+ *
  *  * Neither the name of the copyright holder nor the names of its
  *    contributors may be used to endorse or promote products derived from
  *    this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -157,9 +157,9 @@ static int udp_output(struct mbuf *__restrict pkt,
     pkt->len = UDP_PKT_SIZE;
 
     /* FIXME: cur_fg makes no sense in the context of a UDP datagram send.
-	 *        For single-device interfaces, this is trivial (there's only one dev_ix)
-	 *        For multi-device bonds, the interface needs to be provided implicitly or explicitly
-	 */
+     *        For single-device interfaces, this is trivial (there's only one dev_ix)
+     *        For multi-device bonds, the interface needs to be provided implicitly or explicitly
+     */
 
     ret = 0;
     if (eth_dev_count > 1)
@@ -200,16 +200,16 @@ long bsys_udp_send(void __user *__restrict vaddr, size_t len,
         return -RET_INVAL;
 
     /*
-	if (unlikely(copy_from_user(id, &tmp, sizeof(struct ip_tuple))))
-		return -RET_FAULT;
-	*/
+        if (unlikely(copy_from_user(id, &tmp, sizeof(struct ip_tuple))))
+                return -RET_FAULT;
+        */
     tmp = *id;
 
-    //if (unlikely(!uaccess_zc_okay(vaddr, len)))
+    // if (unlikely(!uaccess_zc_okay(vaddr, len)))
     //	return -RET_FAULT;
 
-    //addr = (void *) vm_lookup_phys(vaddr, PGSIZE_2MB);
-    //if (unlikely(!addr))
+    // addr = (void *) vm_lookup_phys(vaddr, PGSIZE_2MB);
+    // if (unlikely(!addr))
     //	return -RET_FAULT;
     addr = vaddr;
 
@@ -228,20 +228,20 @@ long bsys_udp_send(void __user *__restrict vaddr, size_t len,
     pkt->nr_iov = 1;
 
     /*
-	 * Handle the case of a crossed page boundary. There
-	 * can only be one because of the MTU size.
-	 */
+     * Handle the case of a crossed page boundary. There
+     * can only be one because of the MTU size.
+     */
     /*
-	BUILD_ASSERT(UDP_MAX_LEN < PGSIZE_2MB);
-	if (ent.len != len) {
-		ent.base = (void *)((uintptr_t) ent.base + len);
-		ent.len -= len;
-		iovs[1].base = ent.base;
-		iovs[1].maddr = page_get(ent.base);
-		iovs[1].len = ent.len;
-		pkt->nr_iov = 2;
-	}
-	*/
+        BUILD_ASSERT(UDP_MAX_LEN < PGSIZE_2MB);
+        if (ent.len != len) {
+                ent.base = (void *)((uintptr_t) ent.base + len);
+                ent.len -= len;
+                iovs[1].base = ent.base;
+                iovs[1].maddr = page_get(ent.base);
+                iovs[1].len = ent.len;
+                pkt->nr_iov = 2;
+        }
+        */
 
     pkt->done = &udp_mbuf_done;
     pkt->done_data = cookie;
@@ -291,7 +291,7 @@ long bsys_udp_recv_done(void *iomap) {
 		return -RET_FAULT;
 	}
 #endif
-    //FIXME: should support the conversion in mempool.h for nostraddle==1 pools
+    // FIXME: should support the conversion in mempool.h for nostraddle==1 pools
 
     m = (struct mbuf *)(PGADDR_2MB(addr) + (off / MBUF_LEN) * MBUF_LEN);
 

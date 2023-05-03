@@ -1134,6 +1134,8 @@ static int sgl_next_cb(void *cb_arg, uint64_t *address, uint32_t *length) {
 static void issue_nvme_req(struct nvme_ctx *ctx) {
     int ret;
 
+    KSTATS_VECTOR(issue_nvme_req);
+
     // don't schedule request on flash if FAKE_FLASH test
     if (g_nvme_dev_model == FAKE_FLASH) {
         if (ctx->cmd == NVME_CMD_READ) {
@@ -1953,7 +1955,7 @@ int nvme_sched(void) {
     }
 
     if (g_nvme_sched_mode == REFLEX) {
-        round1_ret = nvme_sched_subround1();      // serve latency-critical tenants
+        round1_ret = nvme_sched_subround1();  // serve latency-critical tenants
         if (!round1_ret) nvme_sched_subround2();  // serve best-effort tenants
     } else if (g_nvme_sched_mode == REFLEX_RR) {
         // This should fix the starvation issue

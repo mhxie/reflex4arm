@@ -19,9 +19,9 @@ DPDK_LIB_NAMES = [
     # 'librte_mbuf.a',
     # 'librte_eal.a',
     # 'librte_telemetry.a',
-    'librte_hash.a',
-    #'librte_bus_pci.a',
-    #'librte_kvargs.a'
+    # 'librte_hash.a',
+    # 'librte_bus_pci.a',
+    # 'librte_kvargs.a'
 ]
 DPDK_LIBS = []
 foreach NAME : DPDK_LIB_NAMES
@@ -37,6 +37,7 @@ DPDK_WHOLE_LIB_NAMES = [
     'librte_net.a',
     'librte_ethdev.a',
     'librte_mbuf.a',
+    'librte_hash.a',
     #'librte_eal.a', # dulplicate in IX_LIB
     'librte_telemetry.a',
     # needed by ena librte_pmd_ena.a 

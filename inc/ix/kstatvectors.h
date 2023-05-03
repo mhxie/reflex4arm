@@ -101,5 +101,6 @@ DEF_KSTATS(bsys_nvme_register_flow);
 DEF_KSTATS(bsys_nvme_unregister_flow);
 DEF_KSTATS(nvme_sched);
 DEF_KSTATS(nvme_complete);
+DEF_KSTATS(issue_nvme_req);
 DEF_KSTATS(ix_handle_events);
 DEF_KSTATS(posix_syscall);
