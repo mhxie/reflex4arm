@@ -31,24 +31,22 @@
  */
 
 #include <nvme/nvme_sw_table.h>
-#include <rte_errno.h>
 #include <rte_config.h>
 #include <rte_eal.h>
+#include <rte_errno.h>
 #include <rte_lcore.h>
 #include <rte_malloc.h>
-
 
 void nvme_sw_table_init(struct nvme_sw_table *t) {
     int i;
     t = rte_malloc(NULL, sizeof(struct nvme_sw_table), 0);
 
-    struct rte_hash_parameters params = {
-	.name = "test",
-        .entries = NVME_SW_QUEUE_SIZE * 8,
-        .key_len = sizeof(uint32_t),
-        .hash_func = rte_jhash,
-        .hash_func_init_val = 0,
-        .socket_id = rte_socket_id()};
+    struct rte_hash_parameters params = {.name = "test",
+                                         .entries = NVME_SW_QUEUE_SIZE * 8,
+                                         .key_len = sizeof(uint32_t),
+                                         .hash_func = rte_jhash,
+                                         .hash_func_init_val = 0,
+                                         .socket_id = rte_socket_id()};
 
     t->table = rte_hash_create(&params);
 
@@ -66,7 +64,7 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
         printf("Unable to create hash table: %s\n", rte_strerror(rte_errno));
         return ENOMEM;
     } else {
-	printf("Successfully created the hash table!!!\n");
+        printf("Successfully created the hash table!!!\n");
     }
 }
 int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
