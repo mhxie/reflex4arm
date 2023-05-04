@@ -43,6 +43,20 @@ struct less_tenant_mgmt {
     uint16_t num_be_tenants;
 };
 
+void init_less_tenant_mgmt(struct less_tenant_mgmt *manager) {
+    int i;
+    for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
+        manager->active_lc_tenants[i] = -1;
+        manager->active_be_tenants[i] = -1;
+    }
+    manager->lc_head = 0;
+    manager->lc_tail = 0;
+    manager->be_head = 0;
+    manager->be_tail = 0;
+    manager->num_lc_tenants = 0;
+    manager->num_be_tenants = 0;
+}
+
 bool nvme_lc_tenant_isempty(struct less_tenant_mgmt *manager) {
     return manager->lc_head == manager->lc_tail;
 }

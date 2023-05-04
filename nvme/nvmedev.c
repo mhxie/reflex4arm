@@ -109,6 +109,7 @@ static int scheduled_bit_vector[MAX_NUM_THREADS];
 
 #define TOKEN_FRAC_GIVEAWAY 0.9
 static long TOKEN_DEFICIT_LIMIT = 10000;
+static int WRITE_BURST_COUNT = 10;
 static bool global_readonly_flag = true;
 
 #define SLO_REQ_SIZE 4096
@@ -169,8 +170,7 @@ int init_nvme_request_cpu(void) {
     }
 
     thread_tenant_manager = &percpu_get(tenant_manager);
-    thread_tenant_manager->num_lc_tenants = 0;
-    thread_tenant_manager->num_be_tenants = 0;
+    init_less_tenant_mgmt(thread_tenant_manager);
 
     percpu_get(last_sched_time) = timer_now();
     percpu_get(last_sched_time_be) = rdtsc();  // timer_now();
@@ -540,9 +540,11 @@ int set_nvme_flow_group_id(long flow_group_id, long *fg_handle_to_set,
 
 // adjust token deficit limit to allow LC tenants to burst, but not too much
 static void set_token_deficit_limit(void) {
-    printf("DEVICE PARAMS: read cost %d, write cost %d\n", NVME_READ_COST,
-           NVME_WRITE_COST);
-    TOKEN_DEFICIT_LIMIT = 100 * NVME_WRITE_COST;
+    printf(
+        "DEVICE PARAMS: read cost %d, write cost %d, burst limits = %d "
+        "writes\n",
+        NVME_READ_COST, NVME_WRITE_COST, WRITE_BURST_COUNT);
+    TOKEN_DEFICIT_LIMIT = WRITE_BURST_COUNT * NVME_WRITE_COST;
 }
 
 static unsigned long find_token_limit_from_devmodel(unsigned int lat_SLO) {
