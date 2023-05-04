@@ -93,7 +93,7 @@ static bsysfn_t bsys_tbl[] = {
     (bsysfn_t)bsys_tcp_accept, (bsysfn_t)bsys_tcp_reject,
     (bsysfn_t)bsys_tcp_send, (bsysfn_t)bsys_tcp_sendv,
     (bsysfn_t)bsys_tcp_recv_done, (bsysfn_t)bsys_tcp_close,
-    (bsysfn_t)bsys_nvme_write, (bsysfn_t)bsys_nvme_read,
+    // (bsysfn_t)bsys_nvme_write, (bsysfn_t)bsys_nvme_read,
     (bsysfn_t)bsys_nvme_writev, (bsysfn_t)bsys_nvme_readv,
     (bsysfn_t)bsys_nvme_open, (bsysfn_t)bsys_nvme_close,
     (bsysfn_t)bsys_nvme_register_flow, (bsysfn_t)bsys_nvme_unregister_flow};
@@ -195,7 +195,8 @@ int sys_bpoll(struct bsys_desc *d, unsigned int nr) {
     //             // NOTE: not supporting migration now
     //             // eth_fg_assign_to_cpu((bitmap_ptr)
     //             // percpu_get(cp_cmd)->migrate.fg_bitmap,
-    //             // percpu_get(cp_cmd)->migrate.cpu); percpu_get(cp_cmd)->cmd_id =
+    //             // percpu_get(cp_cmd)->migrate.cpu);
+    //             percpu_get(cp_cmd)->cmd_id =
     //             // CP_CMD_NOP;
     //             break;
     //         case CP_CMD_IDLE:
@@ -347,7 +348,7 @@ typedef uint64_t (*sysfn_t)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
                             uint64_t, uint64_t);
 
 static sysfn_t sys_tbl[] = {
-    (sysfn_t)sys_bpoll, (sysfn_t)sys_bcall, (sysfn_t)sys_baddr,
+    (sysfn_t)sys_bpoll,     (sysfn_t)sys_bcall,  (sysfn_t)sys_baddr,
     (sysfn_t)sys_mmap,   // FIXME: don't need
     (sysfn_t)sys_unmap,  // FIXME: don't need
     (sysfn_t)sys_spawnmode, (sysfn_t)sys_nrcpus,

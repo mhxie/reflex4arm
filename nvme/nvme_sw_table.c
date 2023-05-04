@@ -93,7 +93,7 @@ int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
     }
     return 0;
 }
-inline int nvme_sw_table_isempty(struct nvme_sw_table *t, long fg_handle) {
+int nvme_sw_table_isempty(struct nvme_sw_table *t, long fg_handle) {
     return t->queue_head[fg_handle] == t->queue_tail[fg_handle];
 }
 uint16_t nvme_sw_table_count(struct nvme_sw_table *t, long fg_handle) {
