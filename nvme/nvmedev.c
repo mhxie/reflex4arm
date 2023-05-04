@@ -1223,8 +1223,7 @@ unsigned long try_acquire_global_tokens(unsigned long token_demand) {
  * traffic
  */
 static inline int nvme_sched_lessv0_subround1(void) {
-    struct less_tenant_mgmt *thread_tenant_manager =
-        &percpu_get(tenant_manager);
+    struct less_tenant_mgmt *thread_tenant_manager;
     struct nvme_ctx *ctx;
     long fg_handle;
     unsigned long now;
@@ -1240,7 +1239,9 @@ static inline int nvme_sched_lessv0_subround1(void) {
     time_delta = now - percpu_get(last_sched_time);
     percpu_get(last_sched_time) = now;
 
-    iterate_active_tenants_by_type(&thread_tenant_manager, fg_handle, lc) {
+    thread_tenant_manager = &percpu_get(tenant_manager);
+
+    iterate_active_tenants_by_type(thread_tenant_manager, fg_handle, lc) {
         token_increment =
             (g_nvme_fgs[fg_handle].scaled_IOPuS_limit * time_delta) + 0.5;
         g_nvme_sw_table.token_credit[fg_handle] += (long)token_increment;
@@ -1263,7 +1264,7 @@ static inline int nvme_sched_lessv0_subround1(void) {
                 g_nvme_sw_table.token_credit[fg_handle] * TOKEN_FRAC_GIVEAWAY;
         }
     }
-    nvme_lc_tenant_deactivate(&thread_tenant_manager, count);
+    nvme_lc_tenant_deactivate(thread_tenant_manager, count);
 
     percpu_get(local_leftover_tokens) = local_leftover;
 
@@ -1302,7 +1303,7 @@ static inline void nvme_sched_subround2(void) {
 
     thread_tenant_manager = &percpu_get(tenant_manager);
 
-    iterate_active_tenants_by_type(&thread_tenant_manager, fg_handle, be) {
+    iterate_active_tenants_by_type(thread_tenant_manager, fg_handle, be) {
         local_demand += g_nvme_sw_table.total_token_demand[fg_handle] -
                         g_nvme_sw_table.saved_tokens[fg_handle];
     }
@@ -1327,7 +1328,7 @@ static inline void nvme_sched_subround2(void) {
     percpu_get(last_sched_time_be) = now;
 
     // serve best effort tenants in round-robin order
-    iterate_active_tenants_by_type(&thread_tenant_manager, fg_handle, be) {
+    iterate_active_tenants_by_type(thread_tenant_manager, fg_handle, be) {
         be_tokens +=
             nvme_sw_table_take_saved_tokens(&g_nvme_sw_table, fg_handle);
         token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
@@ -1350,7 +1351,7 @@ static inline void nvme_sched_subround2(void) {
             nvme_sw_table_save_tokens(&g_nvme_sw_table, fg_handle, be_tokens);
         // assert(be_tokens >= 0);
     }
-    nvme_be_tenant_deactivate(&thread_tenant_manager, count);
+    nvme_be_tenant_deactivate(thread_tenant_manager, count);
 
     if (be_tokens > 0) {
         atomic_u64_fetch_and_add(&global_leftover_tokens, be_tokens);
