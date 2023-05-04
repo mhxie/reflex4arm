@@ -399,7 +399,7 @@ static void transition_handler_target(void *info_) {
     SCRATCHPAD->ts_before_backlog = rdtsc();
 
     for (i = 0; i < ETH_MAX_TOTAL_FG; i++) {
-        if (!bitmap_test(info->fg_bitmap, i))
+    if (!bitmap_test(info->fg_bitmap, i))
             continue;
         fg = fgs[i];
         fg->in_transition = false;

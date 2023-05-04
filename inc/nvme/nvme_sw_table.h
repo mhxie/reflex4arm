@@ -38,7 +38,6 @@
 struct nvme_sw_table {
     uint32_t queue_head[MAX_NVME_FLOW_GROUPS];
     uint32_t queue_tail[MAX_NVME_FLOW_GROUPS];
-    bool queue_overflow[MAX_NVME_FLOW_GROUPS];
     uint16_t queue_overflow_count[MAX_NVME_FLOW_GROUPS];
     uint32_t total_token_demand[MAX_NVME_FLOW_GROUPS];
     uint32_t saved_tokens[MAX_NVME_FLOW_GROUPS];
@@ -48,11 +47,12 @@ struct nvme_sw_table {
 };
 
 void nvme_sw_table_init(struct nvme_sw_table *t);
-int nvme_sw_table_add(struct nvme_sw_table *t, long fg_handle,
-                      struct nvme_ctx *ctx);
+int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
+                            struct nvme_ctx *ctx);
 int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
                             struct nvme_ctx **ctx);
 inline int nvme_sw_table_isempty(struct nvme_sw_table *t, long fg_handle);
+uint16_t nvme_sw_table_count(struct nvme_sw_table *t, long fg_handle);
 
 int nvme_sw_table_peak_head_cost(struct nvme_sw_table *t, long fg_handle);
 unsigned long nvme_sw_table_save_tokens(struct nvme_sw_table *t, long fg_handle,

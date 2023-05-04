@@ -49,7 +49,6 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
     for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
         t->queue_head[i] = 0;
         t->queue_tail[i] = 0;
-        t->queue_overflow[i] = false;
         t->queue_overflow_count[i] = 0;
         t->total_token_demand[i] = 0;
         t->saved_tokens[i] = 0;
@@ -62,8 +61,8 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
         return ENOMEM;
     }
 }
-int nvme_sw_table_add(struct nvme_sw_table *t, long fg_handle,
-                      struct nvme_ctx *ctx) {
+int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
+                            struct nvme_ctx *ctx) {
     // Key Format: seq_number (15 bit) | queue_id (12 bit) | thread_id (5 bit)
     uint32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
                    << 5 + t->queue_tail[fg_handle] << 17;
@@ -73,7 +72,6 @@ int nvme_sw_table_add(struct nvme_sw_table *t, long fg_handle,
     t->queue_tail[fg_handle]++;
     if (unlikely(t->queue_tail[fg_handle] >= NVME_SW_QUEUE_SIZE)) {
         t->queue_tail[fg_handle] = 0;
-        t->queue_overflow[fg_handle] = true;
         t->queue_overflow_count[fg_handle]++;
     }
 
@@ -97,6 +95,14 @@ int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
 }
 inline int nvme_sw_table_isempty(struct nvme_sw_table *t, long fg_handle) {
     return t->queue_head[fg_handle] == t->queue_tail[fg_handle];
+}
+uint16_t nvme_sw_table_count(struct nvme_sw_table *t, long fg_handle) {
+    if (t->queue_head[fg_handle] <= t->queue_tail[fg_handle]) {
+        return t->queue_tail[fg_handle] - t->queue_head[fg_handle];
+    } else {
+        return NVME_SW_QUEUE_SIZE - t->queue_head[fg_handle] +
+               t->queue_tail[fg_handle];
+    }
 }
 
 int nvme_sw_table_peak_head_cost(struct nvme_sw_table *t, long fg_handle) {
