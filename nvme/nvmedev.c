@@ -113,6 +113,7 @@ static int WRITE_BURST_COUNT = 10;
 static bool global_readonly_flag = true;
 
 #define SLO_REQ_SIZE 4096
+#define QSTATS_INTERVAL rte_get_timer_hz()  // 1 second
 
 RTE_DEFINE_PER_LCORE(struct mempool,
                      request_mempool __attribute__((aligned(64))));
@@ -120,6 +121,7 @@ RTE_DEFINE_PER_LCORE(struct mempool, ctx_mempool __attribute__((aligned(64))));
 RTE_DEFINE_PER_LCORE(int, received_nvme_completions);
 
 RTE_DEFINE_PER_LCORE(struct less_tenant_mgmt, tenant_manager);
+static RTE_DEFINE_PER_LCORE(struct rte_timer, _qstats_timer);
 
 RTE_DEFINE_PER_LCORE(unsigned long, last_sched_time);
 RTE_DEFINE_PER_LCORE(unsigned long, last_sched_time_be);
@@ -140,6 +142,26 @@ struct nvme_ctx *alloc_local_nvme_ctx(void) {
 
 extern void free_local_nvme_ctx(struct nvme_ctx *req) {
     mempool_free(&percpu_get(ctx_mempool), req);
+}
+
+void print_queue_status() {
+    struct less_tenant_mgmt *thread_tenant_manager =
+        &percpu_get(tenant_manager);
+    long fg_handle;
+    struct nvme_flow_group *nvme_fg;
+
+    printf(
+        "There are still %ld requests pending in the table, %d requests in the "
+        "SSD queue. See the snapshot below:\n",
+        g_nvme_sw_table.total_request_count, g_outstanding_requests);
+    iterate_all_tenants(nvme_fg, fg_handle) {
+        printf("%ld-queue has %ld requests, ", fg_handle,
+               nvme_sw_table_count(&g_nvme_sw_table, fg_handle));
+        printf("demands = %ld, saved_tokens = %ld, token credit = %ld.\n",
+               g_nvme_sw_table.total_token_demand[fg_handle],
+               g_nvme_sw_table.saved_tokens[fg_handle],
+               g_nvme_sw_table.token_credit[fg_handle]);
+    }
 }
 
 /**
@@ -203,6 +225,11 @@ int init_nvme_request(void) {
     // need to alloc req mempool for admin queue
     init_nvme_request_cpu();
     nvme_sw_table_init(&g_nvme_sw_table);
+#ifdef ENABLE_KSTATS
+    rte_timer_init(&percpu_get(_qstats_timer));
+    rte_timer_reset(&percpu_get(_qstats_timer), QSTATS_INTERVAL, PERIODICAL,
+                    rte_lcore_id(), print_queue_status, NULL);
+#endif
 
     set_token_deficit_limit();
 
@@ -368,8 +395,6 @@ static const struct nvme_string command_specific_status[] = {
     {SPDK_NVME_SC_COMPLETION_QUEUE_INVALID, "INVALID COMPLETION QUEUE"},
     {SPDK_NVME_SC_INVALID_QUEUE_IDENTIFIER, "INVALID QUEUE IDENTIFIER"},
     {SPDK_NVME_SC_INVALID_QUEUE_SIZE, "INVALID QUEUE SIZE"},
-    // { SPDK_NVME_SC_MAXIMUM_QUEUE_SIZE_EXCEEDED, "MAX QUEUE SIZE EXCEEDED" },
-    // deprecated
     {SPDK_NVME_SC_ABORT_COMMAND_LIMIT_EXCEEDED, "ABORT CMD LIMIT EXCEEDED"},
     {SPDK_NVME_SC_ASYNC_EVENT_REQUEST_LIMIT_EXCEEDED, "ASYNC LIMIT EXCEEDED"},
     {SPDK_NVME_SC_INVALID_FIRMWARE_SLOT, "INVALID FIRMWARE SLOT"},
@@ -379,8 +404,6 @@ static const struct nvme_string command_specific_status[] = {
     {SPDK_NVME_SC_INVALID_FORMAT, "INVALID FORMAT"},
     {SPDK_NVME_SC_CONFLICTING_ATTRIBUTES, "CONFLICTING ATTRIBUTES"},
     {SPDK_NVME_SC_INVALID_PROTECTION_INFO, "INVALID PROTECTION INFO"},
-    // { SPDK_NVME_SC_ATTEMPTED_WRITE_TO_RO_PAGE, "WRITE TO RO PAGE" },
-    // deprecated
     {SPDK_NVME_SC_ATTEMPTED_WRITE_TO_RO_RANGE, "WRITE TO RO RANGE"},
     {0xFFFF, "COMMAND SPECIFIC"}};
 
@@ -1037,20 +1060,6 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
     }
 }
 
-void print_queue_status() {
-    struct less_tenant_mgmt *thread_tenant_manager =
-        &percpu_get(tenant_manager);
-    long fg_handle;
-    struct nvme_flow_group *nvme_fg;
-
-    iterate_all_tenants(nvme_fg, fg_handle) {
-        if (!nvme_sw_table_isempty(&g_nvme_sw_table, fg_handle)) {
-            printf("%ld-queue has %ld requests\n", fg_handle,
-                   nvme_sw_table_count(&g_nvme_sw_table, fg_handle));
-        }
-    }
-}
-
 long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
                       int num_sgls, unsigned long lba, unsigned int lba_count,
                       unsigned long cookie) {
@@ -1104,12 +1113,12 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
             NVME_CMD_WRITE, lba_count * global_ns_sector_size);
         ret = nvme_sw_table_push_back(&g_nvme_sw_table, fg_handle, ctx);
         if (g_nvme_fgs[fg_handle].latency_critical_flag &&
-            nvme_sw_table_isempty(thread_tenant_manager, fg_handle)) {
+            !nvme_sw_table_isempty(thread_tenant_manager, fg_handle)) {
             thread_tenant_manager = &percpu_get(tenant_manager);
             nvme_lc_tenant_activate(&thread_tenant_manager, fg_handle);
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
-            nvme_sw_table_isempty(thread_tenant_manager, fg_handle)) {
+            !nvme_sw_table_isempty(thread_tenant_manager, fg_handle)) {
             thread_tenant_manager = &percpu_get(tenant_manager);
             nvme_be_tenant_activate(&thread_tenant_manager, fg_handle);
         }

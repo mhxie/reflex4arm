@@ -42,7 +42,7 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
     t = rte_malloc(NULL, sizeof(struct nvme_sw_table), 0);
 
     struct rte_hash_parameters params = {.name = "test",
-                                         .entries = NVME_SW_QUEUE_SIZE * 8,
+                                         .entries = NVME_SW_TABLE_SIZE * 8,
                                          .key_len = sizeof(uint32_t),
                                          .hash_func = rte_jhash,
                                          .hash_func_init_val = 0,
@@ -58,6 +58,7 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
         t->saved_tokens[i] = 0;
         t->token_credit[i] = 0;
     }
+    t->total_request_count = 0;
 
     if (t->table == NULL) {
         rte_free(t);
@@ -76,7 +77,12 @@ int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
     t->total_token_demand[fg_handle] += ctx->req_cost;
 
     t->queue_tail[fg_handle]++;
-    if (unlikely(t->queue_tail[fg_handle] >= NVME_SW_QUEUE_SIZE)) {
+    t->total_request_count++;
+    if (unlikely(t->total_request_count >= NVME_SW_TABLE_SIZE)) {
+        printf("ERROR: Cannot push more requests into the table\n");
+        return RET_NOMEM;
+    }
+    if (unlikely(t->queue_tail[fg_handle] >= NVME_SW_TABLE_SIZE)) {
         t->queue_tail[fg_handle] = 0;
         t->queue_overflow_count[fg_handle]++;
     }
@@ -94,7 +100,8 @@ int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
     t->total_token_demand[fg_handle] -= (*ctx)->req_cost;
 
     t->queue_head[fg_handle]++;
-    if (unlikely(t->queue_head[fg_handle] >= NVME_SW_QUEUE_SIZE)) {
+    t->total_request_count--;
+    if (unlikely(t->queue_head[fg_handle] >= NVME_SW_TABLE_SIZE)) {
         t->queue_head[fg_handle] = 0;
     }
     return 0;
@@ -106,7 +113,7 @@ uint16_t nvme_sw_table_count(struct nvme_sw_table *t, long fg_handle) {
     if (t->queue_head[fg_handle] <= t->queue_tail[fg_handle]) {
         return t->queue_tail[fg_handle] - t->queue_head[fg_handle];
     } else {
-        return NVME_SW_QUEUE_SIZE - t->queue_head[fg_handle] +
+        return NVME_SW_TABLE_SIZE - t->queue_head[fg_handle] +
                t->queue_tail[fg_handle];
     }
 }
