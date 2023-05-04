@@ -155,12 +155,14 @@ void print_queue_status() {
         "SSD queue. See the snapshot below:\n",
         g_nvme_sw_table.total_request_count, g_outstanding_requests);
     iterate_all_tenants(nvme_fg, fg_handle) {
-        printf("%ld-queue has %ld requests, ", fg_handle,
-               nvme_sw_table_count(&g_nvme_sw_table, fg_handle));
-        printf("demands = %ld, saved_tokens = %ld, token credit = %ld.\n",
-               g_nvme_sw_table.total_token_demand[fg_handle],
-               g_nvme_sw_table.saved_tokens[fg_handle],
-               g_nvme_sw_table.token_credit[fg_handle]);
+        if (nvme_fg != NULL) {
+            printf("%ld-queue has %ld requests, ", fg_handle,
+                   nvme_sw_table_count(&g_nvme_sw_table, fg_handle));
+            printf("demands = %ld, saved_tokens = %ld, token credit = %ld.\n",
+                   g_nvme_sw_table.total_token_demand[fg_handle],
+                   g_nvme_sw_table.saved_tokens[fg_handle],
+                   g_nvme_sw_table.token_credit[fg_handle]);
+        }
     }
 }
 
@@ -1058,6 +1060,15 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
         printf("Current outstanding: %ld\n", g_outstanding_requests);
         panic("Ran out of NVMe cmd buffer space\n");
     }
+}
+
+long bsys_nvme_write(hqu_t priority, void *buf, unsigned long lba,
+                     unsigned int lba_count, unsigned long cookie) {
+    printf("bsys_nvme_write should not be called\n");
+}
+long bsys_nvme_read(hqu_t priority, void *buf, unsigned long lba,
+                    unsigned int lba_count, unsigned long cookie) {
+    printf("bsys_nvme_read should not be called\n");
 }
 
 long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,

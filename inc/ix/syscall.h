@@ -209,8 +209,8 @@ enum {
     KSYS_TCP_SENDV,
     KSYS_TCP_RECV_DONE,
     KSYS_TCP_CLOSE,
-    // KSYS_NVME_WRITE,
-    // KSYS_NVME_READ,
+    KSYS_NVME_WRITE,
+    KSYS_NVME_READ,
     KSYS_NVME_WRITEV,
     KSYS_NVME_READV,
     KSYS_NVME_OPEN,
@@ -367,12 +367,12 @@ static inline void ksys_nvme_close(struct bsys_desc *d, long dev_id, long ns_id,
  * @len: size of the write in bytes
  * @cookie: a user-level tag for the request
  */
-// static inline void ksys_nvme_write(struct bsys_desc *d, hqu_t priority,
-//                                    void *buf, unsigned long lba,
-//                                    unsigned int lba_count,
-//                                    unsigned long cookie) {
-//     BSYS_DESC_5ARG(d, KSYS_NVME_WRITE, priority, buf, lba, lba_count, cookie);
-// }
+static inline void ksys_nvme_write(struct bsys_desc *d, hqu_t priority,
+                                   void *buf, unsigned long lba,
+                                   unsigned int lba_count,
+                                   unsigned long cookie) {
+    BSYS_DESC_5ARG(d, KSYS_NVME_WRITE, priority, buf, lba, lba_count, cookie);
+}
 
 /**
  * ksys_nvme_read - reads from an nvme queue
@@ -383,12 +383,12 @@ static inline void ksys_nvme_close(struct bsys_desc *d, long dev_id, long ns_id,
  * @len: site of the read in bytes
  * @cookie: a user-level tag for the response
  */
-// static inline void ksys_nvme_read(struct bsys_desc *d, hqu_t priority,
-//                                   void *buf, unsigned long lba,
-//                                   unsigned int lba_count,
-//                                   unsigned long cookie) {
-//     BSYS_DESC_5ARG(d, KSYS_NVME_READ, priority, buf, lba, lba_count, cookie);
-// }
+static inline void ksys_nvme_read(struct bsys_desc *d, hqu_t priority,
+                                  void *buf, unsigned long lba,
+                                  unsigned int lba_count,
+                                  unsigned long cookie) {
+    BSYS_DESC_5ARG(d, KSYS_NVME_READ, priority, buf, lba, lba_count, cookie);
+}
 
 /**
  * ksys_nvme_writev - vectored (gather) write to an nvme queue
@@ -706,10 +706,10 @@ extern long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
                                     unsigned int IOPS_SLO,
                                     unsigned short rw_ratio_SLO);
 extern long bsys_nvme_unregister_flow(long flow_group_id);
-// extern long bsys_nvme_write(hqu_t priority, void *buf, unsigned long lba,
-//                             unsigned int lba_count, unsigned long cookie);
-// extern long bsys_nvme_read(hqu_t priority, void *buf, unsigned long lba,
-//                            unsigned int lba_count, unsigned long cookie);
+extern long bsys_nvme_write(hqu_t priority, void *buf, unsigned long lba,
+                            unsigned int lba_count, unsigned long cookie);
+extern long bsys_nvme_read(hqu_t priority, void *buf, unsigned long lba,
+                           unsigned int lba_count, unsigned long cookie);
 extern long bsys_nvme_writev(hqu_t fg_handle, void **sgls, int num_sgls,
                              unsigned long lba, unsigned int lba_count,
                              unsigned long cookie);

@@ -155,25 +155,19 @@ static inline void ix_nvme_open(long dev_id, long ns_id) {
     ksys_nvme_open(__bsys_arr_next(karr), dev_id, ns_id);
 }
 
-// static inline void ix_nvme_write(hqu_t handle, void *buf, unsigned long lba,
-//                                  unsigned int lba_count, unsigned long
-//                                  cookie) {
-//     if (karr->len >= karr->max_len)
-//         ix_flush();
+static inline void ix_nvme_write(hqu_t handle, void *buf, unsigned long lba,
+                                 unsigned int lba_count, unsigned long cookie) {
+    if (karr->len >= karr->max_len) ix_flush();
 
-//     ksys_nvme_write(__bsys_arr_next(karr), handle, buf, lba, lba_count,
-//     cookie);
-// }
+    ksys_nvme_write(__bsys_arr_next(karr), handle, buf, lba, lba_count, cookie);
+}
 
-// static inline void ix_nvme_read(hqu_t handle, void *buf, unsigned long lba,
-//                                 unsigned int lba_count, unsigned long cookie)
-//                                 {
-//     if (karr->len >= karr->max_len)
-//         ix_flush();
+static inline void ix_nvme_read(hqu_t handle, void *buf, unsigned long lba,
+                                unsigned int lba_count, unsigned long cookie) {
+    if (karr->len >= karr->max_len) ix_flush();
 
-//     ksys_nvme_read(__bsys_arr_next(karr), handle, buf, lba, lba_count,
-//     cookie);
-// }
+    ksys_nvme_read(__bsys_arr_next(karr), handle, buf, lba, lba_count, cookie);
+}
 
 static inline void ix_nvme_readv(hqu_t fg_handle, void **sgls, int num_sgls,
                                  unsigned long lba, unsigned int lba_count,

@@ -539,25 +539,25 @@ void ixev_nvme_open(long dev_id, long ns_id) {
     ksys_nvme_open(__bsys_arr_next(karr), dev_id, ns_id);
 }
 
-// void ixev_nvme_read(hqu_t handle, void *buf, unsigned long lba,
-//                     unsigned int lba_count, unsigned long cookie) {
-//     if (unlikely(karr->len >= karr->max_len)) {
-//         printf("ixev: ran out of command space 2: %lu\n", karr->len);
-//         exit(-1);
-//     }
+void ixev_nvme_read(hqu_t handle, void *buf, unsigned long lba,
+                    unsigned int lba_count, unsigned long cookie) {
+    if (unlikely(karr->len >= karr->max_len)) {
+        printf("ixev: ran out of command space 2: %lu\n", karr->len);
+        exit(-1);
+    }
 
-//     ksys_nvme_read(__bsys_arr_next(karr), handle, buf, lba, lba_count, cookie);
-// }
+    ksys_nvme_read(__bsys_arr_next(karr), handle, buf, lba, lba_count, cookie);
+}
 
-// void ixev_nvme_write(hqu_t handle, void *buf, unsigned long lba,
-//                      unsigned int lba_count, unsigned long cookie) {
-//     if (unlikely(karr->len >= karr->max_len)) {
-//         printf("ixev: ran out of command space 3\n");
-//         exit(-1);
-//     }
+void ixev_nvme_write(hqu_t handle, void *buf, unsigned long lba,
+                     unsigned int lba_count, unsigned long cookie) {
+    if (unlikely(karr->len >= karr->max_len)) {
+        printf("ixev: ran out of command space 3\n");
+        exit(-1);
+    }
 
-//     ksys_nvme_write(__bsys_arr_next(karr), handle, buf, lba, lba_count, cookie);
-// }
+    ksys_nvme_write(__bsys_arr_next(karr), handle, buf, lba, lba_count, cookie);
+}
 
 void ixev_nvme_readv(hqu_t fg_handle, void **sgls, int num_sgls,
                      unsigned long lba, unsigned int lba_count,
@@ -769,11 +769,11 @@ static void ixev_handle_one_ret(struct bsys_ret *r) {
             ixev_handle_nvme_open_ret(ctx, ret);
             break;
 
-        case KSYS_NVME_READV:
+        case KSYS_NVME_READ:
             ixev_handle_nvme_read_ret(ctx, ret);
             break;
 
-        case KSYS_NVME_WRITEV:
+        case KSYS_NVME_WRITE:
             ixev_handle_nvme_write_ret(ctx, ret);
             break;
 
