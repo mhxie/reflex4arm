@@ -49,6 +49,13 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
                                          .socket_id = rte_socket_id()};
 
     t->table = rte_hash_create(&params);
+    if (t->table == NULL) {
+        rte_free(t);
+        printf("Unable to create hash table: %s\n", rte_strerror(rte_errno));
+        return ENOMEM;
+    } else {
+        printf("Successfully created the hash table!!!\n");
+    }
 
     for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
         t->queue_head[i] = 0;
@@ -59,14 +66,6 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
         t->token_credit[i] = 0;
     }
     t->total_request_count = 0;
-
-    if (t->table == NULL) {
-        rte_free(t);
-        printf("Unable to create hash table: %s\n", rte_strerror(rte_errno));
-        return ENOMEM;
-    } else {
-        printf("Successfully created the hash table!!!\n");
-    }
 }
 int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
                             struct nvme_ctx *ctx) {
