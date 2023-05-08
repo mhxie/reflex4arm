@@ -227,6 +227,10 @@ int init_nvme_request(void) {
     // need to alloc req mempool for admin queue
     init_nvme_request_cpu();
     nvme_sw_table_init(g_nvme_sw_table);
+    if (g_nvme_sw_table == NULL) {
+        panic("ERROR: failed to allocate nvme_sw_table\n");
+        return -RET_NOMEM;
+    }
 #ifdef ENABLE_KSTATS
     rte_timer_init(&percpu_get(_qstats_timer));
     rte_timer_reset(&percpu_get(_qstats_timer), QSTATS_INTERVAL, PERIODICAL,
