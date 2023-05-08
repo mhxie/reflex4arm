@@ -33,8 +33,9 @@
 #include <nvme/nvmedev.h>
 #include <rte_hash.h>
 #include <rte_jhash.h>
-#define NVME_SW_QUEUE_SIZE 4096 * 512
+#define NVME_SW_TABLE_SIZE 4096 * 256
 
+// FIXME: optimize this struct for better cache locality
 struct nvme_sw_table {
     uint32_t queue_head[MAX_NVME_FLOW_GROUPS];
     uint32_t queue_tail[MAX_NVME_FLOW_GROUPS];
@@ -42,11 +43,12 @@ struct nvme_sw_table {
     uint32_t total_token_demand[MAX_NVME_FLOW_GROUPS];
     uint32_t saved_tokens[MAX_NVME_FLOW_GROUPS];
     int32_t token_credit[MAX_NVME_FLOW_GROUPS];
+    uint32_t total_request_count;
     struct rte_hash *table;
     float smoothy_share;  // not in use as of now
 };
 
-void nvme_sw_table_init(struct nvme_sw_table *t);
+void nvme_sw_table_init(struct nvme_sw_table **t);
 int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
                             struct nvme_ctx *ctx);
 int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,

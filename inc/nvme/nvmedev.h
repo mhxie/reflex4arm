@@ -107,22 +107,15 @@ struct nvme_tenant_mgmt {
     int num_best_effort_tenants;
 };
 
-/*
-struct nvme_tenant {
-        long fg_handle;
-        struct list_node list;
-};
-*/
-
 RTE_DECLARE_PER_LCORE(struct mempool, ctx_mempool);
 
 RTE_DECLARE_PER_LCORE(int, received_nvme_completions);
 
-RTE_DECLARE_PER_LCORE(struct nvme_tenant_mgmt, nvme_tenant_manager);
+// RTE_DECLARE_PER_LCORE(struct nvme_tenant_mgmt, nvme_tenant_manager);
+RTE_DECLARE_PER_LCORE(struct less_tenant_mgmt, tenant_manager);
 
 extern struct nvme_ctx *alloc_local_nvme_ctx(void);
 extern void free_local_nvme_ctx(struct nvme_ctx *req);
 extern void nvme_process_completions(void);
 extern bool nvme_poll_completions(int max_completions);
-// extern int nvme_schedule(void);
 extern int nvme_sched(void);

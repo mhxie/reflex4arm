@@ -88,14 +88,14 @@ RTE_DEFINE_PER_LCORE(unsigned long, syscall_cookie);
 RTE_DEFINE_PER_LCORE(unsigned long, idle_cycles);
 
 static bsysfn_t bsys_tbl[] = {
-    (bsysfn_t)bsys_udp_send, (bsysfn_t)bsys_udp_sendv,
-    (bsysfn_t)bsys_udp_recv_done, (bsysfn_t)bsys_tcp_connect,
-    (bsysfn_t)bsys_tcp_accept, (bsysfn_t)bsys_tcp_reject,
-    (bsysfn_t)bsys_tcp_send, (bsysfn_t)bsys_tcp_sendv,
-    (bsysfn_t)bsys_tcp_recv_done, (bsysfn_t)bsys_tcp_close,
-    // (bsysfn_t)bsys_nvme_write, (bsysfn_t)bsys_nvme_read,
-    (bsysfn_t)bsys_nvme_writev, (bsysfn_t)bsys_nvme_readv,
-    (bsysfn_t)bsys_nvme_open, (bsysfn_t)bsys_nvme_close,
+    (bsysfn_t)bsys_udp_send,           (bsysfn_t)bsys_udp_sendv,
+    (bsysfn_t)bsys_udp_recv_done,      (bsysfn_t)bsys_tcp_connect,
+    (bsysfn_t)bsys_tcp_accept,         (bsysfn_t)bsys_tcp_reject,
+    (bsysfn_t)bsys_tcp_send,           (bsysfn_t)bsys_tcp_sendv,
+    (bsysfn_t)bsys_tcp_recv_done,      (bsysfn_t)bsys_tcp_close,
+    (bsysfn_t)bsys_nvme_write,         (bsysfn_t)bsys_nvme_read,
+    (bsysfn_t)bsys_nvme_writev,        (bsysfn_t)bsys_nvme_readv,
+    (bsysfn_t)bsys_nvme_open,          (bsysfn_t)bsys_nvme_close,
     (bsysfn_t)bsys_nvme_register_flow, (bsysfn_t)bsys_nvme_unregister_flow};
 
 //

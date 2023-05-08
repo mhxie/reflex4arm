@@ -43,6 +43,20 @@ struct less_tenant_mgmt {
     uint16_t num_be_tenants;
 };
 
+void init_less_tenant_mgmt(struct less_tenant_mgmt *manager) {
+    int i;
+    for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
+        manager->active_lc_tenants[i] = -1;
+        manager->active_be_tenants[i] = -1;
+    }
+    manager->lc_head = 0;
+    manager->lc_tail = 0;
+    manager->be_head = 0;
+    manager->be_tail = 0;
+    manager->num_lc_tenants = 0;
+    manager->num_be_tenants = 0;
+}
+
 bool nvme_lc_tenant_isempty(struct less_tenant_mgmt *manager) {
     return manager->lc_head == manager->lc_tail;
 }
@@ -50,6 +64,9 @@ bool nvme_lc_tenant_isempty(struct less_tenant_mgmt *manager) {
 void nvme_lc_tenant_activate(struct less_tenant_mgmt *manager, long tenant_id) {
     manager->active_lc_tenants[manager->lc_tail] = tenant_id;
     manager->lc_tail = (manager->lc_tail + 1) % MAX_NVME_FLOW_GROUPS;
+    if (unlikely(manager->lc_tail == manager->lc_head)) {
+        printf("Latency-critical tenants exceeds limits\n");
+    }
 }
 
 void nvme_lc_tenant_deactivate(struct less_tenant_mgmt *manager,
@@ -64,6 +81,9 @@ bool nvme_be_tenant_isempty(struct less_tenant_mgmt *manager) {
 void nvme_be_tenant_activate(struct less_tenant_mgmt *manager, long tenant_id) {
     manager->active_be_tenants[manager->be_tail] = tenant_id;
     manager->be_tail = (manager->be_tail + 1) % MAX_NVME_FLOW_GROUPS;
+    if (unlikely(manager->be_tail == manager->be_head)) {
+        printf("Best-effort tenants exceeds limits\n");
+    }
 }
 
 void nvme_be_tenant_deactivate(struct less_tenant_mgmt *manager,
@@ -75,7 +95,7 @@ void nvme_be_tenant_deactivate(struct less_tenant_mgmt *manager,
     for (long                                                                  \
              i = m->type##_head,                                               \
              fg_handle = m->active_##type##_tenants[i % MAX_NVME_FLOW_GROUPS]; \
-         (m->type##_head < m->type##_tail                                      \
+         (m->type##_head <= m->type##_tail                                     \
               ? (i < m->type##_tail)                                           \
               : (i < m->type##_tail + MAX_NVME_FLOW_GROUPS));                  \
          i++,                                                                  \

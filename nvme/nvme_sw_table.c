@@ -31,46 +31,58 @@
  */
 
 #include <nvme/nvme_sw_table.h>
+#include <rte_config.h>
+#include <rte_eal.h>
 #include <rte_errno.h>
+#include <rte_lcore.h>
+#include <rte_malloc.h>
 
-void nvme_sw_table_init(struct nvme_sw_table *t) {
+void nvme_sw_table_init(struct nvme_sw_table **t) {
     int i;
-    t = rte_malloc(NULL, sizeof(struct nvme_sw_table), 0);
+    *t = (struct nvme_sw_table *)rte_malloc(NULL, sizeof(struct nvme_sw_table),
+                                            0);
 
-    struct rte_hash_parameters params = {
-        .entries = NVME_SW_QUEUE_SIZE * MAX_NVME_FLOW_GROUPS,
-        .key_len = sizeof(uint32_t),
-        .hash_func = rte_jhash,
-        .hash_func_init_val = 0,
-        .socket_id = rte_socket_id()};
+    struct rte_hash_parameters params = {.name = "test",
+                                         .entries = NVME_SW_TABLE_SIZE * 8,
+                                         .key_len = sizeof(uint32_t),
+                                         .hash_func = rte_jhash,
+                                         .hash_func_init_val = 0,
+                                         .socket_id = rte_socket_id()};
 
-    t->table = rte_hash_create(&params);
-
-    for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
-        t->queue_head[i] = 0;
-        t->queue_tail[i] = 0;
-        t->queue_overflow_count[i] = 0;
-        t->total_token_demand[i] = 0;
-        t->saved_tokens[i] = 0;
-        t->token_credit[i] = 0;
-    }
-
-    if (t->table == NULL) {
-        rte_free(t);
+    (*t)->table = rte_hash_create(&params);
+    if ((*t)->table == NULL) {
+        rte_free(*t);
         printf("Unable to create hash table: %s\n", rte_strerror(rte_errno));
         return ENOMEM;
+    } else {
+        printf("Successfully created the hash table!!!\n");
     }
+
+    for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
+        (*t)->queue_head[i] = 0;
+        (*t)->queue_tail[i] = 0;
+        (*t)->queue_overflow_count[i] = 0;
+        (*t)->total_token_demand[i] = 0;
+        (*t)->saved_tokens[i] = 0;
+        (*t)->token_credit[i] = 0;
+    }
+    (*t)->total_request_count = 0;
 }
 int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
                             struct nvme_ctx *ctx) {
     // Key Format: seq_number (15 bit) | queue_id (12 bit) | thread_id (5 bit)
     uint32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
                    << 5 + t->queue_tail[fg_handle] << 17;
-    int ret = rte_hash_add_key_data(t->table, &key, ctx);
+    int ret = rte_hash_add_key_data(t->table, (void *)&key, (void *)ctx);
     t->total_token_demand[fg_handle] += ctx->req_cost;
 
     t->queue_tail[fg_handle]++;
-    if (unlikely(t->queue_tail[fg_handle] >= NVME_SW_QUEUE_SIZE)) {
+    t->total_request_count++;
+    if (unlikely(t->total_request_count >= NVME_SW_TABLE_SIZE)) {
+        printf("ERROR: Cannot push more requests into the table\n");
+        return RET_NOMEM;
+    }
+    if (unlikely(t->queue_tail[fg_handle] >= NVME_SW_TABLE_SIZE)) {
         t->queue_tail[fg_handle] = 0;
         t->queue_overflow_count[fg_handle]++;
     }
@@ -79,16 +91,27 @@ int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
 }
 int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
                             struct nvme_ctx **ctx) {
+    int ret;
     if (unlikely(nvme_sw_table_isempty(t, fg_handle))) {
         return -1;
     }
     uint32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
                    << 5 + t->queue_head[fg_handle] << 17;
-    *ctx = rte_hash_del_key(t->table, &key);
+    ret = rte_hash_lookup_data(t->table, (void *)&key, (void **)ctx);
+    if (ret < 0) {
+        printf("ERROR: Cannot find the request in the table\n");
+        return ret;
+    }
+    ret = rte_hash_del_key(t->table, (void *)&key);
+    if (ret < 0) {
+        printf("ERROR: Cannot pop the request from the table\n");
+        return ret;
+    }
     t->total_token_demand[fg_handle] -= (*ctx)->req_cost;
 
     t->queue_head[fg_handle]++;
-    if (unlikely(t->queue_head[fg_handle] >= NVME_SW_QUEUE_SIZE)) {
+    t->total_request_count--;
+    if (unlikely(t->queue_head[fg_handle] >= NVME_SW_TABLE_SIZE)) {
         t->queue_head[fg_handle] = 0;
     }
     return 0;
@@ -100,7 +123,7 @@ uint16_t nvme_sw_table_count(struct nvme_sw_table *t, long fg_handle) {
     if (t->queue_head[fg_handle] <= t->queue_tail[fg_handle]) {
         return t->queue_tail[fg_handle] - t->queue_head[fg_handle];
     } else {
-        return NVME_SW_QUEUE_SIZE - t->queue_head[fg_handle] +
+        return NVME_SW_TABLE_SIZE - t->queue_head[fg_handle] +
                t->queue_tail[fg_handle];
     }
 }
@@ -113,9 +136,10 @@ int nvme_sw_table_peak_head_cost(struct nvme_sw_table *t, long fg_handle) {
     struct nvme_ctx *ctx;
     uint32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
                    << 5 + t->queue_head[fg_handle] << 17;
-    int ret = rte_hash_lookup_data(t->table, &key, (void **)&ctx);
+    int ret = rte_hash_lookup_data(t->table, (void *)&key, (void **)&ctx);
     if (ret < 0) {
-        return -2;
+        printf("ERROR: Cannot find the request in the table\n");
+        return ret;
     }
     return ctx->req_cost;
 }
