@@ -37,10 +37,10 @@
 #include <rte_lcore.h>
 #include <rte_malloc.h>
 
-void nvme_sw_table_init(struct nvme_sw_table *t) {
+void nvme_sw_table_init(struct nvme_sw_table **t) {
     int i;
-    t = (struct nvme_sw_table *)rte_malloc(NULL, sizeof(struct nvme_sw_table),
-                                           0);
+    *t = (struct nvme_sw_table *)rte_malloc(NULL, sizeof(struct nvme_sw_table),
+                                            0);
 
     struct rte_hash_parameters params = {.name = "test",
                                          .entries = NVME_SW_TABLE_SIZE * 8,
@@ -49,9 +49,9 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
                                          .hash_func_init_val = 0,
                                          .socket_id = rte_socket_id()};
 
-    t->table = rte_hash_create(&params);
-    if (t->table == NULL) {
-        rte_free(t);
+    (*t)->table = rte_hash_create(&params);
+    if ((*t)->table == NULL) {
+        rte_free(*t);
         printf("Unable to create hash table: %s\n", rte_strerror(rte_errno));
         return ENOMEM;
     } else {
@@ -59,14 +59,14 @@ void nvme_sw_table_init(struct nvme_sw_table *t) {
     }
 
     for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
-        t->queue_head[i] = 0;
-        t->queue_tail[i] = 0;
-        t->queue_overflow_count[i] = 0;
-        t->total_token_demand[i] = 0;
-        t->saved_tokens[i] = 0;
-        t->token_credit[i] = 0;
+        (*t)->queue_head[i] = 0;
+        (*t)->queue_tail[i] = 0;
+        (*t)->queue_overflow_count[i] = 0;
+        (*t)->total_token_demand[i] = 0;
+        (*t)->saved_tokens[i] = 0;
+        (*t)->token_credit[i] = 0;
     }
-    t->total_request_count = 0;
+    (*t)->total_request_count = 0;
 }
 int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
                             struct nvme_ctx *ctx) {

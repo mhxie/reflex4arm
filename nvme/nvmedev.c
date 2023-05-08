@@ -226,7 +226,7 @@ int init_nvme_request(void) {
 
     // need to alloc req mempool for admin queue
     init_nvme_request_cpu();
-    nvme_sw_table_init(g_nvme_sw_table);
+    nvme_sw_table_init(&g_nvme_sw_table);
     if (g_nvme_sw_table == NULL) {
         panic("ERROR: failed to allocate nvme_sw_table\n");
         return -RET_NOMEM;
