@@ -1128,12 +1128,12 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
             NVME_CMD_WRITE, lba_count * global_ns_sector_size);
         ret = nvme_sw_table_push_back(g_nvme_sw_table, fg_handle, ctx);
         if (g_nvme_fgs[fg_handle].latency_critical_flag &&
-            !nvme_sw_table_isempty(thread_tenant_manager, fg_handle)) {
+            !nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             thread_tenant_manager = &percpu_get(tenant_manager);
             nvme_lc_tenant_activate(&thread_tenant_manager, fg_handle);
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
-            !nvme_sw_table_isempty(thread_tenant_manager, fg_handle)) {
+            !nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             thread_tenant_manager = &percpu_get(tenant_manager);
             nvme_be_tenant_activate(&thread_tenant_manager, fg_handle);
         }
@@ -1201,12 +1201,12 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
             NVME_CMD_READ, lba_count * global_ns_sector_size);
         ret = nvme_sw_table_push_back(g_nvme_sw_table, fg_handle, ctx);
         if (g_nvme_fgs[fg_handle].latency_critical_flag &&
-            nvme_sw_table_isempty(thread_tenant_manager, fg_handle)) {
+            nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             thread_tenant_manager = &percpu_get(tenant_manager);
             nvme_lc_tenant_activate(&thread_tenant_manager, fg_handle);
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
-            nvme_sw_table_isempty(thread_tenant_manager, fg_handle)) {
+            nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             thread_tenant_manager = &percpu_get(tenant_manager);
             nvme_be_tenant_activate(&thread_tenant_manager, fg_handle);
         }
