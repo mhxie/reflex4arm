@@ -48,7 +48,7 @@ struct nvme_sw_table {
     float smoothy_share;  // not in use as of now
 };
 
-void nvme_sw_table_init(struct nvme_sw_table *t);
+void nvme_sw_table_init(struct nvme_sw_table **t);
 int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
                             struct nvme_ctx *ctx);
 int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
