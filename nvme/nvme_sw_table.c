@@ -39,7 +39,8 @@
 
 void nvme_sw_table_init(struct nvme_sw_table *t) {
     int i;
-    t = rte_malloc(NULL, sizeof(struct nvme_sw_table), 0);
+    t = (struct nvme_sw_table *)rte_malloc(NULL, sizeof(struct nvme_sw_table),
+                                           0);
 
     struct rte_hash_parameters params = {.name = "test",
                                          .entries = NVME_SW_TABLE_SIZE * 8,
