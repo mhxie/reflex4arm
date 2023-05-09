@@ -103,6 +103,10 @@ int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
         printf("fg_handle = %ld, queue_head = %d\n", fg_handle,
                t->queue_head[fg_handle]);
         return ret;
+    } else {
+        printf("pop_front OKAY: found the request in the table\n");
+        printf("fg_handle = %ld, queue_head = %d\n", fg_handle,
+               t->queue_head[fg_handle]);
     }
     ret = rte_hash_del_key(t->table, (void *)&key);
     if (ret < 0) {
