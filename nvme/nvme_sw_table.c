@@ -79,9 +79,9 @@ int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
         return RET_NOMEM;
     } else {
         printf(
-            "push_back OKAY: fg_handle = %ld, queue_head = %d, queue_tail = "
-            "%d\n",
-            fg_handle, t->queue_head[fg_handle], t->queue_tail[fg_handle]);
+            "push_back OKAY: fg_handle = %ld | queue_tail = "
+            "%d, key = %ld\n",
+            fg_handle, t->queue_tail[fg_handle], key);
     }
 
     t->total_token_demand[fg_handle] += ctx->req_cost;
@@ -106,13 +106,13 @@ int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
     ret = rte_hash_lookup_data(t->table, (void *)&key, (void **)ctx);
     if (ret < 0) {
         printf("pop_front ERROR: Cannot find the request in the table\n");
-        printf("fg_handle = %ld, queue_head = %d\n", fg_handle,
-               t->queue_head[fg_handle]);
+        printf("fg_handle = %ld | queue_head = %d, key = %d\n", fg_handle,
+               t->queue_head[fg_handle], key);
         return ret;
     } else {
         printf("pop_front OKAY: found the request in the table\n");
-        printf("fg_handle = %ld, queue_head = %d, queue_tail = %d\n", fg_handle,
-               t->queue_head[fg_handle], t->queue_tail[fg_handle]);
+        printf("fg_handle = %ld | queue_head = %d, key = %d\n", fg_handle,
+               t->queue_head[fg_handle], key);
     }
     ret = rte_hash_del_key(t->table, (void *)&key);
     if (ret < 0) {
