@@ -44,7 +44,7 @@ void nvme_sw_table_init(struct nvme_sw_table **t) {
 
     struct rte_hash_parameters params = {.name = "test",
                                          .entries = NVME_SW_TABLE_SIZE * 8,
-                                         .key_len = sizeof(uint32_t),
+                                         .key_len = sizeof(int32_t),
                                          .hash_func = rte_jhash,
                                          .hash_func_init_val = 0,
                                          .socket_id = rte_socket_id()};
@@ -71,9 +71,9 @@ void nvme_sw_table_init(struct nvme_sw_table **t) {
 int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
                             struct nvme_ctx *ctx) {
     // Key Format: seq_number (15 bit) | queue_id (12 bit) | thread_id (5 bit)
-    uint32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
-                   << 5 + t->queue_tail[fg_handle] << 17;
-    printf("pushing back key %d\n", key);
+    int32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
+                  << 5 + t->queue_tail[fg_handle] << 17;
+    printf("pushing back key %ld\n", key);
     int ret = rte_hash_add_key_data(t->table, (void *)&key, (void *)ctx);
     if (unlikely(t->total_request_count >= NVME_SW_TABLE_SIZE)) {
         printf("push_back ERROR: Cannot push more requests into the table\n");
@@ -81,7 +81,7 @@ int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
     } else {
         printf(
             "push_back OKAY: fg_handle = %ld | queue_tail = "
-            "%d, key = %d\n",
+            "%d, key = %ld\n",
             fg_handle, t->queue_tail[fg_handle], key);
     }
 
@@ -102,18 +102,18 @@ int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
     if (unlikely(nvme_sw_table_isempty(t, fg_handle))) {
         return -1;
     }
-    uint32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
-                   << 5 + t->queue_head[fg_handle] << 17;
-    printf("poping front key %d\n", key);
+    int32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
+                  << 5 + t->queue_head[fg_handle] << 17;
+    printf("poping front key %ld\n", key);
     ret = rte_hash_lookup_data(t->table, (void *)&key, (void **)ctx);
     if (ret < 0) {
         printf("pop_front ERROR: Cannot find the request in the table\n");
-        printf("fg_handle = %ld | queue_head = %d, key = %d\n", fg_handle,
+        printf("fg_handle = %ld | queue_head = %d, key = %ld\n", fg_handle,
                t->queue_head[fg_handle], key);
         return ret;
     } else {
         printf("pop_front OKAY: found the request in the table\n");
-        printf("fg_handle = %ld | queue_head = %d, key = %d\n", fg_handle,
+        printf("fg_handle = %ld | queue_head = %d, key = %ld\n", fg_handle,
                t->queue_head[fg_handle], key);
     }
     ret = rte_hash_del_key(t->table, (void *)&key);
@@ -148,8 +148,8 @@ int nvme_sw_table_peak_head_cost(struct nvme_sw_table *t, long fg_handle) {
     }
 
     struct nvme_ctx *ctx;
-    uint32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
-                   << 5 + t->queue_head[fg_handle] << 17;
+    int32_t key = RTE_PER_LCORE(cpu_nr) + fg_handle
+                  << 5 + t->queue_head[fg_handle] << 17;
     int ret = rte_hash_lookup_data(t->table, (void *)&key, (void **)&ctx);
     if (ret < 0) {
         printf("peak_head_cost ERROR: Cannot find the request in the table\n");
