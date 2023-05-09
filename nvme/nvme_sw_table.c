@@ -78,9 +78,10 @@ int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
         printf("push_back ERROR: Cannot push more requests into the table\n");
         return RET_NOMEM;
     } else {
-        printf("push_back OKAY: found the request in the table\n");
-        printf("fg_handle = %ld, queue_head = %d\n", fg_handle,
-               t->queue_head[fg_handle]);
+        printf(
+            "push_back OKAY: fg_handle = %ld, queue_head = %d, queue_tail = "
+            "%d\n",
+            fg_handle, t->queue_head[fg_handle], t->queue_tail[fg_handle]);
     }
 
     t->total_token_demand[fg_handle] += ctx->req_cost;
@@ -110,8 +111,8 @@ int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
         return ret;
     } else {
         printf("pop_front OKAY: found the request in the table\n");
-        printf("fg_handle = %ld, queue_head = %d\n", fg_handle,
-               t->queue_head[fg_handle]);
+        printf("fg_handle = %ld, queue_head = %d, queue_tail = %d\n", fg_handle,
+               t->queue_head[fg_handle], t->queue_tail[fg_handle]);
     }
     ret = rte_hash_del_key(t->table, (void *)&key);
     if (ret < 0) {
