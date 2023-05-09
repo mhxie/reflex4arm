@@ -1198,11 +1198,11 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
         if (g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             nvme_lc_tenant_activate(&percpu_get(tenant_manager), fg_handle);
-            printf("LC tenant %ld activated\n", fg_handle);
-            printf("Tenant manager has %d active LC tenants\n",
-                   percpu_get(tenant_manager).lc_tail -
-                       percpu_get(tenant_manager)
-                           .lc_head);  // no mod, just for debugging
+            // printf("LC tenant %ld activated\n", fg_handle);
+            // printf("Tenant manager has %d active LC tenants\n",
+            //        percpu_get(tenant_manager).lc_tail -
+            //            percpu_get(tenant_manager)
+            //                .lc_head);  // no mod, just for debugging
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
@@ -1289,13 +1289,14 @@ static inline int nvme_sched_lessv0_subround1(void) {
         }
     }
     nvme_lc_tenant_deactivate(thread_tenant_manager, count);
-    if (count > 0) {
-        printf("LC tenant %ld deactivated\n", fg_handle);
-        printf(
-            "Tenant manager now has %d active LC tenants\n",
-            thread_tenant_manager->lc_tail -
-                thread_tenant_manager->lc_head);  // no mod, just for debugging
-    }
+    // if (count > 0) {
+    //     printf("LC tenant %ld deactivated\n", fg_handle);
+    //     printf(
+    //         "Tenant manager now has %d active LC tenants\n",
+    //         thread_tenant_manager->lc_tail -
+    //             thread_tenant_manager->lc_head);  // no mod, just for
+    //             debugging
+    // }
     percpu_get(local_leftover_tokens) = local_leftover;
 
     return 0;
