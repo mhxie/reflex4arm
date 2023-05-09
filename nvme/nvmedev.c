@@ -172,7 +172,8 @@ void print_queue_status() {
  * Returns 0 if successful, otherwise failure.
  */
 int init_nvme_request_cpu(void) {
-    struct less_tenant_mgmt *thread_tenant_manager;
+    struct less_tenant_mgmt *thread_tenant_manager =
+        &percpu_get(tenant_manager);
     int ret;
 
     if (percpu_get(mempool_initialized)) {
@@ -193,7 +194,6 @@ int init_nvme_request_cpu(void) {
         return ret;
     }
 
-    thread_tenant_manager = &percpu_get(tenant_manager);
     init_less_tenant_mgmt(thread_tenant_manager);
 
     percpu_get(last_sched_time) = timer_now();
@@ -1081,7 +1081,6 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
     struct spdk_nvme_ns *ns;
     struct nvme_ctx *ctx;
     struct nvme_ctx *pctx;
-    struct less_tenant_mgmt *thread_tenant_manager;
     int ret;
 
     KSTATS_VECTOR(bsys_nvme_writev);
@@ -1128,13 +1127,11 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
             NVME_CMD_WRITE, lba_count * global_ns_sector_size);
         if (g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
-            thread_tenant_manager = &percpu_get(tenant_manager);
-            nvme_lc_tenant_activate(&thread_tenant_manager, fg_handle);
+            nvme_lc_tenant_activate(&percpu_get(tenant_manager), fg_handle);
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
-            thread_tenant_manager = &percpu_get(tenant_manager);
-            nvme_be_tenant_activate(&thread_tenant_manager, fg_handle);
+            nvme_be_tenant_activate(&percpu_get(tenant_manager), fg_handle);
         }
         ret = nvme_sw_table_push_back(g_nvme_sw_table, fg_handle, ctx);
         if (ret != 0) {
@@ -1153,7 +1150,6 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     struct spdk_nvme_ns *ns;
     struct nvme_ctx *ctx;
     struct nvme_ctx *pctx;
-    struct less_tenant_mgmt *thread_tenant_manager;
     int ret;
 
     KSTATS_VECTOR(bsys_nvme_readv);
@@ -1198,21 +1194,19 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     } else {
         ctx->fg_handle = fg_handle;
         ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_READ, lba_count * global_ns_sector_size); 
+            NVME_CMD_READ, lba_count * global_ns_sector_size);
         if (g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
-            thread_tenant_manager = &percpu_get(tenant_manager);
-            nvme_lc_tenant_activate(&thread_tenant_manager, fg_handle);
+            nvme_lc_tenant_activate(&percpu_get(tenant_manager), fg_handle);
             printf("LC tenant %ld activated\n", fg_handle);
             printf("Tenant manager has %d active LC tenants\n",
-                   thread_tenant_manager->lc_tail -
-                       thread_tenant_manager
-                           ->lc_head);  // no mod, just for debugging
+                   percpu_get(tenant_manager).lc_tail -
+                       percpu_get(tenant_manager)
+                           .lc_head);  // no mod, just for debugging
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
-            thread_tenant_manager = &percpu_get(tenant_manager);
-            nvme_be_tenant_activate(&thread_tenant_manager, fg_handle);
+            nvme_be_tenant_activate(&percpu_get(tenant_manager), fg_handle);
         }
         ret = nvme_sw_table_push_back(g_nvme_sw_table, fg_handle, ctx);
         if (ret != 0) {
@@ -1295,11 +1289,13 @@ static inline int nvme_sched_lessv0_subround1(void) {
         }
     }
     nvme_lc_tenant_deactivate(thread_tenant_manager, count);
-    printf("LC tenant %ld deactivated\n", fg_handle);
-    printf("Tenant manager now has %d active LC tenants\n",
-                   thread_tenant_manager->lc_tail -
-                       thread_tenant_manager
-                           ->lc_head);  // no mod, just for debugging
+    if (count > 0) {
+        printf("LC tenant %ld deactivated\n", fg_handle);
+        printf(
+            "Tenant manager now has %d active LC tenants\n",
+            thread_tenant_manager->lc_tail -
+                thread_tenant_manager->lc_head);  // no mod, just for debugging
+    }
     percpu_get(local_leftover_tokens) = local_leftover;
 
     return 0;
@@ -1425,11 +1421,10 @@ int nvme_sched(void) {
 #ifdef NO_SCHED
     return 0;
 #endif
-    struct nvme_tenant_mgmt *thread_tenant_manager;
-    thread_tenant_manager = &percpu_get(tenant_manager);
     int round1_ret;
 
-    if (thread_tenant_manager->num_tenants == 0) {
+    if (percpu_get(tenant_manager).num_lc_tenants == 0 &&
+        percpu_get(tenant_manager).num_be_tenants == 0) {
         percpu_get(last_sched_time) = timer_now();
         percpu_get(last_sched_time_be) = rdtsc();
 #ifndef SINGLE_THREADED
