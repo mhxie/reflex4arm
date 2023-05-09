@@ -79,7 +79,7 @@ int nvme_sw_table_push_back(struct nvme_sw_table *t, long fg_handle,
     t->queue_tail[fg_handle]++;
     t->total_request_count++;
     if (unlikely(t->total_request_count >= NVME_SW_TABLE_SIZE)) {
-        printf("ERROR: Cannot push more requests into the table\n");
+        printf("push_back ERROR: Cannot push more requests into the table\n");
         return RET_NOMEM;
     }
     if (unlikely(t->queue_tail[fg_handle] >= NVME_SW_TABLE_SIZE)) {
@@ -99,12 +99,14 @@ int nvme_sw_table_pop_front(struct nvme_sw_table *t, long fg_handle,
                    << 5 + t->queue_head[fg_handle] << 17;
     ret = rte_hash_lookup_data(t->table, (void *)&key, (void **)ctx);
     if (ret < 0) {
-        printf("ERROR: Cannot find the request in the table\n");
+        printf("pop_front ERROR: Cannot find the request in the table\n");
+        printf("fg_handle = %ld, queue_head = %d\n", fg_handle,
+               t->queue_head[fg_handle]);
         return ret;
     }
     ret = rte_hash_del_key(t->table, (void *)&key);
     if (ret < 0) {
-        printf("ERROR: Cannot pop the request from the table\n");
+        printf("pop_front ERROR: Cannot delete the request from the table\n");
         return ret;
     }
     t->total_token_demand[fg_handle] -= (*ctx)->req_cost;
@@ -138,7 +140,9 @@ int nvme_sw_table_peak_head_cost(struct nvme_sw_table *t, long fg_handle) {
                    << 5 + t->queue_head[fg_handle] << 17;
     int ret = rte_hash_lookup_data(t->table, (void *)&key, (void **)&ctx);
     if (ret < 0) {
-        printf("ERROR: Cannot find the request in the table\n");
+        printf("peak_head_cost ERROR: Cannot find the request in the table\n");
+        printf("fg_handle = %ld, queue_head = %d\n", fg_handle,
+               t->queue_head[fg_handle]);
         return ret;
     }
     return ctx->req_cost;
