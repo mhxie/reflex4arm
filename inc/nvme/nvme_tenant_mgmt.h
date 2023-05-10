@@ -113,8 +113,7 @@ void nvme_be_tenant_deactivate(struct less_tenant_mgmt *manager,
 //          i++)
 #define iterate_active_tenants_by_type(m, type)                              \
     for (long i = m->type##_head;                                            \
-         i < (m->type##_tail + MAX_NVME_FLOW_GROUPS) % MAX_NVME_FLOW_GROUPS) \
-        ;                                                                    \
+         i < (m->type##_tail + MAX_NVME_FLOW_GROUPS) % MAX_NVME_FLOW_GROUPS; \
          i++)
 
 #define iterate_all_tenants(fg_handle) \
