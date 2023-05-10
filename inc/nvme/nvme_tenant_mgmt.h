@@ -105,22 +105,12 @@ void nvme_be_tenant_deactivate(struct less_tenant_mgmt *manager,
     manager->be_head = (manager->be_head + count) % MAX_NVME_FLOW_GROUPS;
 }
 
-#define iterate_active_tenants_by_type(m, fg_handle, type)                     \
-    for (long                                                                  \
-             i = m->type##_head,                                               \
-             fg_handle = m->active_##type##_tenants[i % MAX_NVME_FLOW_GROUPS]; \
-         (m->type##_head <= m->type##_tail                                     \
-              ? (i < m->type##_tail)                                           \
-              : (i < m->type##_tail + MAX_NVME_FLOW_GROUPS));                  \
-         i++,                                                                  \
-             fg_handle = m->active_##type##_tenants[i % MAX_NVME_FLOW_GROUPS])
+#define iterate_active_tenants_by_type(m, type)               \
+    for (long i = m->type##_head;                             \
+         (m->type##_head <= m->type##_tail                    \
+              ? (i < m->type##_tail)                          \
+              : (i < m->type##_tail + MAX_NVME_FLOW_GROUPS)); \
+         i++)
 
-// FIXME: hard-coded the global variables as of now
-#define iterate_all_tenants(nvme_fg, fg_handle)                             \
-    for (fg_handle = 0, nvme_fg = bitmap_test(g_nvme_fgs_bitmap, fg_handle) \
-                                      ? &g_nvme_fgs[fg_handle]              \
-                                      : NULL;                               \
-         fg_handle < MAX_NVME_FLOW_GROUPS;                                  \
-         fg_handle++, nvme_fg = bitmap_test(g_nvme_fgs_bitmap, fg_handle)   \
-                                    ? &g_nvme_fgs[fg_handle]                \
-                                    : NULL)
+#define iterate_all_tenants(fg_handle) \
+    for (fg_handle = 0; fg_handle < MAX_NVME_FLOW_GROUPS; fg_handle++)

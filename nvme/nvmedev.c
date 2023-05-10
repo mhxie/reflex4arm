@@ -154,7 +154,10 @@ void print_queue_status() {
         "There are still %ld requests pending in the table, %d requests in the "
         "SSD queue. See the snapshot below:\n",
         g_nvme_sw_table->total_request_count, g_outstanding_requests);
-    iterate_all_tenants(nvme_fg, fg_handle) {
+    iterate_all_tenants(fg_handle) {
+        nvme_fg = bitmap_test(g_nvme_fgs_bitmap, fg_handle)
+                      ? &g_nvme_fgs[fg_handle]
+                      : NULL;
         if (nvme_fg != NULL) {
             printf("%ld-queue has %ld requests, ", fg_handle,
                    nvme_sw_table_count(g_nvme_sw_table, fg_handle));
@@ -1264,8 +1267,10 @@ static inline int nvme_sched_lessv0_subround1(void) {
 
     thread_tenant_manager = &percpu_get(tenant_manager);
 
-    iterate_active_tenants_by_type(thread_tenant_manager, fg_handle, lc) {
-        printf("iterating active tenant %d\n", fg_handle);
+    iterate_active_tenants_by_type(thread_tenant_manager, lc) {
+        fg_handle =
+            thread_tenant_manager->active_lc_tenants[i % MAX_NVME_FLOW_GROUPS];
+        printf("iterating active %d-th tenant %d\n", i, fg_handle);
         token_increment =
             (g_nvme_fgs[fg_handle].scaled_IOPuS_limit * time_delta) + 0.5;
         g_nvme_sw_table->token_credit[fg_handle] += (long)token_increment;
@@ -1332,7 +1337,9 @@ static inline void nvme_sched_subround2(void) {
 
     thread_tenant_manager = &percpu_get(tenant_manager);
 
-    iterate_active_tenants_by_type(thread_tenant_manager, fg_handle, be) {
+    iterate_active_tenants_by_type(thread_tenant_manager, be) {
+        fg_handle =
+            thread_tenant_manager->active_be_tenants[i % MAX_NVME_FLOW_GROUPS];
         local_demand += g_nvme_sw_table->total_token_demand[fg_handle] -
                         g_nvme_sw_table->saved_tokens[fg_handle];
     }
@@ -1357,7 +1364,9 @@ static inline void nvme_sched_subround2(void) {
     percpu_get(last_sched_time_be) = now;
 
     // serve best effort tenants in round-robin order
-    iterate_active_tenants_by_type(thread_tenant_manager, fg_handle, be) {
+    iterate_active_tenants_by_type(thread_tenant_manager, be) {
+        fg_handle =
+            thread_tenant_manager->active_be_tenants[i % MAX_NVME_FLOW_GROUPS];
         be_tokens +=
             nvme_sw_table_take_saved_tokens(g_nvme_sw_table, fg_handle);
         token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
