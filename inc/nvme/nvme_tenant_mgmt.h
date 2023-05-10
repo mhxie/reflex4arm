@@ -32,6 +32,20 @@
 
 #include <nvme/nvmedev.h>
 
+// #define iterate_active_tenants_by_type(m, type)               \
+//     for (long i = m->type##_head;                             \
+//          (m->type##_head <= m->type##_tail                    \
+//               ? (i < m->type##_tail)                          \
+//               : (i < m->type##_tail + MAX_NVME_FLOW_GROUPS)); \
+//          i++)
+#define iterate_active_tenants_by_type(m, type)                              \
+    for (long i = m->type##_head;                                            \
+         i < (m->type##_tail + MAX_NVME_FLOW_GROUPS) % MAX_NVME_FLOW_GROUPS; \
+         i++)
+
+#define iterate_all_tenants(fg_handle) \
+    for (fg_handle = 0; fg_handle < MAX_NVME_FLOW_GROUPS; fg_handle++)
+
 struct less_tenant_mgmt {
     long active_lc_tenants[MAX_NVME_FLOW_GROUPS];
     long active_be_tenants[MAX_NVME_FLOW_GROUPS];
@@ -59,6 +73,26 @@ void init_less_tenant_mgmt(struct less_tenant_mgmt *manager) {
 
 bool nvme_lc_tenant_isempty(struct less_tenant_mgmt *manager) {
     return manager->lc_head == manager->lc_tail;
+}
+
+bool nvme_lc_tenant_isactivated(struct less_tenant_mgmt *manager,
+                                long tenant_id) {
+    iterate_active_tenants_by_type(manager, lc) {
+        if (manager->active_lc_tenants[i] == tenant_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool nvme_be_tenant_isactivated(struct less_tenant_mgmt *manager,
+                                long tenant_id) {
+    iterate_active_tenants_by_type(manager, be) {
+        if (manager->active_be_tenants[i] == tenant_id) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void nvme_lc_tenant_activate(struct less_tenant_mgmt *manager, long tenant_id) {
@@ -104,17 +138,3 @@ void nvme_be_tenant_deactivate(struct less_tenant_mgmt *manager,
     }
     manager->be_head = (manager->be_head + count) % MAX_NVME_FLOW_GROUPS;
 }
-
-// #define iterate_active_tenants_by_type(m, type)               \
-//     for (long i = m->type##_head;                             \
-//          (m->type##_head <= m->type##_tail                    \
-//               ? (i < m->type##_tail)                          \
-//               : (i < m->type##_tail + MAX_NVME_FLOW_GROUPS)); \
-//          i++)
-#define iterate_active_tenants_by_type(m, type)                              \
-    for (long i = m->type##_head;                                            \
-         i < (m->type##_tail + MAX_NVME_FLOW_GROUPS) % MAX_NVME_FLOW_GROUPS; \
-         i++)
-
-#define iterate_all_tenants(fg_handle) \
-    for (fg_handle = 0; fg_handle < MAX_NVME_FLOW_GROUPS; fg_handle++)

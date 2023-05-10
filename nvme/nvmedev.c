@@ -1211,11 +1211,16 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             nvme_be_tenant_activate(&percpu_get(tenant_manager), fg_handle);
         }
+        if (nvme_lc_tenant_isactivated(&percpu_get(tenant_manager),
+                                       fg_handle) == false) {
+            printf("ERROR: LC tenant %ld is not activated\n", fg_handle);
+            return RET_FAULT;
+        }
         ret = nvme_sw_table_push_back(g_nvme_sw_table, fg_handle, ctx);
         if (ret != 0) {
             print_queue_status();
             free_local_nvme_ctx(ctx);
-            return -RET_NOMEM;
+            return RET_NOMEM;
         }
     }
 
@@ -1274,7 +1279,7 @@ static inline int nvme_sched_lessv0_subround1(void) {
          i++) {
         fg_handle =
             thread_tenant_manager->active_lc_tenants[i % MAX_NVME_FLOW_GROUPS];
-        printf("iterating active %ld-th tenant %ld\n", i, fg_handle);
+        // printf("iterating active %ld-th tenant %ld\n", i, fg_handle);
         token_increment =
             (g_nvme_fgs[fg_handle].scaled_IOPuS_limit * time_delta) + 0.5;
         g_nvme_sw_table->token_credit[fg_handle] += (long)token_increment;
