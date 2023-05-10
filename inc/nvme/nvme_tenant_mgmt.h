@@ -71,6 +71,13 @@ void nvme_lc_tenant_activate(struct less_tenant_mgmt *manager, long tenant_id) {
 
 void nvme_lc_tenant_deactivate(struct less_tenant_mgmt *manager,
                                uint32_t count) {
+    if (count > 0) {
+        printf("%ld LC tenants deactivated\n", count);
+        printf("Tenant manager active LC tenants reduces from %ld to %ld\n",
+               manager->lc_tail - manager->lc_head,
+               manager->lc_tail - manager->lc_head -
+                   count);  // no mod, just for debugging
+    }
     manager->lc_head = (manager->lc_head + count) % MAX_NVME_FLOW_GROUPS;
 }
 
@@ -88,6 +95,13 @@ void nvme_be_tenant_activate(struct less_tenant_mgmt *manager, long tenant_id) {
 
 void nvme_be_tenant_deactivate(struct less_tenant_mgmt *manager,
                                uint32_t count) {
+    if (count > 0) {
+        printf("%ld BE tenants deactivated\n", count);
+        printf("Tenant manager active LC tenants reduces from %ld to %ld\n",
+               manager->be_tail - manager->be_head,
+               manager->be_tail - manager->be_head -
+                   count);  // no mod, just for debugging
+    }
     manager->be_head = (manager->be_head + count) % MAX_NVME_FLOW_GROUPS;
 }
 
