@@ -1270,7 +1270,7 @@ static inline int nvme_sched_lessv0_subround1(void) {
     iterate_active_tenants_by_type(thread_tenant_manager, lc) {
         fg_handle =
             thread_tenant_manager->active_lc_tenants[i % MAX_NVME_FLOW_GROUPS];
-        printf("iterating active %d-th tenant %d\n", i, fg_handle);
+        printf("iterating active %ld-th tenant %ld\n", i, fg_handle);
         token_increment =
             (g_nvme_fgs[fg_handle].scaled_IOPuS_limit * time_delta) + 0.5;
         g_nvme_sw_table->token_credit[fg_handle] += (long)token_increment;
