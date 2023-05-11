@@ -1202,10 +1202,12 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             nvme_lc_tenant_activate(&percpu_get(tenant_manager), fg_handle);
             printf("LC tenant %ld activated\n", fg_handle);
+            int active_count =
+                (percpu_get(tenant_manager).lc_tail -
+                 percpu_get(tenant_manager).lc_head + MAX_NVME_FLOW_GROUPS) %
+                MAX_NVME_FLOW_GROUPS;
             printf("Tenant manager has %d active LC tenants\n",
-                   percpu_get(tenant_manager).lc_tail -
-                       percpu_get(tenant_manager)
-                           .lc_head);  // no mod, just for debugging
+                   active_count);  // no mod, just for debugging
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
@@ -1298,6 +1300,7 @@ static inline int nvme_sched_lessv0_subround1(void) {
                            fg_handle);
                     nvme_lc_tenant_requeue(thread_tenant_manager, fg_handle);
                     count++;
+                    break;
                 }
             }
             nvme_sw_table_pop_front(g_nvme_sw_table, fg_handle, &ctx);

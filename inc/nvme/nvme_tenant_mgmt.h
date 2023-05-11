@@ -41,10 +41,12 @@ extern DEFINE_BITMAP(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS);
 //               ? (i < m->type##_tail)                          \
 //               : (i < m->type##_tail + MAX_NVME_FLOW_GROUPS)); \
 //          i++)
-#define iterate_active_tenants_by_type(m, type)                              \
-    for (long i = m->type##_head;                                            \
-         i < (m->type##_tail + MAX_NVME_FLOW_GROUPS) % MAX_NVME_FLOW_GROUPS; \
-         i++)
+#define iterate_active_tenants_by_type(m, type)             \
+    for (long i = m->type##_head;                           \
+         m->type##_head < m->type##_tail                    \
+             ? (i < m->type##_tail)                         \
+             : (i < m->type##_tail + MAX_NVME_FLOW_GROUPS); \
+         i = (i + 1) % MAX_NVME_FLOW_GROUPS)
 
 #define iterate_all_tenants(fg_handle) \
     for (fg_handle = 0; fg_handle < MAX_NVME_FLOW_GROUPS; fg_handle++)
