@@ -99,7 +99,7 @@ inline bool nvme_lc_tenant_isempty(struct less_tenant_mgmt *manager) {
 inline bool nvme_lc_tenant_isactivated(struct less_tenant_mgmt *manager,
                                        long tenant_id) {
     iterate_active_tenants_by_type(manager, lc) {
-        if (manager->active_lc_tenants[i] == tenant_id) {
+        if (manager->active_lc_tenants[i % MAX_NVME_FLOW_GROUPS] == tenant_id) {
             return true;
         }
     }
@@ -109,7 +109,7 @@ inline bool nvme_lc_tenant_isactivated(struct less_tenant_mgmt *manager,
 inline bool nvme_be_tenant_isactivated(struct less_tenant_mgmt *manager,
                                        long tenant_id) {
     iterate_active_tenants_by_type(manager, be) {
-        if (manager->active_be_tenants[i] == tenant_id) {
+        if (manager->active_be_tenants[i % MAX_NVME_FLOW_GROUPS] == tenant_id) {
             return true;
         }
     }
