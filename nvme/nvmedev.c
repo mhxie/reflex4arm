@@ -149,6 +149,7 @@ void print_queue_status() {
     for (int i = 0; i < 5; i++) {
         printf("possible_expensive_areas[%d]: %ld\n", i,
                possible_expensive_areas[i]);
+        possible_expensive_areas[i] = 0;
     }
 }
 
