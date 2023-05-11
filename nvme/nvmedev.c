@@ -73,6 +73,7 @@ static long g_outstanding_requests = 0;
 #define SGL_PAGE_SIZE \
     4096  // should match PAGE_SIZE defined in dp/core/reflex_server.c
 #define DEFAULT_IO_QUEUE_SIZE 256
+#define QSTATS_INTERVAL rte_get_timer_hz()  // 1 second
 
 RTE_DEFINE_PER_LCORE(int, open_ev[MAX_OPEN_BATCH]);
 RTE_DEFINE_PER_LCORE(int, open_ev_ptr);
@@ -131,6 +132,25 @@ RTE_DEFINE_PER_LCORE(int, lc_roundrobin_start);
 RTE_DEFINE_PER_LCORE(int, roundrobin_start);
 RTE_DEFINE_PER_LCORE(unsigned long, min_scaled_IOPS);
 RTE_DEFINE_PER_LCORE(unsigned int, min_tenant_count);
+
+void print_queue_status() {
+    struct nvme_tenant_mgmt *thread_tenant_manager =
+        &percpu_get(nvme_tenant_manager);
+    struct nvme_sw_queue *swq;
+    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
+        if (swq->count) {
+            printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
+            printf(
+                "total_token_demand: %ld, saved_tokens: %ld, total_credit "
+                "%ld\n",
+                swq->total_token_demand, swq->saved_tokens, swq->token_credit);
+        }
+    }
+    for (int i = 0; i < 5; i++) {
+        printf("possible_expensive_areas[%d]: %ld\n", i,
+               possible_expensive_areas[i]);
+    }
+}
 
 static int nvme_compute_req_cost(int req_type, size_t req_len);
 
@@ -1187,25 +1207,6 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
         printf("Error submitting nvme request\n");
         printf("Current outstanding: %ld\n", g_outstanding_requests);
         panic("Ran out of NVMe cmd buffer space\n");
-    }
-}
-
-void print_queue_status() {
-    struct nvme_tenant_mgmt *thread_tenant_manager =
-        &percpu_get(nvme_tenant_manager);
-    struct nvme_sw_queue *swq;
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-        if (swq->count) {
-            printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
-            printf(
-                "total_token_demand: %ld, saved_tokens: %ld, total_credit "
-                "%ld\n",
-                swq->total_token_demand, swq->saved_tokens, swq->token_credit);
-        }
-    }
-    for (int i = 0; i < 5; i++) {
-        printf("possible_expensive_areas[%d]: %ld\n", i,
-               possible_expensive_areas[i]);
     }
 }
 
