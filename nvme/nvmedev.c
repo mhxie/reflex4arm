@@ -1616,6 +1616,7 @@ static inline int nvme_sched_rr_subround1(void) {
     struct nvme_sw_queue *swq;
     struct nvme_ctx *ctx;
     uint64_t t0, t1, t2, t3, t4;
+    uint64_t start;
     unsigned long now;
     unsigned long time_delta;
     long POS_LIMIT = 0;
@@ -1630,13 +1631,13 @@ static inline int nvme_sched_rr_subround1(void) {
 
     thread_tenant_manager = &percpu_get(nvme_tenant_manager);
 
-    t0 = rdtsc();
+    start = t0 = rdtsc();
     list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
 #ifndef CYCLIC_LIST
         i++;
 #endif
         t1 = rdtsc();
-        possible_expensive_areas[0] += t1 - t0;
+        possible_expensive_areas[0] += (t1 - t0);
 
         t2 = rdtsc();
 
@@ -1663,12 +1664,12 @@ static inline int nvme_sched_rr_subround1(void) {
                     return 1;
                 }
                 t3 = rdtsc();
-                possible_expensive_areas[1] += t3 - t2;
+                possible_expensive_areas[1] += (t3 - t2);
                 nvme_sw_queue_pop_front(swq, &ctx);
                 t4 = rdtsc();
-                possible_expensive_areas[2] += t4 - t3;
+                possible_expensive_areas[2] += (t4 - t3);
                 issue_nvme_req(ctx);
-                possible_expensive_areas[3] += rdtsc() - t4;
+                possible_expensive_areas[3] += (rdtsc() - t4);
                 swq->token_credit -= ctx->req_cost;
 
                 t2 = rdtsc();
@@ -1717,6 +1718,8 @@ static inline int nvme_sched_rr_subround1(void) {
         }
     }
 #endif
+
+    possible_expensive_areas[4] += (rdtsc() - start);
     percpu_get(local_extra_demand) = local_demand;
     percpu_get(local_leftover_tokens) = local_leftover;
 
