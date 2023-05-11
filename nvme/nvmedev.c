@@ -1201,22 +1201,23 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
         if (g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             nvme_lc_tenant_activate(&percpu_get(tenant_manager), fg_handle);
-            printf("LC tenant %ld activated\n", fg_handle);
+            // printf("LC tenant %ld activated\n", fg_handle);
             int active_count =
                 (percpu_get(tenant_manager).lc_tail -
                  percpu_get(tenant_manager).lc_head + MAX_NVME_FLOW_GROUPS) %
                 MAX_NVME_FLOW_GROUPS;
-            printf("Tenant manager has %d active LC tenants\n", active_count);
+            // printf("Tenant manager has %d active LC tenants\n",
+            // active_count);
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             nvme_be_tenant_activate(&percpu_get(tenant_manager), fg_handle);
         }
-        if (nvme_lc_tenant_isactivated(&percpu_get(tenant_manager),
-                                       fg_handle) == false) {
-            printf("ERROR: LC tenant %ld is not activated\n", fg_handle);
-            return RET_FAULT;
-        }
+        // if (nvme_lc_tenant_isactivated(&percpu_get(tenant_manager),
+        //                                fg_handle) == false) {
+        //     printf("ERROR: LC tenant %ld is not activated\n", fg_handle);
+        //     return RET_FAULT;
+        // }
         ret = nvme_sw_table_push_back(g_nvme_sw_table, fg_handle, ctx);
         if (ret != 0) {
             print_queue_status();
@@ -1291,8 +1292,9 @@ static inline int nvme_sched_lessv0_subround1(void) {
                 if (g_outstanding_requests >= g_max_outstanding_requests) break;
                 if (g_nvme_sw_table->token_credit[fg_handle] <
                     -TOKEN_DEFICIT_LIMIT) {
-                    printf("active LC tenant %d now is going to be requeued\n",
-                           fg_handle);
+                    // printf("active LC tenant %d now is going to be
+                    // requeued\n",
+                    //        fg_handle);
                     nvme_lc_tenant_requeue(thread_tenant_manager, fg_handle);
                     count++;
                     break;
@@ -1305,11 +1307,11 @@ static inline int nvme_sched_lessv0_subround1(void) {
         }
         // this algorithm always drains the queues in the front
         if (nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
-            printf("active LC tenant %d now is going to be inactive\n",
-                   fg_handle);
-            printf("i=%d, head=%d, tail=%d\n", i,
-                   thread_tenant_manager->lc_head,
-                   thread_tenant_manager->lc_tail);
+            // printf("active LC tenant %d now is going to be inactive\n",
+            //        fg_handle);
+            // printf("i=%d, head=%d, tail=%d\n", i,
+            //        thread_tenant_manager->lc_head,
+            //        thread_tenant_manager->lc_tail);
             count++;
         }
         POS_LIMIT = 3 * token_increment;
@@ -1320,7 +1322,7 @@ static inline int nvme_sched_lessv0_subround1(void) {
                 g_nvme_sw_table->token_credit[fg_handle] * TOKEN_FRAC_GIVEAWAY;
         }
     }
-    printf("%d LC tenants are going to be deactivated\n", count);
+    // printf("%d LC tenants are going to be deactivated\n", count);
     nvme_lc_tenant_deactivate(thread_tenant_manager, count);
 
     percpu_get(local_leftover_tokens) = local_leftover;

@@ -135,13 +135,13 @@ inline void nvme_lc_tenant_requeue(struct less_tenant_mgmt *manager,
 inline void nvme_lc_tenant_deactivate(struct less_tenant_mgmt *manager,
                                       uint32_t count) {
     if (count > 0) {
-        printf("%ld LC tenants deactivated\n", count);
+        // printf("%ld LC tenants deactivated\n", count);
         int initial_active_count =
             (manager->lc_tail - manager->lc_head + MAX_NVME_FLOW_GROUPS) %
             MAX_NVME_FLOW_GROUPS;
         int after_active_count = initial_active_count - count;
-        printf("Tenant manager active LC tenants reduces from %d to %d\n",
-               initial_active_count, after_active_count);
+        // printf("Tenant manager active LC tenants reduces from %d to %d\n",
+        //        initial_active_count, after_active_count);
     }
     manager->lc_head = (manager->lc_head + count) % MAX_NVME_FLOW_GROUPS;
     if (manager->num_lc_requeue_tenants) {
@@ -176,12 +176,14 @@ inline void nvme_be_tenant_requeue(struct less_tenant_mgmt *manager,
 
 inline void nvme_be_tenant_deactivate(struct less_tenant_mgmt *manager,
                                       uint32_t count) {
-    if (count > 0) {
-        printf("%ld BE tenants deactivated\n", count);
-        printf("Tenant manager active LC tenants reduces from %ld to %ld\n",
-               manager->be_tail - manager->be_head,
-               manager->be_tail - manager->be_head -
-                   count);  // no mod, just for debugging
+    if (count == 0) {
+        return;
+    } else if (count > 0) {
+        // printf("%ld BE tenants deactivated\n", count);
+        // printf("Tenant manager active LC tenants reduces from %ld to %ld\n",
+        //        manager->be_tail - manager->be_head,
+        //        manager->be_tail - manager->be_head -
+        //            count);  // no mod, just for debugging
     }
     manager->be_head = (manager->be_head + count) % MAX_NVME_FLOW_GROUPS;
     if (manager->num_be_requeue_tenants) {
