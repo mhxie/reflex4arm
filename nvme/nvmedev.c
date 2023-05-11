@@ -1616,7 +1616,6 @@ static inline int nvme_sched_rr_subround1(void) {
     struct nvme_sw_queue *swq;
     struct nvme_ctx *ctx;
     uint64_t t0, t1, t2, t3, t4;
-    uint64_t start;
     unsigned long now;
     unsigned long time_delta;
     long POS_LIMIT = 0;
@@ -1630,18 +1629,16 @@ static inline int nvme_sched_rr_subround1(void) {
     percpu_get(last_sched_time) = now;
 
     thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+    t0 = rdtsc();
 
-    start = t0 = rdtsc();
     list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
 #ifndef CYCLIC_LIST
         i++;
 #endif
-        t1 = rdtsc();
-        possible_expensive_areas[0] += (t1 - t0);
 
-        t2 = rdtsc();
-
-        if (nvme_sw_queue_isempty(swq)) continue;
+        if (nvme_sw_queue_isempty(swq)) {
+            continue;
+        }
         // serve latency-critical (LC) tenants
 
         if (g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
@@ -1652,6 +1649,7 @@ static inline int nvme_sched_rr_subround1(void) {
                 (g_nvme_fgs[swq->fg_handle].scaled_IOPuS_limit * time_delta) +
                 0.5;  // 0.5 is for rounding
             swq->token_credit += (long)token_increment;
+            t2 = rdtsc();
             while ((nvme_sw_queue_isempty(swq) == 0) &&
                    swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
                 if (g_outstanding_requests >= g_max_outstanding_requests) {
@@ -1663,18 +1661,15 @@ static inline int nvme_sched_rr_subround1(void) {
 #endif
                     return 1;
                 }
-                t3 = rdtsc();
-                possible_expensive_areas[1] += (t3 - t2);
                 nvme_sw_queue_pop_front(swq, &ctx);
                 t4 = rdtsc();
-                possible_expensive_areas[2] += (t4 - t3);
                 issue_nvme_req(ctx);
-                possible_expensive_areas[3] += (rdtsc() - t4);
+                possible_expensive_areas[4] += (rdtsc() - t4);
                 swq->token_credit -= ctx->req_cost;
-
-                t2 = rdtsc();
             }
-            t0 = rdtsc();
+            t3 = rdtsc();
+            possible_expensive_areas[3] += (t3 - t2);
+
             POS_LIMIT = 3 * token_increment;
             if (swq->token_credit > POS_LIMIT) {
                 local_leftover += (swq->token_credit * TOKEN_FRAC_GIVEAWAY);
@@ -1683,7 +1678,6 @@ static inline int nvme_sched_rr_subround1(void) {
         } else {  // track demand of best-effort (will need for subround2)
             local_demand += swq->total_token_demand - swq->saved_tokens;
         }
-        // t0 = rdtsc();
     }
 #ifndef CYCLIC_LIST
     i = -1;
@@ -1718,8 +1712,8 @@ static inline int nvme_sched_rr_subround1(void) {
         }
     }
 #endif
-
-    possible_expensive_areas[4] += (rdtsc() - start);
+    t1 = rdtsc();
+    possible_expensive_areas[2] += (t1 - t0);
     percpu_get(local_extra_demand) = local_demand;
     percpu_get(local_leftover_tokens) = local_leftover;
 
@@ -1994,15 +1988,22 @@ int nvme_sched(void) {
         return 0;
     }
 
+    uint64_t t0, t1, t2;
+    t0 = rdtsc();
     if (g_nvme_sched_mode == REFLEX) {
         round1_ret = nvme_sched_subround1();  // serve latency-critical tenants
         if (!round1_ret) nvme_sched_subround2();  // serve best-effort tenants
     } else if (g_nvme_sched_mode == REFLEX_RR) {
         // This should fix the starvation issue
+
         round1_ret =
             nvme_sched_rr_subround1();  // roundrobinly serve lc tenants
+        t1 = rdtsc();
+        possible_expensive_areas[0] += (t1 - t0);
         if (!round1_ret)
             nvme_sched_subround2();  // roundrobinly serve be tenants
+        t2 = rdtsc();
+        possible_expensive_areas[1] += (t2 - t1);
     } else if (g_nvme_sched_mode == WFQ) {
     } else if (g_nvme_sched_mode == WDRR) {
     } else if (g_nvme_sched_mode == LESSv1) {
