@@ -1307,6 +1307,9 @@ static inline int nvme_sched_lessv0_subround1(void) {
         if (nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
             printf("active LC tenant %d now is going to be inactive\n",
                    fg_handle);
+            printf("i=%d, head=%d, tail=%d\n", i,
+                   thread_tenant_manager->lc_head,
+                   thread_tenant_manager->lc_tail);
             count++;
         }
         POS_LIMIT = 3 * token_increment;
