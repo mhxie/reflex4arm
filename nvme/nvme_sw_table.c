@@ -57,7 +57,6 @@ void nvme_sw_table_init(struct nvme_sw_table **t) {
     } else {
         printf("Successfully created the hash table!!!\n");
     }
-
     for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
         (*t)->queue_head[i] = 0;
         (*t)->queue_tail[i] = 0;
