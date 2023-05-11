@@ -1206,8 +1206,7 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
                 (percpu_get(tenant_manager).lc_tail -
                  percpu_get(tenant_manager).lc_head + MAX_NVME_FLOW_GROUPS) %
                 MAX_NVME_FLOW_GROUPS;
-            printf("Tenant manager has %d active LC tenants\n",
-                   active_count);  // no mod, just for debugging
+            printf("Tenant manager has %d active LC tenants\n", active_count);
         }
         if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
             nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
@@ -1318,6 +1317,7 @@ static inline int nvme_sched_lessv0_subround1(void) {
                 g_nvme_sw_table->token_credit[fg_handle] * TOKEN_FRAC_GIVEAWAY;
         }
     }
+    printf("%d LC tenants are going to be deactivated\n", count")
     nvme_lc_tenant_deactivate(thread_tenant_manager, count);
 
     percpu_get(local_leftover_tokens) = local_leftover;
