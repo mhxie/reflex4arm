@@ -1324,7 +1324,14 @@ static inline int nvme_sched_lessv0_subround1(void) {
     }
     // printf("%d LC tenants are going to be deactivated\n", count);
     nvme_lc_tenant_deactivate(thread_tenant_manager, count);
-
+    // if (count > 0) {
+    //     printf("LC tenant %ld deactivated\n", fg_handle);
+    //     printf(
+    //         "Tenant manager now has %d active LC tenants\n",
+    //         thread_tenant_manager->lc_tail -
+    //             thread_tenant_manager->lc_head);  // no mod, just for
+    //             debugging
+    // }
     percpu_get(local_leftover_tokens) = local_leftover;
 
     return 0;
