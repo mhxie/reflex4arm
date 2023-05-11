@@ -1280,11 +1280,7 @@ static inline int nvme_sched_lessv0_subround1(void) {
         work_conserving = true;
     }
 
-    // iterate_active_tenants_by_type(thread_tenant_manager, lc) {
-    for (long i = thread_tenant_manager->lc_head;
-         i < (thread_tenant_manager->lc_tail + MAX_NVME_FLOW_GROUPS) %
-                 MAX_NVME_FLOW_GROUPS;
-         i++) {
+    iterate_active_tenants_by_type(thread_tenant_manager, lc) {
         fg_handle =
             thread_tenant_manager->active_lc_tenants[i % MAX_NVME_FLOW_GROUPS];
         // printf("iterating active %ld-th tenant %ld\n", i, fg_handle);
