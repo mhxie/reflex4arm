@@ -29,7 +29,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-
+#pragma once
 #include <nvme/nvme_tenant_mgmt.h>
 #include <nvme/nvmedev.h>
 #include <rte_hash.h>

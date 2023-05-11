@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Stanford University
+ * Copyright (c) 2019-2023, UC Santa Cruz
  *
  * All rights reserved.
  *
@@ -39,7 +39,8 @@
 #include <ix/syscall.h>
 #include <limits.h>
 #include <math.h>
-#include <nvme/nvme_sw_queue.h>
+#include <nvme/nvme_sw_table.h>
+#include <nvme/nvme_tenant_mgmt.h>
 #include <nvme/nvmedev.h>
 #include <rte_per_lcore.h>
 #include <rte_timer.h>
@@ -73,7 +74,6 @@ static long g_outstanding_requests = 0;
 #define SGL_PAGE_SIZE \
     4096  // should match PAGE_SIZE defined in dp/core/reflex_server.c
 #define DEFAULT_IO_QUEUE_SIZE 256
-#define QSTATS_INTERVAL rte_get_timer_hz()  // 1 second
 
 RTE_DEFINE_PER_LCORE(int, open_ev[MAX_OPEN_BATCH]);
 RTE_DEFINE_PER_LCORE(int, open_ev_ptr);
@@ -84,9 +84,9 @@ static DEFINE_SPINLOCK(nvme_bitmap_lock);
 
 static struct mempool_datastore request_datastore;
 static struct mempool_datastore ctx_datastore;
-static struct mempool_datastore nvme_swq_datastore;
 
 static struct nvme_flow_group g_nvme_fgs[MAX_NVME_FLOW_GROUPS];
+static struct nvme_sw_table *g_nvme_sw_table;
 static unsigned long global_token_rate =
     UINT_MAX;  // max token rate device can handle for current strictest latency
                // SLO
@@ -109,19 +109,18 @@ static int scheduled_bit_vector[MAX_NUM_THREADS];
 
 #define TOKEN_FRAC_GIVEAWAY 0.9
 static long TOKEN_DEFICIT_LIMIT = 10000;
+static int WRITE_BURST_COUNT = 10;
 static bool global_readonly_flag = true;
-static uint64_t possible_expensive_areas[50];
 
 #define SLO_REQ_SIZE 4096
+#define QSTATS_INTERVAL rte_get_timer_hz()  // 1 second
 
 RTE_DEFINE_PER_LCORE(struct mempool,
                      request_mempool __attribute__((aligned(64))));
 RTE_DEFINE_PER_LCORE(struct mempool, ctx_mempool __attribute__((aligned(64))));
-RTE_DEFINE_PER_LCORE(struct mempool,
-                     nvme_swq_mempool __attribute__((aligned(64))));
 RTE_DEFINE_PER_LCORE(int, received_nvme_completions);
 
-RTE_DEFINE_PER_LCORE(struct nvme_tenant_mgmt, nvme_tenant_manager);
+RTE_DEFINE_PER_LCORE(struct less_tenant_mgmt, tenant_manager);
 static RTE_DEFINE_PER_LCORE(struct rte_timer, _qstats_timer);
 
 RTE_DEFINE_PER_LCORE(unsigned long, last_sched_time);
@@ -132,26 +131,6 @@ RTE_DEFINE_PER_LCORE(int, lc_roundrobin_start);
 RTE_DEFINE_PER_LCORE(int, roundrobin_start);
 RTE_DEFINE_PER_LCORE(unsigned long, min_scaled_IOPS);
 RTE_DEFINE_PER_LCORE(unsigned int, min_tenant_count);
-
-void print_queue_status() {
-    struct nvme_tenant_mgmt *thread_tenant_manager =
-        &percpu_get(nvme_tenant_manager);
-    struct nvme_sw_queue *swq;
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-        if (swq->count) {
-            printf("%ld-queue has %ld requests\n", swq->fg_handle, swq->count);
-            printf(
-                "total_token_demand: %ld, saved_tokens: %ld, total_credit "
-                "%ld\n",
-                swq->total_token_demand, swq->saved_tokens, swq->token_credit);
-        }
-    }
-    for (int i = 0; i < 5; i++) {
-        printf("possible_expensive_areas[%d]: %ld\n", i,
-               possible_expensive_areas[i]);
-        possible_expensive_areas[i] = 0;
-    }
-}
 
 static int nvme_compute_req_cost(int req_type, size_t req_len);
 
@@ -165,20 +144,39 @@ extern void free_local_nvme_ctx(struct nvme_ctx *req) {
     mempool_free(&percpu_get(ctx_mempool), req);
 }
 
-struct nvme_sw_queue *alloc_local_nvme_swq(void) {
-    return mempool_alloc(&percpu_get(nvme_swq_mempool));
+void print_queue_status() {
+    struct less_tenant_mgmt *thread_tenant_manager =
+        &percpu_get(tenant_manager);
+    long fg_handle;
+    struct nvme_flow_group *nvme_fg;
+
+    printf(
+        "There are still %ld requests pending in the table, %d requests in the "
+        "SSD queue. See the snapshot below:\n",
+        g_nvme_sw_table->total_request_count, g_outstanding_requests);
+    iterate_all_tenants(fg_handle) {
+        nvme_fg = bitmap_test(g_nvme_fgs_bitmap, fg_handle)
+                      ? &g_nvme_fgs[fg_handle]
+                      : NULL;
+        if (nvme_fg != NULL) {
+            printf("%ld-queue has %ld requests, ", fg_handle,
+                   nvme_sw_table_count(g_nvme_sw_table, fg_handle));
+            printf("demands = %ld, saved_tokens = %ld, token credit = %ld.\n",
+                   g_nvme_sw_table->total_token_demand[fg_handle],
+                   g_nvme_sw_table->saved_tokens[fg_handle],
+                   g_nvme_sw_table->token_credit[fg_handle]);
+        }
+    }
 }
 
-void free_local_nvme_swq(struct nvme_sw_queue *q) {
-    mempool_free(&percpu_get(nvme_swq_mempool), q);
-}
 /**
  * init_nvme_request_cpu - allocates the core-local nvme request region
  *
  * Returns 0 if successful, otherwise failure.
  */
 int init_nvme_request_cpu(void) {
-    struct nvme_tenant_mgmt *thread_tenant_manager;
+    struct less_tenant_mgmt *thread_tenant_manager =
+        &percpu_get(tenant_manager);
     int ret;
 
     if (percpu_get(mempool_initialized)) {
@@ -199,30 +197,13 @@ int init_nvme_request_cpu(void) {
         return ret;
     }
 
-    // initialize sw queue
-
-    struct mempool *m3 = &percpu_get(nvme_swq_mempool);
-    ret = mempool_create(m3, &nvme_swq_datastore, MEMPOOL_SANITY_PERCPU,
-                         percpu_get(cpu_id));
-    if (ret) {
-        // FIXME: implement mempool destroy
-        // mempool_destroy(m);
-        return ret;
-    }
-
-    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
-    list_head_init(&thread_tenant_manager->tenant_swq_head);
-    thread_tenant_manager->num_tenants = 0;
-    thread_tenant_manager->num_best_effort_tenants = 0;
+    init_less_tenant_mgmt(thread_tenant_manager);
 
     percpu_get(last_sched_time) = timer_now();
     percpu_get(last_sched_time_be) = rdtsc();  // timer_now();
     percpu_get(local_leftover_tokens) = 0;
     percpu_get(local_extra_demand) = 0;
     percpu_get(mempool_initialized) = true;
-    for (int i = 0; i < 50; i++) {
-        possible_expensive_areas[i] = 0;
-    }
 
     return ret;
 }
@@ -234,7 +215,6 @@ int init_nvme_request(void) {
     int ret;
     struct mempool_datastore *m = &request_datastore;
     struct mempool_datastore *m2 = &ctx_datastore;
-    struct mempool_datastore *m3 = &nvme_swq_datastore;
 
     if (CFG.num_nvmedev == 0 || CFG.ns_sizes[0] != 0) {
         return 0;
@@ -247,29 +227,13 @@ int init_nvme_request(void) {
         return ret;
     }
 
-    /*
-        ret = mempool_pagemem_map_to_user(m2);
-        if (ret) {
-                mempool_pagemem_destroy(m);
-                mempool_pagemem_destroy(m2);
-                return ret;
-        }
-        */
-
-    // memory for software queues for nvme scheduling
-    ret = mempool_create_datastore(
-        m3,
-        (MEMPOOL_DEFAULT_CHUNKSIZE * MAX_NVME_FLOW_GROUPS) /
-            MEMPOOL_DEFAULT_CHUNKSIZE * 2,
-        sizeof(struct nvme_sw_queue), "nvme_swq");
-    if (ret) {
-        // mempool_pagemem_destroy(m);
-        return ret;
-    }
-
     // need to alloc req mempool for admin queue
     init_nvme_request_cpu();
-
+    nvme_sw_table_init(&g_nvme_sw_table);
+    if (g_nvme_sw_table == NULL) {
+        panic("ERROR: failed to allocate nvme_sw_table\n");
+        return -RET_NOMEM;
+    }
 #ifdef ENABLE_KSTATS
     rte_timer_init(&percpu_get(_qstats_timer));
     rte_timer_reset(&percpu_get(_qstats_timer), QSTATS_INTERVAL, PERIODICAL,
@@ -308,12 +272,6 @@ static void attach_cb(void *cb_ctx, struct spdk_pci_device *dev,
     unsigned int num_ns, nsid;
     const struct spdk_nvme_ctrlr_data *cdata;
     struct spdk_nvme_ns *ns = spdk_nvme_ctrlr_get_ns(ctrlr, 1);
-
-    // /* FIXME: used for avoiding the default SSD */
-    // if (spdk_nvme_ns_get_size(ns) == 0x35a800000) {
-    //     printf("Skipping this device.\n");
-    //     return;
-    // }
 
     bitmap_init(g_ioq_bitmap, MAX_NUM_IO_QUEUES, 0);
     if (active_nvme_devices < CFG_MAX_NVMEDEV) {
@@ -366,18 +324,7 @@ int init_nvmedev(void) {
         cpu2ssd[i] = i / cpu_per_ssd;
     }
     printf("Each SSD will be processed by %d cores.", cpu_per_ssd);
-    // int i;
-    // const struct pci_addr *addr[CFG.num_nvmedev];
-    // struct pci_dev *dev[CFG.num_nvmedev];
-    // for (i = 0; i < CFG.num_nvmedev; i++) {
-    // 	log_info("Started nvme device[%d] init", i);
-    // 	addr[i] = &CFG.nvmedev[i];
-    // 	dev[i] = pci_alloc_dev(addr[i]);
-    // 	if (!dev)
-    // 		return -ENOMEM;
-    // 	g_nvme_dev[i] = dev[i];
 
-    // }
     if (spdk_nvme_probe(NULL, NULL, probe_cb, attach_cb, NULL) != 0) {
         printf("spdk_nvme_probe() failed\n");
         return 1;
@@ -399,17 +346,9 @@ int init_nvmeqp_cpu(void) {
     opts.io_queue_requests = opts.io_queue_requests;
     g_max_outstanding_requests = opts.io_queue_requests;
 
-    // while (opts.io_queue_size >= 1) {
     percpu_get(qpair) =
         spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, &opts, sizeof(opts));
-    //     if percpu_get (qpair) {
-    //         printf("Successfully allocate qpair with io_queue_size %d\n",
-    //         opts.io_queue_size); break;
-    //     }
-    //     opts.io_queue_size /= 2;
-    // }
-    // if (percpu_get(qpair) == NULL)
-    // percpu_get(qpair) = spdk_nvme_ctrlr_alloc_io_qpair(ctrlr, NULL, 0);
+
     assert(percpu_get(qpair));
 
     return 0;
@@ -465,8 +404,6 @@ static const struct nvme_string command_specific_status[] = {
     {SPDK_NVME_SC_COMPLETION_QUEUE_INVALID, "INVALID COMPLETION QUEUE"},
     {SPDK_NVME_SC_INVALID_QUEUE_IDENTIFIER, "INVALID QUEUE IDENTIFIER"},
     {SPDK_NVME_SC_INVALID_QUEUE_SIZE, "INVALID QUEUE SIZE"},
-    // { SPDK_NVME_SC_MAXIMUM_QUEUE_SIZE_EXCEEDED, "MAX QUEUE SIZE EXCEEDED" },
-    // deprecated
     {SPDK_NVME_SC_ABORT_COMMAND_LIMIT_EXCEEDED, "ABORT CMD LIMIT EXCEEDED"},
     {SPDK_NVME_SC_ASYNC_EVENT_REQUEST_LIMIT_EXCEEDED, "ASYNC LIMIT EXCEEDED"},
     {SPDK_NVME_SC_INVALID_FIRMWARE_SLOT, "INVALID FIRMWARE SLOT"},
@@ -476,8 +413,6 @@ static const struct nvme_string command_specific_status[] = {
     {SPDK_NVME_SC_INVALID_FORMAT, "INVALID FORMAT"},
     {SPDK_NVME_SC_CONFLICTING_ATTRIBUTES, "CONFLICTING ATTRIBUTES"},
     {SPDK_NVME_SC_INVALID_PROTECTION_INFO, "INVALID PROTECTION INFO"},
-    // { SPDK_NVME_SC_ATTEMPTED_WRITE_TO_RO_PAGE, "WRITE TO RO PAGE" },
-    // deprecated
     {SPDK_NVME_SC_ATTEMPTED_WRITE_TO_RO_RANGE, "WRITE TO RO RANGE"},
     {0xFFFF, "COMMAND SPECIFIC"}};
 
@@ -573,13 +508,7 @@ long bsys_nvme_open(long dev_id, long ns_id) {
     int ioq;
 
     KSTATS_VECTOR(bsys_nvme_open);
-    // FIXME: for now, only support 1 namespace
-    // if (ns_id != global_ns_id) {
-    // 	panic("ERROR: only support 1 namespace with ns_id = 1, ns_id: %lx\n",
-    // ns_id); 	return -RET_INVAL;
-    // }
-    // allocate next available queue
-    // for now, assume only one bitmap
+
     // FIXME: we may want 1 bitmap per device
     ioq = allocate_nvme_ioq();
     if (ioq < 0) {
@@ -599,12 +528,6 @@ long bsys_nvme_open(long dev_id, long ns_id) {
 long bsys_nvme_close(long dev_id, long ns_id, hqu_t handle) {
     KSTATS_VECTOR(bsys_nvme_close);
     printf("BSYS NVME CLOSE\n");
-    // FIXME: for now, only support 1 namespace
-    // if (ns_id != global_ns_id) {
-    // 	usys_nvme_closed(-RET_INVAL, -RET_INVAL);
-    // 	panic("ERROR: only support 1 namespace with ns_id = 1\n");
-    // 	return -RET_INVAL;
-    // }
     bitmap_clear(g_ioq_bitmap, handle);
     usys_nvme_closed(handle, 0);
     return RET_OK;
@@ -649,9 +572,11 @@ int set_nvme_flow_group_id(long flow_group_id, long *fg_handle_to_set,
 
 // adjust token deficit limit to allow LC tenants to burst, but not too much
 static void set_token_deficit_limit(void) {
-    printf("DEVICE PARAMS: read cost %d, write cost %d\n", NVME_READ_COST,
-           NVME_WRITE_COST);
-    TOKEN_DEFICIT_LIMIT = 100 * NVME_WRITE_COST;
+    printf(
+        "DEVICE PARAMS: read cost %d, write cost %d, burst limits = %d "
+        "writes\n",
+        NVME_READ_COST, NVME_WRITE_COST, WRITE_BURST_COUNT);
+    TOKEN_DEFICIT_LIMIT = WRITE_BURST_COUNT * NVME_WRITE_COST;
 }
 
 static unsigned long find_token_limit_from_devmodel(unsigned int lat_SLO) {
@@ -893,7 +818,7 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
     int ret = 0;
     int flow_state = 0;
     int lc_tenant_count = 0;
-    struct nvme_tenant_mgmt *thread_tenant_manager;
+    struct less_tenant_mgmt *thread_tenant_manager;
     struct nvme_sw_queue *swq;
     KSTATS_VECTOR(bsys_nvme_register_flow);
 
@@ -903,16 +828,6 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
             "%ld, scheduler=off\n",
             fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
         nvme_fg = &g_nvme_fgs[0];
-        if (nvme_fg->nvme_swq == NULL) {
-            nvme_fg->completions = 0;
-            swq = alloc_local_nvme_swq();
-            if (swq == NULL) {
-                log_err("error: can't allocate nvme_swq for flow group\n");
-                return -RET_NOMEM;
-            }
-            nvme_fg->nvme_swq = swq;
-            nvme_sw_queue_init(swq, 0);
-        }
         nvme_fg->conn_ref_count++;
 
         usys_nvme_registered_flow(0, cookie, RET_OK);
@@ -930,24 +845,12 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
 
     if (latency_us_SLO == 0) {
         nvme_fg->latency_critical_flag = false;
-        // printf(
-        //     "Register BE-tenant %ld (flow_group: %ld). Managed by thread "
-        //     "%ld.\n",
-        //     fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
     } else {
         nvme_fg->latency_critical_flag = true;
-        // printf(
-        //     "Register LC-tenant %ld (flow_group: %ld). Managed by thread "
-        //     "%ld.\n",
-        //     fg_handle, flow_group_id, RTE_PER_LCORE(cpu_nr));
     }
 
     if (flow_state == 2) {
         // Old connection with new SLO
-        /* FIXME: currently not support registering different SLO for the same
-         * conn, consider implement a bitmap per flow group to test when receive
-         * CMD_REG within the same connection
-         */
         bsys_nvme_unregister_flow(fg_handle);
         printf(
             "WARNING: tenant connection registered different SLO, will "
@@ -980,30 +883,17 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
             return -RET_CANTMEETSLO;
         }
 
-        swq = alloc_local_nvme_swq();
-        if (swq == NULL) {
-            log_err("error: can't allocate nvme_swq for flow group\n");
-            return -RET_NOMEM;
-        }
-        nvme_fg->nvme_swq = swq;
-        nvme_sw_queue_init(swq, fg_handle);
+        thread_tenant_manager = &percpu_get(tenant_manager);
 
-        thread_tenant_manager = &percpu_get(nvme_tenant_manager);
-        list_add(&thread_tenant_manager->tenant_swq_head, &swq->link);
-        thread_tenant_manager->num_tenants++;
-        // FIXME: this is unfair to the new flow
-        percpu_get(lc_roundrobin_start) = 0;
-        percpu_get(roundrobin_start) = 0;
         nvme_fg->conn_ref_count = 0;
         if (latency_us_SLO == 0) {
-            thread_tenant_manager->num_best_effort_tenants++;
+            thread_tenant_manager->num_be_tenants++;
         } else {
-            lc_tenant_count = thread_tenant_manager->num_tenants -
-                              thread_tenant_manager->num_best_effort_tenants;
-            if (lc_tenant_count == 1) {
+            thread_tenant_manager->num_lc_tenants++;
+            if (thread_tenant_manager->num_lc_tenants == 1) {
                 percpu_get(min_scaled_IOPS) = nvme_fg->scaled_IOPS_limit;
                 percpu_get(min_tenant_count) = 1;
-            } else if (lc_tenant_count > 1) {
+            } else if (thread_tenant_manager->num_lc_tenants > 1) {
                 if (percpu_get(min_scaled_IOPS) > nvme_fg->scaled_IOPS_limit) {
                     percpu_get(min_scaled_IOPS) = nvme_fg->scaled_IOPS_limit;
                     percpu_get(min_tenant_count) = 1;
@@ -1014,20 +904,15 @@ long bsys_nvme_register_flow(long flow_group_id, unsigned long cookie,
             }
         }
     }
-    //     printf(
-    //         "IOPS SLO: %lu, r/w SLO %d, latency SLO: %lu us, scaled IOPS: %ld
-    //         " "tokens/s, \n", IOPS_SLO, rw_ratio_SLO, latency_us_SLO,
-    //         nvme_fg->scaled_IOPS_limit);
 
     nvme_fg->conn_ref_count++;
-
     usys_nvme_registered_flow(fg_handle, cookie, RET_OK);
 
     return RET_OK;
 }
 
 long bsys_nvme_unregister_flow(long fg_handle) {
-    struct nvme_tenant_mgmt *thread_tenant_manager;
+    struct less_tenant_mgmt *thread_tenant_manager;
     struct nvme_flow_group *nvme_fg;
     unsigned long smallest_IOPS_limit = ULONG_MAX;
     int i = 0;
@@ -1052,42 +937,40 @@ long bsys_nvme_unregister_flow(long fg_handle) {
     recalculate_weights_remove(fg_handle);
 
     if (nvme_fg->conn_ref_count == 0) {
-        thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+        thread_tenant_manager = &percpu_get(tenant_manager);
         if (!nvme_fg->latency_critical_flag) {
-            thread_tenant_manager->num_best_effort_tenants--;
-        } else if (thread_tenant_manager->num_best_effort_tenants + 1 <
-                   thread_tenant_manager->num_tenants) {
-            // remaining more than one LC tenants
-            if (percpu_get(min_scaled_IOPS) == nvme_fg->scaled_IOPS_limit) {
-                // fine new min, FIXME: use minheap to improve efficiency
-                percpu_get(min_tenant_count) -= 1;
-                if (percpu_get(min_tenant_count) == 0) {
-                    for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
-                        if (bitmap_test(g_nvme_fgs_bitmap, i) &&
-                            i != fg_handle) {
-                            if (g_nvme_fgs[i].latency_critical_flag) {
-                                if (g_nvme_fgs[i].scaled_IOPS_limit <
-                                    smallest_IOPS_limit) {
-                                    percpu_get(min_scaled_IOPS) =
-                                        g_nvme_fgs[i].scaled_IOPS_limit;
-                                    percpu_get(min_tenant_count) = 1;
-                                } else if (g_nvme_fgs[i].scaled_IOPS_limit ==
-                                           smallest_IOPS_limit) {
-                                    percpu_get(min_tenant_count) += 1;
+            thread_tenant_manager->num_be_tenants--;
+        } else {
+            thread_tenant_manager->num_lc_tenants--;
+            if (thread_tenant_manager->num_lc_tenants == 1) {
+                percpu_get(min_scaled_IOPS) = smallest_IOPS_limit;
+                percpu_get(min_tenant_count) = 0;
+            } else {
+                if (percpu_get(min_scaled_IOPS) == nvme_fg->scaled_IOPS_limit) {
+                    // fine new min, FIXME: use minheap to improve efficiency
+                    percpu_get(min_tenant_count) -= 1;
+                    if (percpu_get(min_tenant_count) == 0) {
+                        for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
+                            if (bitmap_test(g_nvme_fgs_bitmap, i) &&
+                                i != fg_handle) {
+                                if (g_nvme_fgs[i].latency_critical_flag) {
+                                    if (g_nvme_fgs[i].scaled_IOPS_limit <
+                                        smallest_IOPS_limit) {
+                                        percpu_get(min_scaled_IOPS) =
+                                            g_nvme_fgs[i].scaled_IOPS_limit;
+                                        percpu_get(min_tenant_count) = 1;
+                                    } else if (g_nvme_fgs[i]
+                                                   .scaled_IOPS_limit ==
+                                               smallest_IOPS_limit) {
+                                        percpu_get(min_tenant_count) += 1;
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        } else {
-            percpu_get(min_scaled_IOPS) = smallest_IOPS_limit;
-            percpu_get(min_tenant_count) = 0;
         }
-        list_del(&nvme_fg->nvme_swq->link);
-        free_local_nvme_swq(nvme_fg->nvme_swq);
-        thread_tenant_manager->num_tenants--;
-
         spin_lock(&nvme_bitmap_lock);
         bitmap_clear(g_nvme_fgs_bitmap, fg_handle);
         spin_unlock(&nvme_bitmap_lock);
@@ -1140,24 +1023,7 @@ static int sgl_next_cb(void *cb_arg, uint64_t *address, uint32_t *length) {
     } else {
         temp = ctx->user_buf.sgl_buf.sgl[ctx->user_buf.sgl_buf.current_sgl];
         ctx->user_buf.sgl_buf.current_sgl++;
-        /*
-                paddr = (void *) vm_lookup_phys(temp, PGSIZE_2MB);
-                if (unlikely(!paddr)) {
-                        printf("bsys_nvme_read: no paddr for requested buf!");
-                        return -RET_FAULT;
-                }
-                */
-        // virt to phys
-        //*address = (uint64_t) ((uintptr_t) paddr + PGOFF_2MB(temp));
-        //*address = nvme_vtophys((void *)*address);
-        // temp = rte_malloc_virt2phy(temp); //FIXME: use this for rte_malloc
-        // req buf only
         *address = (void *)temp;
-        //*address = rte_mem_virt2phy((void *)temp);
-        // printf("translated %p address is %x, current sgl is %d, num_sgls is
-        // %d, handle %lu, tid %u\n", 	   temp, *address,
-        // ctx->user_buf.sgl_buf.current_sgl -1, ctx->user_buf.sgl_buf.num_sgls,
-        // ctx->handle, ctx->tid);
         *length = 4096;  // PGSIZE_4KB
     }
     return 0;
@@ -1183,19 +1049,11 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
     }
 
     if (ctx->cmd == NVME_CMD_READ) {
-        // if PRP:
-        // ret = spdk_nvme_ns_cmd_read(ctx->ns, percpu_get(qpair), ctx->paddr,
-        // ctx->lba, ctx->lba_count, nvme_read_cb, ctx, 0);
-        // for SGL:
         ret = spdk_nvme_ns_cmd_readv(ctx->ns, percpu_get(qpair), ctx->lba,
                                      ctx->lba_count, nvme_read_cb, ctx, 0,
                                      sgl_reset_cb, sgl_next_cb);
 
     } else if (ctx->cmd == NVME_CMD_WRITE) {
-        // if PRP:
-        // ret = spdk_nvme_ns_cmd_write(ctx->ns, percpu_get(qpair), ctx->paddr,
-        // ctx->lba, ctx->lba_count, nvme_write_cb, ctx, 0);
-        // for SGL:
         ret = spdk_nvme_ns_cmd_writev(ctx->ns, percpu_get(qpair), ctx->lba,
                                       ctx->lba_count, nvme_write_cb, ctx, 0,
                                       sgl_reset_cb, sgl_next_cb);
@@ -1211,156 +1069,13 @@ static void issue_nvme_req(struct nvme_ctx *ctx) {
     }
 }
 
-long bsys_nvme_write(hqu_t fg_handle, void __user *__restrict vaddr,
-                     unsigned long lba, unsigned int lba_count,
-                     unsigned long cookie) {
-    struct spdk_nvme_ns *ns;
-    struct nvme_ctx *ctx;
-    struct nvme_ctx *pctx;
-    struct nvme_sw_queue *swq;
-    void *paddr;
-    int ret;
-    KSTATS_VECTOR(bsys_nvme_write);
-
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
-                                global_ns_id);
-    ctx = alloc_local_nvme_ctx();
-    if (ctx == NULL) {
-        printf(
-            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_write\n");
-        return -RET_NOMEM;
-    }
-    ctx->cookie = cookie;
-
-    /*
-        paddr = (void *) vm_lookup_phys(vaddr, PGSIZE_2MB);
-        if (unlikely(!paddr)) {
-                printf("bsys_nvme_write: no paddr for requested vaddr!");
-                return -RET_FAULT;
-        }
-
-        paddr = (void *) ((uintptr_t) paddr + PGOFF_2MB(vaddr));
-        */
-    paddr = vaddr;
-
-    // Store all info in ctx before add to software queue
-    ctx->tid = RTE_PER_LCORE(cpu_nr);
-    ctx->cmd = NVME_CMD_WRITE;
-    ctx->ns = ns;
-    ctx->paddr = paddr;
-    ctx->lba = lba;
-    ctx->lba_count = lba_count;
-
-    if (!g_nvme_sched_mode) {
-        // always using the first queue
-        ctx->fg_handle = 0;
-        swq = g_nvme_fgs[0].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
-        if (ret != 0) {
-            printf("sw queue has %ld requests\n", swq->count);
-            return -RET_NOMEM;
-        }
-        while (nvme_sw_queue_isempty(swq) == 0) {
-            if (g_outstanding_requests >= g_max_outstanding_requests) {
-                break;
-            }
-            nvme_sw_queue_pop_front(swq, &pctx);
-            issue_nvme_req(pctx);
-        }
-    } else {
-        ctx->fg_handle = fg_handle;
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_WRITE, lba_count * global_ns_sector_size);
-        // add to SW queue
-        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
-        swq = g_nvme_fgs[fg_handle].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
-        if (ret != 0) {
-            print_queue_status();
-            free_local_nvme_ctx(ctx);
-            return -RET_NOMEM;
-        }
-    }
-
-    return RET_OK;
+long bsys_nvme_write(hqu_t priority, void *buf, unsigned long lba,
+                     unsigned int lba_count, unsigned long cookie) {
+    printf("bsys_nvme_write should not be called\n");
 }
-
-long bsys_nvme_read(hqu_t fg_handle, void __user *__restrict vaddr,
-                    unsigned long lba, unsigned int lba_count,
-                    unsigned long cookie) {
-    struct spdk_nvme_ns *ns;
-    struct nvme_ctx *ctx;
-    struct nvme_ctx *pctx;
-    struct nvme_sw_queue *swq;
-    void *paddr;
-    unsigned int ns_sector_size;
-    int ret;
-
-    KSTATS_VECTOR(bsys_nvme_read);
-
-    ns = spdk_nvme_ctrlr_get_ns(nvme_ctrlr[cpu2ssd[percpu_get(cpu_id)]],
-                                global_ns_id);
-
-    ctx = alloc_local_nvme_ctx();
-    if (ctx == NULL) {
-        printf(
-            "ERROR: Cannot allocate memory for nvme_ctx in bsys_nvme_read\n");
-        return -RET_NOMEM;
-    }
-    ctx->cookie = cookie;
-
-    /*
-        paddr = (void *) vm_lookup_phys(vaddr, PGSIZE_2MB);
-        if (unlikely(!paddr)) {
-                printf("bsys_nvme_read: no paddr for requested vaddr!");
-                return -RET_FAULT;
-        }
-        paddr = (void *) ((uintptr_t) paddr + PGOFF_2MB(vaddr));
-        */
-    paddr = vaddr;
-
-    ctx->user_buf.buf = vaddr;
-
-    // Store all info in ctx before add to software queue
-    ctx->tid = RTE_PER_LCORE(cpu_nr);
-    ctx->cmd = NVME_CMD_READ;
-    ctx->ns = ns;
-    ctx->paddr = paddr;
-    ctx->lba = lba;
-    ctx->lba_count = lba_count;
-
-    if (!g_nvme_sched_mode) {
-        // always using the first queue
-        ctx->fg_handle = 0;
-        swq = g_nvme_fgs[0].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
-        if (ret != 0) {
-            printf("sw queue has %ld requests\n", swq->count);
-            return -RET_NOMEM;
-        }
-        while (nvme_sw_queue_isempty(swq) == 0) {
-            if (g_outstanding_requests >= g_max_outstanding_requests) {
-                break;
-            }
-            nvme_sw_queue_pop_front(swq, &pctx);
-            issue_nvme_req(pctx);
-        }
-    } else {
-        ctx->fg_handle = fg_handle;
-        ctx->req_cost = nvme_compute_req_cost(
-            NVME_CMD_READ, lba_count * global_ns_sector_size);
-        // add to SW queue
-        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
-        swq = g_nvme_fgs[fg_handle].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
-        if (ret != 0) {
-            print_queue_status();
-            free_local_nvme_ctx(ctx);
-            return -RET_NOMEM;
-        }
-    }
-
-    return RET_OK;
+long bsys_nvme_read(hqu_t priority, void *buf, unsigned long lba,
+                    unsigned int lba_count, unsigned long cookie) {
+    printf("bsys_nvme_read should not be called\n");
 }
 
 long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
@@ -1369,7 +1084,6 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
     struct spdk_nvme_ns *ns;
     struct nvme_ctx *ctx;
     struct nvme_ctx *pctx;
-    struct nvme_sw_queue *swq;
     int ret;
 
     KSTATS_VECTOR(bsys_nvme_writev);
@@ -1397,27 +1111,32 @@ long bsys_nvme_writev(hqu_t fg_handle, void __user **__restrict buf,
     if (!g_nvme_sched_mode) {
         // always using the first queue
         ctx->fg_handle = 0;
-        swq = g_nvme_fgs[0].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
+        ret = nvme_sw_table_push_back(g_nvme_sw_table, 0, ctx);
         if (ret != 0) {
-            printf("sw queue has %ld requests\n", swq->count);
+            printf("sw table has %ld requests\n",
+                   nvme_sw_table_count(g_nvme_sw_table, 0));
             return -RET_NOMEM;
         }
-        while (nvme_sw_queue_isempty(swq) == 0) {
+        while (nvme_sw_table_isempty(g_nvme_sw_table, 0) == 0) {
             if (g_outstanding_requests >= g_max_outstanding_requests) {
                 break;
             }
-            nvme_sw_queue_pop_front(swq, &pctx);
+            nvme_sw_table_pop_front(g_nvme_sw_table, 0, &pctx);
             issue_nvme_req(pctx);
         }
     } else {
         ctx->fg_handle = fg_handle;
         ctx->req_cost = nvme_compute_req_cost(
             NVME_CMD_WRITE, lba_count * global_ns_sector_size);
-        // add to SW queue
-        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
-        swq = g_nvme_fgs[fg_handle].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (g_nvme_fgs[fg_handle].latency_critical_flag &&
+            nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
+            nvme_lc_tenant_activate(&percpu_get(tenant_manager), fg_handle);
+        }
+        if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
+            nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
+            nvme_be_tenant_activate(&percpu_get(tenant_manager), fg_handle);
+        }
+        ret = nvme_sw_table_push_back(g_nvme_sw_table, fg_handle, ctx);
         if (ret != 0) {
             print_queue_status();
             free_local_nvme_ctx(ctx);
@@ -1434,7 +1153,6 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     struct spdk_nvme_ns *ns;
     struct nvme_ctx *ctx;
     struct nvme_ctx *pctx;
-    struct nvme_sw_queue *swq;
     int ret;
 
     KSTATS_VECTOR(bsys_nvme_readv);
@@ -1462,31 +1180,47 @@ long bsys_nvme_readv(hqu_t fg_handle, void __user **__restrict buf,
     if (!g_nvme_sched_mode) {
         // always using the first queue
         ctx->fg_handle = 0;
-        swq = g_nvme_fgs[0].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
+        ret = nvme_sw_table_push_back(g_nvme_sw_table, 0, ctx);
+
         if (ret != 0) {
-            printf("sw queue has %ld requests\n", swq->count);
+            printf("sw table has %ld requests\n",
+                   nvme_sw_table_count(g_nvme_sw_table, 0));
             return -RET_NOMEM;
         }
-        while (nvme_sw_queue_isempty(swq) == 0) {
+        while (nvme_sw_table_isempty(g_nvme_sw_table, 0) == 0) {
             if (g_outstanding_requests >= g_max_outstanding_requests) {
                 break;
             }
-            nvme_sw_queue_pop_front(swq, &pctx);
+            nvme_sw_table_pop_front(g_nvme_sw_table, 0, &pctx);
             issue_nvme_req(pctx);
         }
     } else {
         ctx->fg_handle = fg_handle;
         ctx->req_cost = nvme_compute_req_cost(
             NVME_CMD_READ, lba_count * global_ns_sector_size);
-        // add to SW queue
-        // struct nvme_sw_queue swq = percpu_get(nvme_swq[ctx->priority]);
-        swq = g_nvme_fgs[fg_handle].nvme_swq;
-        ret = nvme_sw_queue_push_back(swq, ctx);
+        if (g_nvme_fgs[fg_handle].latency_critical_flag &&
+            nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
+            nvme_lc_tenant_activate(&percpu_get(tenant_manager), fg_handle);
+            printf("LC tenant %ld activated\n", fg_handle);
+            printf("Tenant manager has %d active LC tenants\n",
+                   percpu_get(tenant_manager).lc_tail -
+                       percpu_get(tenant_manager)
+                           .lc_head);  // no mod, just for debugging
+        }
+        if (!g_nvme_fgs[fg_handle].latency_critical_flag &&
+            nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
+            nvme_be_tenant_activate(&percpu_get(tenant_manager), fg_handle);
+        }
+        if (nvme_lc_tenant_isactivated(&percpu_get(tenant_manager),
+                                       fg_handle) == false) {
+            printf("ERROR: LC tenant %ld is not activated\n", fg_handle);
+            return RET_FAULT;
+        }
+        ret = nvme_sw_table_push_back(g_nvme_sw_table, fg_handle, ctx);
         if (ret != 0) {
             print_queue_status();
             free_local_nvme_ctx(ctx);
-            return -RET_NOMEM;
+            return RET_NOMEM;
         }
     }
 
@@ -1516,106 +1250,13 @@ unsigned long try_acquire_global_tokens(unsigned long token_demand) {
 }
 
 /*
- * nvme_sched_lessv1: schedule with the LESS schedule
- */
-static inline int nvme_sched_lessv1_subround1(void) {
-    struct nvme_tenant_mgmt *thread_tenant_manager;
-    struct nvme_sw_queue *swq;
-    struct nvme_ctx *ctx;
-    unsigned long now;
-    unsigned long time_delta;
-    long POS_LIMIT = 0;
-    unsigned long local_leftover = 0;
-    unsigned long local_demand = 0;
-    double token_increment;
-    bool not_empty = true;
-    int i = 0;
-    double j = 0;
-
-    now = timer_now();  // in us
-    time_delta = now - percpu_get(last_sched_time);
-    percpu_get(last_sched_time) = now;
-
-    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
-
-    double min_token_increment =
-        percpu_get(min_scaled_IOPS) / (double)1e6 * time_delta + 0.5;
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-        // serve latency-critical (LC) tenants
-        if (g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
-            token_increment =
-                (g_nvme_fgs[swq->fg_handle].scaled_IOPuS_limit * time_delta) +
-                0.5;  // 0.5 is for rounding
-            swq->token_credit += (long)token_increment;
-            swq->smoothy_share = token_increment / min_token_increment;  // >= 1
-            if (swq->token_credit < -TOKEN_DEFICIT_LIMIT) {
-            }
-        } else {  // track demand of best-effort (will need for subround2)
-            local_demand +=
-
-                swq->total_token_demand - swq->saved_tokens;
-        }
-    }
-    while (not_empty && g_outstanding_requests < g_max_outstanding_requests) {
-        not_empty = false;
-        i = 0;
-        list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-            if (g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
-                if (i < percpu_get(lc_roundrobin_start)) continue;
-                if (g_outstanding_requests >= g_max_outstanding_requests) {
-                    percpu_get(lc_roundrobin_start) = i;
-                    return 1;
-                }
-                if (swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
-                    j = 0;
-                    while ((nvme_sw_queue_isempty(swq) == 0) &&
-                           j < swq->smoothy_share) {
-                        nvme_sw_queue_pop_front(swq, &ctx);
-                        issue_nvme_req(ctx);
-                        swq->token_credit -= ctx->req_cost;
-                        j += 1;
-                    }
-                    // Use simple approximation as of now
-                    if (j - swq->smoothy_share > 0.5) {
-                        swq->smoothy_share -= 0.5;
-                    } else if (j - swq->smoothy_share < 0.5) {
-                        swq->smoothy_share += 0.5;
-                    } else {  // == 0.5
-                        swq->smoothy_share -= 0.25;
-                    }
-                    // still requests remaining
-                    if (nvme_sw_queue_isempty(swq) == 0) not_empty = true;
-                }
-                i++;
-            }
-        }
-        // not i = #lc tenants + 1
-        percpu_get(lc_roundrobin_start) = 0;
-    }
-
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-        POS_LIMIT = 3 * token_increment;
-        if (swq->token_credit > POS_LIMIT) {
-            local_leftover += (swq->token_credit * TOKEN_FRAC_GIVEAWAY);
-            swq->token_credit -= swq->token_credit * TOKEN_FRAC_GIVEAWAY;
-        }
-    }
-
-    percpu_get(local_extra_demand) = local_demand;
-    percpu_get(local_leftover_tokens) = local_leftover;
-
-    return 0;
-}
-
-/*
- * nvme_sched_rr_subround1: roundrobinly schedule latency critical tenant
+ * nvme_sched_lessv0_subround1: roundrobinly schedule latency critical tenant
  * traffic
  */
-static inline int nvme_sched_rr_subround1(void) {
-    struct nvme_tenant_mgmt *thread_tenant_manager;
-    struct nvme_sw_queue *swq;
+static inline int nvme_sched_lessv0_subround1(void) {
+    struct less_tenant_mgmt *thread_tenant_manager;
     struct nvme_ctx *ctx;
-    uint64_t t0, t1, t2, t3, t4;
+    long fg_handle;
     unsigned long now;
     unsigned long time_delta;
     long POS_LIMIT = 0;
@@ -1623,195 +1264,85 @@ static inline int nvme_sched_rr_subround1(void) {
     unsigned long local_demand = 0;
     double token_increment;
     int i = -1;
+    uint32_t count = 0;
+    bool work_conserving = false;
 
     now = timer_now();  // in us
     time_delta = now - percpu_get(last_sched_time);
     percpu_get(last_sched_time) = now;
 
-    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
-    t0 = rdtsc();
+    thread_tenant_manager = &percpu_get(tenant_manager);
 
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-#ifndef CYCLIC_LIST
-        i++;
-#endif
+    if (g_nvme_sw_table->total_request_count + g_outstanding_requests <
+        g_max_outstanding_requests) {
+        work_conserving = true;
+    }
 
-        if (nvme_sw_queue_isempty(swq)) {
-            continue;
-        }
-        // serve latency-critical (LC) tenants
-
-        if (g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
-#ifndef CYCLIC_LIST
-            if (i < percpu_get(lc_roundrobin_start)) continue;
-#endif
-            token_increment =
-                (g_nvme_fgs[swq->fg_handle].scaled_IOPuS_limit * time_delta) +
-                0.5;  // 0.5 is for rounding
-            swq->token_credit += (long)token_increment;
-            t2 = rdtsc();
-            while ((nvme_sw_queue_isempty(swq) == 0) &&
-                   swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
-                if (g_outstanding_requests >= g_max_outstanding_requests) {
-#ifndef CYCLIC_LIST
-                    percpu_get(lc_roundrobin_start) = i;
-#else
-                    list_head_reset(&thread_tenant_manager->tenant_swq_head,
-                                    &swq->link);
-#endif
-                    return 1;
+    // iterate_active_tenants_by_type(thread_tenant_manager, lc) {
+    for (long i = thread_tenant_manager->lc_head;
+         i < (thread_tenant_manager->lc_tail + MAX_NVME_FLOW_GROUPS) %
+                 MAX_NVME_FLOW_GROUPS;
+         i++) {
+        fg_handle =
+            thread_tenant_manager->active_lc_tenants[i % MAX_NVME_FLOW_GROUPS];
+        // printf("iterating active %ld-th tenant %ld\n", i, fg_handle);
+        token_increment =
+            (g_nvme_fgs[fg_handle].scaled_IOPuS_limit * time_delta) + 0.5;
+        g_nvme_sw_table->token_credit[fg_handle] += (long)token_increment;
+        while (nvme_sw_table_isempty(g_nvme_sw_table, fg_handle) == 0) {
+            if (!work_conserving) {
+                if (g_outstanding_requests >= g_max_outstanding_requests) break;
+                if (g_nvme_sw_table->token_credit[fg_handle] <
+                    -TOKEN_DEFICIT_LIMIT) {
+                    printf("active LC tenant %d now is going to be requeued\n",
+                           fg_handle);
+                    nvme_lc_tenant_requeue(thread_tenant_manager, fg_handle);
+                    count++;
                 }
-                nvme_sw_queue_pop_front(swq, &ctx);
-                t4 = rdtsc();
-                issue_nvme_req(ctx);
-                possible_expensive_areas[4] += (rdtsc() - t4);
-                swq->token_credit -= ctx->req_cost;
             }
-            t3 = rdtsc();
-            possible_expensive_areas[3] += (t3 - t2);
-
-            POS_LIMIT = 3 * token_increment;
-            if (swq->token_credit > POS_LIMIT) {
-                local_leftover += (swq->token_credit * TOKEN_FRAC_GIVEAWAY);
-                swq->token_credit -= swq->token_credit * TOKEN_FRAC_GIVEAWAY;
-            }
-        } else {  // track demand of best-effort (will need for subround2)
-            local_demand += swq->total_token_demand - swq->saved_tokens;
+            nvme_sw_table_pop_front(g_nvme_sw_table, fg_handle, &ctx);
+            issue_nvme_req(ctx);
+            // how to pay off the loan when in the work conserving mode?
+            g_nvme_sw_table->token_credit[fg_handle] -= ctx->req_cost;
+        }
+        // this algorithm always drains the queues in the front
+        if (nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) {
+            printf("active LC tenant %d now is going to be inactive\n",
+                   fg_handle);
+            count++;
+        }
+        POS_LIMIT = 3 * token_increment;
+        if (g_nvme_sw_table->token_credit[fg_handle] > POS_LIMIT) {
+            local_leftover += (g_nvme_sw_table->token_credit[fg_handle] *
+                               TOKEN_FRAC_GIVEAWAY);
+            g_nvme_sw_table->token_credit[fg_handle] -=
+                g_nvme_sw_table->token_credit[fg_handle] * TOKEN_FRAC_GIVEAWAY;
         }
     }
-#ifndef CYCLIC_LIST
-    i = -1;
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-        i++;
-        if (nvme_sw_queue_isempty(swq)) continue;
-        // serve latency-critical (LC) tenants
-        if (g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
-            if (i >= percpu_get(lc_roundrobin_start)) break;
-            token_increment =
-                (g_nvme_fgs[swq->fg_handle].scaled_IOPuS_limit * time_delta) +
-                0.5;  // 0.5 is for rounding
-            swq->token_credit += (long)token_increment;
-            while ((nvme_sw_queue_isempty(swq) == 0) &&
-                   swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
-                if (g_outstanding_requests >= g_max_outstanding_requests) {
-                    percpu_get(lc_roundrobin_start) = i;
-                    return 1;
-                }
-                nvme_sw_queue_pop_front(swq, &ctx);
-                issue_nvme_req(ctx);
-                swq->token_credit -= ctx->req_cost;
-            }
+    nvme_lc_tenant_deactivate(thread_tenant_manager, count);
 
-            POS_LIMIT = 3 * token_increment;
-            if (swq->token_credit > POS_LIMIT) {
-                local_leftover += (swq->token_credit * TOKEN_FRAC_GIVEAWAY);
-                swq->token_credit -= swq->token_credit * TOKEN_FRAC_GIVEAWAY;
-            }
-        } else {  // track demand of best-effort (will need for subround2)
-            local_demand += swq->total_token_demand - swq->saved_tokens;
-        }
-    }
-#endif
-    t1 = rdtsc();
-    possible_expensive_areas[2] += (t1 - t0);
-    percpu_get(local_extra_demand) = local_demand;
     percpu_get(local_leftover_tokens) = local_leftover;
 
     return 0;
 }
 
 /*
- * nvme_sched_subround1: schedule latency critical tenant traffic
+ * nvme_sched_lessv1: schedule with the LESS schedule
  */
-static inline int nvme_sched_subround1(void) {
-    struct nvme_tenant_mgmt *thread_tenant_manager;
-    struct nvme_sw_queue *swq;
-    struct nvme_ctx *ctx;
-    unsigned long now;
-    unsigned long time_delta;
-    long POS_LIMIT = 0;
-    unsigned long local_leftover = 0;
-    unsigned long local_demand = 0;
-    double token_increment;
+static inline int nvme_sched_lessv1_subround1(void) { return 0; }
 
-    now = timer_now();  // in us
-    time_delta = now - percpu_get(last_sched_time);
-    percpu_get(last_sched_time) = now;
-
-    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
-
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-        if (nvme_sw_queue_isempty(swq)) continue;
-        // serve latency-critical (LC) tenants
-        if (g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
-            if (swq->fg_handle == 2) {
-                // printf("%f\n",
-                // g_nvme_fgs[swq->fg_handle].scaled_IOPuS_limit);
-            }
-
-            token_increment =
-                (g_nvme_fgs[swq->fg_handle].scaled_IOPuS_limit * time_delta) +
-                0.5;  // 0.5 is for rounding
-            swq->token_credit += (long)token_increment;
-            if (swq->token_credit < -TOKEN_DEFICIT_LIMIT) {
-                /*
-                 * Notify control plane, may need to re-negotiate tenant SLO
-                 * FUTURE WORK: implement control plane
-                 */
-
-                // TODO: try to grab from global token bucket
-                // NOTE: may also need to schedule LC tenants in round robin for
-                // fairness
-            }
-            while ((nvme_sw_queue_isempty(swq) == 0) &&
-                   swq->token_credit > -TOKEN_DEFICIT_LIMIT) {
-                if (g_outstanding_requests >= g_max_outstanding_requests) {
-                    // printf("Temporal bursts! outstanding = %ld\n",
-                    // g_outstanding_requests);
-                    return 1;
-                }
-                nvme_sw_queue_pop_front(swq, &ctx);
-                issue_nvme_req(ctx);
-                swq->token_credit -= ctx->req_cost;
-            }
-
-            /*
-             * POS_LIMIT can be tuned to balance work-conservation and favoring
-             *of LC traffic
-             *	  * default POS_LIMIT    = 3 * token_increment
-             *	  						if LC tenant
-             *doesn't use tokens accumulated from ~3 sched rounds, donate them
-             *
-             *   * lower POS_LIMIT 		is good for work-conservation
-             *   						(give tokens to
-             *BE tenants more easily)
-             *
-             *   * higher POS_LIMIT 	allows latency-critical tenants to
-             *accumulate more tokens & burst
-             */
-            POS_LIMIT = 3 * token_increment;
-            if (swq->token_credit > POS_LIMIT) {
-                local_leftover += (swq->token_credit * TOKEN_FRAC_GIVEAWAY);
-                swq->token_credit -= swq->token_credit * TOKEN_FRAC_GIVEAWAY;
-            }
-        } else {  // track demand of best-effort (will need for subround2)
-            local_demand += swq->total_token_demand - swq->saved_tokens;
-        }
-    }
-
-    percpu_get(local_extra_demand) = local_demand;
-    percpu_get(local_leftover_tokens) = local_leftover;
-
-    return 0;
-}
+/*
+ * nvme_sched_lessv2: schedule with the LESS schedule
+ */
+static inline int nvme_sched_lessv2_subround1(void) { return 0; }
 
 /*
  * nvme_sched_subround2: schedule best-effort tenant traffic
  */
 static inline void nvme_sched_subround2(void) {
-    struct nvme_tenant_mgmt *thread_tenant_manager;
-    struct nvme_sw_queue *swq;
+    struct less_tenant_mgmt *thread_tenant_manager;
     struct nvme_ctx *ctx;
+    long fg_handle;
     int i;
     unsigned long local_leftover = 0;
     unsigned long local_demand = 0;
@@ -1821,20 +1352,26 @@ static inline void nvme_sched_subround2(void) {
     unsigned long global_tokens_acquired = 0;
     unsigned long now;
     unsigned long time_delta_cycles;
+    uint32_t count = 0;
 
     local_leftover = percpu_get(local_leftover_tokens);
-    local_demand = percpu_get(local_extra_demand);
 
-    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
+    thread_tenant_manager = &percpu_get(tenant_manager);
 
+    iterate_active_tenants_by_type(thread_tenant_manager, be) {
+        fg_handle =
+            thread_tenant_manager->active_be_tenants[i % MAX_NVME_FLOW_GROUPS];
+        local_demand += g_nvme_sw_table->total_token_demand[fg_handle] -
+                        g_nvme_sw_table->saved_tokens[fg_handle];
+    }
     // compare local leftover with local demand
     // synchronize access to global token bucket
     if (local_leftover > 0 &&
         local_demand == 0) {  // give away leftoever tokens to global pool
         atomic_u64_fetch_and_add(&global_leftover_tokens, local_leftover);
         return;
-    } else if (local_leftover <
-               local_demand) {  // try to get how much you need from global pool
+    } else if (local_leftover < local_demand) {  // try to get how much you
+                                                 // need from global pool
         token_demand = local_demand - local_leftover;
         global_tokens_acquired =
             try_acquire_global_tokens(token_demand);  // atomic
@@ -1848,94 +1385,32 @@ static inline void nvme_sched_subround2(void) {
     percpu_get(last_sched_time_be) = now;
 
     // serve best effort tenants in round-robin order
-    // TODO: simplify by implementing separate per-thread lists of BE and LC
-    // tenants
-    i = 0;
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-        if (i < percpu_get(roundrobin_start)) {
-            i++;
-            continue;
-        }
-        if (!g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
-            be_tokens += nvme_sw_queue_take_saved_tokens(swq);
-            token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
-                               time_delta_cycles) /
-                              (double)(rte_get_timer_hz());
-            be_tokens += (long)(token_increment + 0.5);
-
-            while ((nvme_sw_queue_isempty(swq) == 0) &&
-                   nvme_sw_queue_peak_head_cost(swq) <= be_tokens) {
-                if (g_outstanding_requests >= g_max_outstanding_requests) {
-                    // printf("Temporal bursts! outstanding = %ld\n",
-                    // g_outstanding_requests);
-                    break;
-                }
-                nvme_sw_queue_pop_front(swq, &ctx);
-                issue_nvme_req(ctx);
-                be_tokens -= ctx->req_cost;
-            }
-            // save extra tokens for this tenant if still has demand
-            be_tokens -= nvme_sw_queue_save_tokens(swq, be_tokens);
-            assert(be_tokens >= 0);
-        }
-        i++;
-    }
-
-    int j = 0;
-    list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-        if (j >= percpu_get(roundrobin_start)) {
-            break;
-        }
-        log_debug("schedule tenant second %d\n", j);
-        // log_debug("subround2: sched tenant handle %ld, tenant_tokens %lu\n",
-        // swq->fg_handle, tenant_tokens);
-        if (!g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
-            be_tokens += nvme_sw_queue_take_saved_tokens(swq);
-            token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
-                               time_delta_cycles) /
-                              (double)(rte_get_timer_hz());
-            be_tokens += (long)(token_increment + 0.5);
-
-            while ((nvme_sw_queue_isempty(swq) == 0) &&
-                   nvme_sw_queue_peak_head_cost(swq) <= be_tokens) {
-                if (g_outstanding_requests >= g_max_outstanding_requests) {
-                    // printf("Temporal bursts! outstanding = %ld\n",
-                    // g_outstanding_requests);
-                    break;
-                }
-                nvme_sw_queue_pop_front(swq, &ctx);
-                issue_nvme_req(ctx);
-                be_tokens -= ctx->req_cost;
-            }
-            // save extra tokens for this tenant if still has demand
-            be_tokens -= nvme_sw_queue_save_tokens(swq, be_tokens);
-            assert(be_tokens >= 0);
-        }
-        j++;
-    }
-
-    int done = 0;
-    if (thread_tenant_manager->num_best_effort_tenants > 0) {
-        while (1) {  // find next round-robin start and check it's a best-effort
-                     // tenant (otherwise unfair)
-            percpu_get(roundrobin_start) = (percpu_get(roundrobin_start) + 1) %
-                                           thread_tenant_manager->num_tenants;
-            i = 0;
-            list_for_each(&thread_tenant_manager->tenant_swq_head, swq, link) {
-                if (i != percpu_get(roundrobin_start)) {
-                    i++;
-                    continue;
-                }
-                if (!g_nvme_fgs[swq->fg_handle].latency_critical_flag) {
-                    done = 1;  // incremented to next best effort tenant
-                }
+    iterate_active_tenants_by_type(thread_tenant_manager, be) {
+        fg_handle =
+            thread_tenant_manager->active_be_tenants[i % MAX_NVME_FLOW_GROUPS];
+        be_tokens +=
+            nvme_sw_table_take_saved_tokens(g_nvme_sw_table, fg_handle);
+        token_increment = (atomic_read(&global_be_token_rate_per_tenant) *
+                           time_delta_cycles) /
+                          (double)(rte_get_timer_hz());
+        be_tokens += (long)(token_increment + 0.5);
+        while (nvme_sw_table_isempty(g_nvme_sw_table, fg_handle) == 0 &&
+               nvme_sw_table_peak_head_cost(g_nvme_sw_table, fg_handle) <=
+                   be_tokens) {
+            if (g_outstanding_requests >= g_max_outstanding_requests) {
                 break;
             }
-            if (done == 1) {
-                break;
-            }
+            nvme_sw_table_pop_front(g_nvme_sw_table, fg_handle, &ctx);
+            issue_nvme_req(ctx);
+            be_tokens -= ctx->req_cost;
         }
+        if (nvme_sw_table_isempty(g_nvme_sw_table, fg_handle)) count++;
+
+        be_tokens -=
+            nvme_sw_table_save_tokens(g_nvme_sw_table, fg_handle, be_tokens);
+        // assert(be_tokens >= 0);
     }
+    nvme_be_tenant_deactivate(thread_tenant_manager, count);
 
     if (be_tokens > 0) {
         atomic_u64_fetch_and_add(&global_leftover_tokens, be_tokens);
@@ -1950,9 +1425,9 @@ static inline void nvme_sched_subround2(void) {
  * scheduling round
  * 		- if last thread to complete a round, clear the global vector
  * 		- updates to global vector are not atomic operations because
- * want to limit perf overhead and the exact timing of token bucket reset is not
- * critical, as long as we reset approximately after each thread has had a
- * chance to get tokens
+ * want to limit perf overhead and the exact timing of token bucket reset is
+ * not critical, as long as we reset approximately after each thread has had
+ * a chance to get tokens
  */
 static void update_scheduled_bitvector(void) {
     int i;
@@ -1975,11 +1450,10 @@ int nvme_sched(void) {
 #ifdef NO_SCHED
     return 0;
 #endif
-    struct nvme_tenant_mgmt *thread_tenant_manager;
-    thread_tenant_manager = &percpu_get(nvme_tenant_manager);
     int round1_ret;
 
-    if (thread_tenant_manager->num_tenants == 0) {
+    if (percpu_get(tenant_manager).num_lc_tenants == 0 &&
+        percpu_get(tenant_manager).num_be_tenants == 0) {
         percpu_get(last_sched_time) = timer_now();
         percpu_get(last_sched_time_be) = rdtsc();
 #ifndef SINGLE_THREADED
@@ -1988,32 +1462,20 @@ int nvme_sched(void) {
         return 0;
     }
 
-    uint64_t t0, t1, t2;
-    t0 = rdtsc();
-    if (g_nvme_sched_mode == REFLEX) {
-        round1_ret = nvme_sched_subround1();  // serve latency-critical tenants
-        if (!round1_ret) nvme_sched_subround2();  // serve best-effort tenants
-    } else if (g_nvme_sched_mode == REFLEX_RR) {
+    if (g_nvme_sched_mode == LESSv0) {
         // This should fix the starvation issue
-
         round1_ret =
-            nvme_sched_rr_subround1();  // roundrobinly serve lc tenants
-        t1 = rdtsc();
-        possible_expensive_areas[0] += (t1 - t0);
+            nvme_sched_lessv0_subround1();  // roundrobinly serve lc tenants
         if (!round1_ret)
             nvme_sched_subround2();  // roundrobinly serve be tenants
-        t2 = rdtsc();
-        possible_expensive_areas[1] += (t2 - t1);
-    } else if (g_nvme_sched_mode == WFQ) {
-    } else if (g_nvme_sched_mode == WDRR) {
     } else if (g_nvme_sched_mode == LESSv1) {
         // convert the bursty schedule to smooth schedule
         round1_ret = nvme_sched_lessv1_subround1();
         if (!round1_ret) nvme_sched_subround2();
     } else if (g_nvme_sched_mode == LESSv2) {
         // prioritize the tenant with more recent bursts
-        // round1_ret = nvme_sched_lessv2_subround1();
-        // if (!round1_ret) nvme_sched_subround2();
+        round1_ret = nvme_sched_lessv2_subround1();
+        if (!round1_ret) nvme_sched_subround2();
     }
 
     percpu_get(local_leftover_tokens) = 0;

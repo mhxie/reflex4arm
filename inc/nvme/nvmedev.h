@@ -49,9 +49,7 @@
 
 #define NVME_MAX_COMPLETIONS 64
 
-#define MAX_NVME_FLOW_GROUPS 4096
 extern DEFINE_BITMAP(g_ioq_bitmap, MAX_NUM_IO_QUEUES);
-extern DEFINE_BITMAP(g_nvme_fgs_bitmap, MAX_NVME_FLOW_GROUPS);
 RTE_DECLARE_PER_LCORE(struct spdk_nvme_qpair *, qpair);
 
 struct nvme_ctx {
@@ -108,11 +106,10 @@ struct nvme_tenant_mgmt {
 };
 
 RTE_DECLARE_PER_LCORE(struct mempool, ctx_mempool);
-
 RTE_DECLARE_PER_LCORE(int, received_nvme_completions);
 
 // RTE_DECLARE_PER_LCORE(struct nvme_tenant_mgmt, nvme_tenant_manager);
-RTE_DECLARE_PER_LCORE(struct less_tenant_mgmt, tenant_manager);
+// RTE_DECLARE_PER_LCORE(struct less_tenant_mgmt, tenant_manager);
 
 extern struct nvme_ctx *alloc_local_nvme_ctx(void);
 extern void free_local_nvme_ctx(struct nvme_ctx *req);
