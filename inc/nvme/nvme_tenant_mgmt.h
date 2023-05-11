@@ -30,6 +30,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <ix/list.h>
 #include <nvme/nvmedev.h>
 
 // #define iterate_active_tenants_by_type(m, type)               \
@@ -38,103 +39,85 @@
 //               ? (i < m->type##_tail)                          \
 //               : (i < m->type##_tail + MAX_NVME_FLOW_GROUPS)); \
 //          i++)
-#define iterate_active_tenants_by_type(m, type)                              \
-    for (long i = m->type##_head;                                            \
-         i < (m->type##_tail + MAX_NVME_FLOW_GROUPS) % MAX_NVME_FLOW_GROUPS; \
-         i++)
+// #define iterate_active_tenants_by_type(m, type)                              \
+//     for (long i = m->type##_head;                                            \
+//          i < (m->type##_tail + MAX_NVME_FLOW_GROUPS) % MAX_NVME_FLOW_GROUPS; \
+//          i++)
 
 #define iterate_all_tenants(fg_handle) \
     for (fg_handle = 0; fg_handle < MAX_NVME_FLOW_GROUPS; fg_handle++)
 
 struct less_tenant_mgmt {
-    long active_lc_tenants[MAX_NVME_FLOW_GROUPS];
-    long active_be_tenants[MAX_NVME_FLOW_GROUPS];
-    uint16_t lc_head;
-    uint16_t lc_tail;
-    uint16_t be_head;
-    uint16_t be_tail;
+    struct list_head active_lc_tenants;
+    struct list_head active_be_tenants;
     uint16_t num_lc_tenants;
     uint16_t num_be_tenants;
 };
 
+struct less_tenant {
+    struct list_node link;
+    long fg_handle;
+    uint32_t queue_head;
+    uint32_t queue_tail;
+    uint16_t queue_overflow_count;
+    int32_t token_credit;
+    uint32_t total_token_demand;
+    uint32_t saved_tokens;
+    float smoothy_share;
+};
+
 void init_less_tenant_mgmt(struct less_tenant_mgmt *manager) {
-    int i;
-    for (i = 0; i < MAX_NVME_FLOW_GROUPS; i++) {
-        manager->active_lc_tenants[i] = -1;
-        manager->active_be_tenants[i] = -1;
-    }
-    manager->lc_head = 0;
-    manager->lc_tail = 0;
-    manager->be_head = 0;
-    manager->be_tail = 0;
+    list_head_init(&manager->active_lc_tenants);
+    list_head_init(&manager->active_be_tenants);
     manager->num_lc_tenants = 0;
     manager->num_be_tenants = 0;
 }
 
 bool nvme_lc_tenant_isempty(struct less_tenant_mgmt *manager) {
-    return manager->lc_head == manager->lc_tail;
-}
-
-bool nvme_lc_tenant_isactivated(struct less_tenant_mgmt *manager,
-                                long tenant_id) {
-    iterate_active_tenants_by_type(manager, lc) {
-        if (manager->active_lc_tenants[i] == tenant_id) {
-            return true;
-        }
+    if (manager->num_lc_tenants == 0) {
+        return true;
     }
     return false;
 }
 
-bool nvme_be_tenant_isactivated(struct less_tenant_mgmt *manager,
-                                long tenant_id) {
-    iterate_active_tenants_by_type(manager, be) {
-        if (manager->active_be_tenants[i] == tenant_id) {
-            return true;
-        }
+bool nvme_be_tenant_isempty(struct less_tenant_mgmt *manager) {
+    if (manager->num_be_tenants == 0) {
+        return true;
     }
     return false;
 }
 
-void nvme_lc_tenant_activate(struct less_tenant_mgmt *manager, long tenant_id) {
-    manager->active_lc_tenants[manager->lc_tail] = tenant_id;
-    manager->lc_tail = (manager->lc_tail + 1) % MAX_NVME_FLOW_GROUPS;
-    if (unlikely(manager->lc_tail == manager->lc_head)) {
+// bool nvme_lc_tenant_isactivated(struct less_tenant_mgmt *manager,
+//                                 long tenant_id) {
+//     list_for_each() return false;
+// }
+
+void nvme_lc_tenant_activate(struct less_tenant_mgmt *manager,
+                             struct less_tenant *tenant) {
+    list_add_tail(&manager->active_lc_tenants, &tenant->link);
+    manager->num_lc_tenants++;
+    if (unlikely(manager->num_lc_tenants > MAX_NVME_FLOW_GROUPS)) {
         printf("Latency-critical tenants exceeds limits\n");
     }
 }
 
 void nvme_lc_tenant_deactivate(struct less_tenant_mgmt *manager,
-                               uint32_t count) {
-    if (count > 0) {
-        printf("%ld LC tenants deactivated\n", count);
-        printf("Tenant manager active LC tenants reduces from %ld to %ld\n",
-               manager->lc_tail - manager->lc_head,
-               manager->lc_tail - manager->lc_head -
-                   count);  // no mod, just for debugging
-    }
-    manager->lc_head = (manager->lc_head + count) % MAX_NVME_FLOW_GROUPS;
+                               struct less_tenant *tenant) {
+    list_del(&tenant->link);
+    manager->num_lc_tenants--;
 }
 
-bool nvme_be_tenant_isempty(struct less_tenant_mgmt *manager) {
-    return manager->be_head == manager->be_tail;
-}
-
-void nvme_be_tenant_activate(struct less_tenant_mgmt *manager, long tenant_id) {
-    manager->active_be_tenants[manager->be_tail] = tenant_id;
-    manager->be_tail = (manager->be_tail + 1) % MAX_NVME_FLOW_GROUPS;
-    if (unlikely(manager->be_tail == manager->be_head)) {
+void nvme_be_tenant_activate(struct less_tenant_mgmt *manager,
+                             struct less_tenant *tenant) {
+    list_add_tail(&manager->active_be_tenants, &tenant->link);
+    manager->num_be_tenants++;
+    if (unlikely(manager->num_be_tenants > MAX_NVME_FLOW_GROUPS)) {
         printf("Best-effort tenants exceeds limits\n");
     }
 }
 
 void nvme_be_tenant_deactivate(struct less_tenant_mgmt *manager,
-                               uint32_t count) {
-    if (count > 0) {
-        printf("%ld BE tenants deactivated\n", count);
-        printf("Tenant manager active LC tenants reduces from %ld to %ld\n",
-               manager->be_tail - manager->be_head,
-               manager->be_tail - manager->be_head -
-                   count);  // no mod, just for debugging
-    }
-    manager->be_head = (manager->be_head + count) % MAX_NVME_FLOW_GROUPS;
+                               struct less_tenant *tenant) {
+    list_del(&tenant->link);
+    manager->num_be_tenants--;
 }

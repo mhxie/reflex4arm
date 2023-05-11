@@ -30,6 +30,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <nvme/nvme_tenant_mgmt.h>
 #include <nvme/nvmedev.h>
 #include <rte_hash.h>
 #include <rte_jhash.h>
@@ -43,9 +44,9 @@ struct nvme_sw_table {
     uint32_t total_token_demand[MAX_NVME_FLOW_GROUPS];
     uint32_t saved_tokens[MAX_NVME_FLOW_GROUPS];
     int32_t token_credit[MAX_NVME_FLOW_GROUPS];
+    // struct less_tenant *tenants[MAX_NVME_FLOW_GROUPS];
     uint32_t total_request_count;
     struct rte_hash *table;
-    float smoothy_share;  // not in use as of now
 };
 
 void nvme_sw_table_init(struct nvme_sw_table **t);
