@@ -1317,7 +1317,7 @@ static inline int nvme_sched_lessv0_subround1(void) {
                 g_nvme_sw_table->token_credit[fg_handle] * TOKEN_FRAC_GIVEAWAY;
         }
     }
-    printf("%d LC tenants are going to be deactivated\n", count")
+    printf("%d LC tenants are going to be deactivated\n", count");
     nvme_lc_tenant_deactivate(thread_tenant_manager, count);
 
     percpu_get(local_leftover_tokens) = local_leftover;
